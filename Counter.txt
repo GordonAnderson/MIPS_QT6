@@ -1,0 +1,9 @@
+GroupBox,Counter,180,170,100,290
+Ccontrol,Signal,Count,ComboBox,,select external trigger,,,10,30
+ComboBoxList,NA,Q,R,S,T
+Ccontrol,Count,Number,LineEdit,,of detected events,,,10,55
+Ccontrol,Threshold,Threshold,LineEdit,,count,,,10,80
+Ccontrol,Status,Status,LineEdit,,of counter,,,1000,80
+ScriptButton,Start,CounterStart.scrpt,20,105
+ScriptButton,Stop,CounterStop.scrpt,20,130
+GroupBoxEnd
