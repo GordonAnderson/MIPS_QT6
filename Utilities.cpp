@@ -1,3 +1,17 @@
+// =============================================================================
+// Utilities.cpp
+//
+// General-purpose UI utility functions shared across all MIPS host application
+// modules. Provides mouse-driven widget dragging, keyboard/scroll wheel value
+// adjustment for line edit controls, and a thread-safe random number generator.
+//
+// Depends on:  Qt Widgets, Qt Events
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Created:     2021
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
 #include "Utilities.h"
 #include <random>
 #include <ctime>
@@ -75,5 +89,4 @@ int generateRandomInt(int min, int max) {
     distribution.param(std::uniform_int_distribution<>::param_type(min, max));
     return distribution(generator);
 }
-
 
