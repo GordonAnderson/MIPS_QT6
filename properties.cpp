@@ -36,6 +36,9 @@ void setSystemFontSize(int fs)
 #endif
 }
 
+// Properties — constructor. Sets default field values, attempts to load
+// Properties.mips from the application directory then the home directory,
+// calls UpdateVars() to apply the loaded settings, and wires button signals.
 Properties::Properties(QWidget *parent) :
     QDialog(parent),
     ui(new Ui::Properties)
@@ -72,6 +75,7 @@ Properties::Properties(QWidget *parent) :
     connect(ui->pbLogFile,          SIGNAL(pressed()), this, SLOT(slotLogFile()));
 }
 
+// ~Properties — destructor. Releases the UI form.
 Properties::~Properties()
 {
     delete ui;
@@ -115,6 +119,7 @@ void Properties::UpdateVars(void)
     setSystemFontSize(sysFontSize.toInt());
 }
 
+// slotDataFilePath — opens a directory browser and updates the data file path field.
 void Properties::slotDataFilePath(void)
 {
     ui->pbDataFilePath->setDown(false);
@@ -123,6 +128,7 @@ void Properties::slotDataFilePath(void)
     ui->leDataFilePath->setText(dir);
 }
 
+// slotMethodesPath — opens a directory browser and updates the methodes path field.
 void Properties::slotMethodesPath(void)
 {
     ui->pbMethodesPath->setDown(false);
@@ -131,6 +137,7 @@ void Properties::slotMethodesPath(void)
     ui->leMethodesPath->setText(dir);
 }
 
+// slotScriptPath — opens a directory browser and updates the script path field.
 void Properties::slotScriptPath(void)
 {
     ui->pbScriptPath->setDown(false);
@@ -139,6 +146,8 @@ void Properties::slotScriptPath(void)
     ui->leScriptPath->setText(dir);
 }
 
+// slotLoadControlPanel — opens a file dialog and updates the control panel
+// configuration file path field.
 void Properties::slotLoadControlPanel(void)
 {
     ui->pbLoadControlPanel->setDown(false);
@@ -147,6 +156,7 @@ void Properties::slotLoadControlPanel(void)
     ui->leControlPanel->setText(fileName);
 }
 
+// slotLogFile — opens a save-file dialog and updates the log file path field.
 void Properties::slotLogFile(void)
 {
     ui->pbLogFile->setDown(false);
@@ -158,6 +168,7 @@ void Properties::slotLogFile(void)
     ui->leLogFile->setText(fileName);
 }
 
+// slotClear — removes all entries from the TCP/IP address list.
 void Properties::slotClear(void)
 {
     ui->comboTCPIPlist->clear();

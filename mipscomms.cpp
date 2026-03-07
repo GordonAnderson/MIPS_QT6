@@ -14,6 +14,9 @@
 #include "mipscomms.h"
 #include "ui_mipscomms.h"
 
+// MIPScomms — constructor. Populates the system selector combo from the
+// supplied Comms list and wires DataReady signals from every system to
+// the console display slot.
 MIPScomms::MIPScomms(QWidget *parent, QList<Comms*> S) :
     QDialog(parent),
     ui(new Ui::MIPScomms)
@@ -33,6 +36,7 @@ MIPScomms::MIPScomms(QWidget *parent, QList<Comms*> S) :
         connect(Systems.at(i), SIGNAL(DataReady()), this, SLOT(readData2Console()));
 }
 
+// ~MIPScomms — disconnects all DataReady signals and releases the UI.
 MIPScomms::~MIPScomms()
 {
     for(int i = 0; i < Systems.count(); i++)
@@ -40,6 +44,7 @@ MIPScomms::~MIPScomms()
     delete ui;
 }
 
+// reject — emits DialogClosed and self-deletes when the dialog is closed.
 void MIPScomms::reject()
 {
     emit DialogClosed();

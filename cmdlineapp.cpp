@@ -50,6 +50,7 @@ cmdlineapp::cmdlineapp(QWidget *parent) :
     connect(ui->leCommand, &QLineEdit::returnPressed, this, &cmdlineapp::readMessage);
 }
 
+// ~cmdlineapp — destructor. Releases the UI form.
 cmdlineapp::~cmdlineapp()
 {
     delete ui;
@@ -72,11 +73,13 @@ void cmdlineapp::Dismiss()
     delete this;
 }
 
+// AppendText — appends a plain-text message to the terminal display.
 void cmdlineapp::AppendText(QString message)
 {
     ui->txtTerm->appendPlainText(message);
 }
 
+// Clear — resets the window title and clears the terminal display.
 void cmdlineapp::Clear(void)
 {
     cmdlineapp::setWindowTitle(title);
@@ -262,6 +265,8 @@ void cmdlineapp::AcquireFinishing(void)
     ui->txtTerm->appendPlainText("App signaled its finished!\n");
 }
 
+// AppFinished — slot called when the process exits normally. Runs
+// AcquireFinishing(), closes the process, and emits AppCompleted.
 void cmdlineapp::AppFinished(void)
 {
     AcquireFinishing();
@@ -291,6 +296,8 @@ void cmdlineapp::messageProcessor(void)
 // extProcess
 // ---------------------------------------------------------------------------
 
+// extProcess — constructor. Creates a cmdlineapp dialog for the given program,
+// connects its Ready/AppCompleted/DialogClosed signals, and initialises status.
 extProcess::extProcess(QWidget *parent, QString name, QString program)
 {
     this->name    = name;
@@ -308,22 +315,30 @@ extProcess::extProcess(QWidget *parent, QString name, QString program)
     connect(cla, &cmdlineapp::DialogClosed, this, &extProcess::slotExternalProcessDialogClosed);
 }
 
+// ~extProcess — destructor. No explicit cleanup needed; cmdlineapp is parented
+// to the QWidget and is deleted by Qt's object tree.
 extProcess::~extProcess()
 {
 }
 
+// slotExternalProcessReady — called when the external app emits its ready
+// message. Sets status to "Ready" and triggers readyScript if configured.
 void extProcess::slotExternalProcessReady(void)
 {
     status = "Ready";
     if(readyScript != "") emit change(readyScript);
 }
 
+// slotExternalProcessCompleted — called when the external app signals
+// completion. Sets status to "Completed" and triggers completeScript if set.
 void extProcess::slotExternalProcessCompleted(void)
 {
     status = "Completed";
     if(completeScript != "") emit change(completeScript);
 }
 
+// slotExternalProcessDialogClosed — called when the cmdlineapp dialog is
+// dismissed. Emits DialogClosed with this process's name for cleanup by the caller.
 void extProcess::slotExternalProcessDialogClosed(void)
 {
     emit DialogClosed(name);

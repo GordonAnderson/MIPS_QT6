@@ -15,6 +15,8 @@
 // =============================================================================
 #include "tcpserver.h"
 
+// TCPserver — constructor. Creates the QTcpServer and connects the
+// newConnection signal. Call listen() to start accepting clients.
 TCPserver::TCPserver(QObject *parent) :
     QObject(parent)
 {
@@ -25,6 +27,7 @@ TCPserver::TCPserver(QObject *parent) :
     connect(server, SIGNAL(newConnection()), this, SLOT(newConnection()));
 }
 
+// ~TCPserver — closes the client socket and the server.
 TCPserver::~TCPserver()
 {
     if(socket != NULL) socket->close();
@@ -55,6 +58,7 @@ void TCPserver::sendMessage(QString mess)
     socket->flush();
 }
 
+// bytesAvailable — returns the number of characters currently in the ring buffer.
 int TCPserver::bytesAvailable(void)
 {
     return(rb.size());
@@ -72,6 +76,8 @@ void TCPserver::newConnection(void)
     connect(socket, SIGNAL(disconnected()),  this, SLOT(disconnected()));
 }
 
+// disconnected — slot called when the client disconnects. Removes signal
+// connections, closes and nulls the socket.
 void TCPserver::disconnected(void)
 {
     disconnect(socket, SIGNAL(readyRead()),    0, 0);
@@ -97,6 +103,8 @@ void TCPserver::readData(void)
     if(rb.numLines() > 0) emit lineReady();
 }
 
+// readLine — returns the next newline-terminated line from the ring buffer,
+// or an empty string if no complete line is available.
 QString TCPserver::readLine(void)
 {
     if(rb.numLines() == 0) return "";
