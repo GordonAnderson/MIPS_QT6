@@ -20,6 +20,9 @@ QElapsedTimer eTimer;
 // Index into the CSV record for the Retention Time column.
 int key;
 
+// FAIMS — constructor. Populates trigger input/output combo boxes, initialises
+// state flags, wires all leS* line edits and button/combo signals, and starts
+// the elapsed timer used for CV parking.
 FAIMS::FAIMS(Ui::MIPS *w, Comms *c)
 {
     fui   = w;
@@ -76,15 +79,18 @@ FAIMS::FAIMS(Ui::MIPS *w, Comms *c)
     eTimer.start();
 }
 
+// Save — placeholder; FAIMS settings are not persisted (no-op).
 void FAIMS::Save(QString)
 {
 }
 
+// Load — placeholder; FAIMS settings are not restored from file (no-op).
 void FAIMS::Load(QString)
 {
 }
 
-// Uses major/minor firmware version to enable or disable version-gated UI controls.
+// SetVersionOptions — enables or disables version-gated UI controls (auto-tune,
+// negative tune, curtain supply) based on firmware version and hardware presence.
 void FAIMS::SetVersionOptions(void)
 {
     bool state = false;
@@ -109,6 +115,8 @@ void FAIMS::SetVersionOptions(void)
     fui->chkCurtianIndEna->setEnabled(state);
 }
 
+// Update — calls SetVersionOptions then polls all FAIMS parameters from MIPS and
+// refreshes the UI, including enable/lock/curtain/scan state.
 void FAIMS::Update(void)
 {
     QString res;
@@ -203,8 +211,8 @@ void FAIMS::Update(void)
     }
 }
 
-// Slot connected to returnPressed on all leS* fields. Derives the MIPS command
-// from the widget objectName (strips "le" prefix, replaces underscores with commas).
+// FAIMSUpdated — slot for returnPressed on all leS* fields. Derives the MIPS
+// command from the widget name (strips "le", replaces "_" with ",") and sends it.
 void FAIMS::FAIMSUpdated(void)
 {
     QObject* obj = sender();
@@ -217,11 +225,15 @@ void FAIMS::FAIMSUpdated(void)
     le->setModified(false);
 }
 
+// FAIMSenable — slot for the FAIMS enable checkbox; sends SFMENA,TRUE|FALSE.
 void FAIMS::FAIMSenable(void)
 {
     comms->SendCommand(fui->chkFMenable->isChecked() ? "SFMENA,TRUE\n" : "SFMENA,FALSE\n");
 }
 
+// FAIMSscan — starts or stops the CV parking scan. If stopping, clears state.
+// If starting with no trigger, arms immediately; otherwise waits for the
+// selected DIO trigger input before beginning the first CV parking target.
 void FAIMS::FAIMSscan(void)
 {
     fui->leFMcompound->setText("");
@@ -263,7 +275,8 @@ void FAIMS::FAIMSscan(void)
     }
 }
 
-// Returns the column index of the field whose header starts with Name, or -1.
+// getHeaderIndex — returns the 0-based column index of the CSV header field
+// whose name starts with Name, or -1 if not found.
 int FAIMS::getHeaderIndex(QString Name)
 {
     QStringList resList = Header.split(",");
@@ -274,7 +287,8 @@ int FAIMS::getHeaderIndex(QString Name)
     return -1;
 }
 
-// Returns the CSV token for field Name in the record at the given index.
+// getCSVtoken — returns the value of field Name from the CSV record at index,
+// or an empty string if the field is not found.
 QString FAIMS::getCSVtoken(QString Name, int index)
 {
     QStringList resList = Header.split(",");
@@ -289,8 +303,8 @@ QString FAIMS::getCSVtoken(QString Name, int index)
     return "";
 }
 
-// Comparator for std::sort: sorts CSV records by ascending start time
-// (Retention Time - RT Window / 2). Uses the file-scope 'key' index.
+// startTime — comparator for std::sort. Sorts CSV records by ascending window
+// start time (Retention Time − RT Window / 2) using the file-scope 'key' index.
 bool startTime(const QString v1, const QString v2)
 {
     QStringList v1List = v1.split(",");
@@ -299,6 +313,8 @@ bool startTime(const QString v1, const QString v2)
          < (v2List.at(key).toFloat() - v2List.at(key + 1).toFloat() / 2);
 }
 
+// FAIMSloadCSV — opens a CSV target file, reads the header and records, sorts
+// by window start time, and populates the CV parking list text area.
 void FAIMS::FAIMSloadCSV(void)
 {
     QString fileName = QFileDialog::getOpenFileName(this, tr("Load CSV target file"), "", tr("CSV (*.csv);;All files (*.*)"));
@@ -334,8 +350,9 @@ void FAIMS::FAIMSloadCSV(void)
     }
 }
 
-// Finds the next CV parking target whose window overlaps the elapsed time et (minutes).
-// Loads target fields and advances CurrentPoint. Returns false when all targets are exhausted.
+// GetNextTarget — finds the next CV parking entry whose time window has not yet
+// ended at elapsed time et (minutes), sets the target fields, and advances
+// CurrentPoint. Returns false when all entries are exhausted.
 bool FAIMS::GetNextTarget(float et)
 {
     QStringList entries;
@@ -369,8 +386,9 @@ bool FAIMS::GetNextTarget(float et)
     }
 }
 
-// Called from the main update timer. Services CV parking, linear scan trigger
-// detection, and step scan trigger detection, and drives the periodic parameter log.
+// PollLoop — called from the main update timer. Services the active scan mode:
+// detects DIO trigger edges for CV parking/linear/step scans, advances CV parking
+// state machine, and calls Update/Log on each cycle when no trigger is pending.
 void FAIMS::PollLoop(void)
 {
     float CurrentMin;
@@ -492,6 +510,9 @@ void FAIMS::PollLoop(void)
     }
 }
 
+// FAIMSstartLinearScan — starts a CV linear scan. With "None" trigger, asserts
+// the selected digital output for 250 ms and sends SFMSTRTLIN,TRUE immediately.
+// Otherwise arms a DIO trigger input and waits for the rising edge in PollLoop.
 void FAIMS::FAIMSstartLinearScan(void)
 {
     QElapsedTimer timer;
@@ -544,6 +565,8 @@ void FAIMS::FAIMSstartLinearScan(void)
     fui->pbFMabortLinear->setEnabled(true);
 }
 
+// FAIMSabortLinearScan — cancels any pending linear scan trigger and sends
+// SFMSTRTLIN,FALSE to halt the scan.
 void FAIMS::FAIMSabortLinearScan(void)
 {
     WaitingForLinearScanTrig = false;
@@ -554,6 +577,8 @@ void FAIMS::FAIMSabortLinearScan(void)
     Log("Linear scan aborted!");
 }
 
+// FAIMSstartStepScan — starts a CV step scan. Same trigger/output logic as
+// FAIMSstartLinearScan but uses SFMSTRTSTP and the step scan trigger combo.
 void FAIMS::FAIMSstartStepScan(void)
 {
     QElapsedTimer timer;
@@ -608,6 +633,8 @@ void FAIMS::FAIMSstartStepScan(void)
     fui->pbFMabortLinear->setEnabled(true);
 }
 
+// FAIMSabortStepScan — cancels any pending step scan trigger and sends
+// SFMSTRTSTP,FALSE to halt the scan.
 void FAIMS::FAIMSabortStepScan(void)
 {
     WaitingForStepScanTrig = false;
@@ -618,20 +645,22 @@ void FAIMS::FAIMSabortStepScan(void)
     Log("Step scan aborted!");
 }
 
+// FAIMSlockOff — disables closed-loop CV lock mode (SFMLOCK,FALSE).
 void FAIMS::FAIMSlockOff(void)
 {
     comms->SendCommand("SFMLOCK,FALSE\n");
     Log("Output lock mode disabled requested.");
 }
 
+// FAIMSlockOn — enables closed-loop CV lock mode (SFMLOCK,TRUE).
 void FAIMS::FAIMSlockOn(void)
 {
     comms->SendCommand("SFMLOCK,TRUE\n");
     Log("Output lock mode enable requested.");
 }
 
-// Appends a timestamped entry to the log file.
-// If Message is empty, logs the current set of operating parameters.
+// Log — appends a timestamped entry to LogFileName. If Message is empty,
+// logs the full current operating parameter set; otherwise logs the message string.
 void FAIMS::Log(QString Message)
 {
     if(LogFileName == "") return;
@@ -665,6 +694,8 @@ void FAIMS::Log(QString Message)
     }
 }
 
+// FAIMSselectLogFile — opens a save-file dialog to choose a .log path, then
+// creates the file and writes the CSV header row.
 void FAIMS::FAIMSselectLogFile(void)
 {
     LogFileName = QFileDialog::getSaveFileName(this, tr("Log File"), "", tr("Settings (*.log);;All files (*.*)"));
@@ -679,7 +710,8 @@ void FAIMS::FAIMSselectLogFile(void)
     }
 }
 
-// Sets the idle state of the digital output selected as the linear scan trigger output.
+// slotLinearTrigOut — slot for linear scan trigger output combo. Sets the selected
+// DIO line to its idle (deasserted) state when the selection changes.
 void FAIMS::slotLinearTrigOut(void)
 {
     if(comms == NULL) return;
@@ -692,7 +724,8 @@ void FAIMS::slotLinearTrigOut(void)
     if(trigOut == "D Active low") comms->SendCommand("SDIO,D,1\n");
 }
 
-// Sets the idle state of the digital output selected as the step scan trigger output.
+// slotStepTrigOut — slot for step scan trigger output combo. Sets the selected
+// DIO line to its idle (deasserted) state when the selection changes.
 void FAIMS::slotStepTrigOut(void)
 {
     if(comms == NULL) return;
@@ -705,19 +738,24 @@ void FAIMS::slotStepTrigOut(void)
     if(trigOut == "D Active low") comms->SendCommand("SDIO,D,1\n");
 }
 
+// slotFAIMSautoTune — sends SFMTUNE to start the RF auto-tune routine.
+// slotFAIMSautoTuneAbort — sends SFMTABRT to abort an in-progress auto-tune.
 void FAIMS::slotFAIMSautoTune(void)      { if(comms) comms->SendCommand("SFMTUNE\n"); }
 void FAIMS::slotFAIMSautoTuneAbort(void) { if(comms) comms->SendCommand("SFMTABRT\n"); }
 
+// slotFAIMSCurtianEna — enables or disables the curtain supply HV via SHVENA/SHVDIS.
 void FAIMS::slotFAIMSCurtianEna(void)
 {
     comms->SendCommand(fui->chkCurtianEna->isChecked() ? "SHVENA,1\n" : "SHVDIS,1\n");
 }
 
+// slotFAIMSCurtianInd — toggles the curtain independent control mode (SFMCCUR).
 void FAIMS::slotFAIMSCurtianInd(void)
 {
     comms->SendCommand(fui->chkCurtianIndEna->isChecked() ? "SFMCCUR,FALSE\n" : "SFMCCUR,TRUE\n");
 }
 
+// slotFAIMSnegTune — toggles negative-polarity tuning mode (SFMTPOS).
 void FAIMS::slotFAIMSnegTune(void)
 {
     comms->SendCommand(fui->chkNegTune->isChecked() ? "SFMTPOS,FALSE\n" : "SFMTPOS,TRUE\n");
