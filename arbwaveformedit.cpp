@@ -1,32 +1,50 @@
+// =============================================================================
+// arbwaveformedit.cpp
+//
+// ARB waveform editor dialog for the MIPS host application.
+//
+// Depends on:  qcustomplot.h, ui_arbwaveformedit.h
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
+
 #include "arbwaveformedit.h"
 #include "ui_arbwaveformedit.h"
 #include "qcustomplot.h"
 
+static const int ARB_PPP_MIN        = 8;    // Minimum points per period
+static const int ARB_PPP_MAX        = 32;   // Maximum points per period (also waveform buffer size)
+static const double ARB_AMP_MAX     = 100.0; // Full-scale amplitude (percent)
+static const double ARB_YAXIS_MARGIN = 5.0; // Y axis margin beyond ±100%
+
+// -----------------------------------------------------------------------------
+// Constructor — clamps PPP, connects buttons, initialises the plot.
+// -----------------------------------------------------------------------------
 ARBwaveformEdit::ARBwaveformEdit(QWidget *parent, int ppp) :
     QDialog(parent),
     ui(new Ui::ARBwaveformEdit)
 {
     ui->setupUi(this);
-    this->setFixedSize(617,494);
+    this->setFixedSize(617, 494);
 
     PPP = ppp;
-    if(PPP < 8) PPP = 8;
-    if(PPP >32) PPP = 32;
+    if(PPP < ARB_PPP_MIN) PPP = ARB_PPP_MIN;
+    if(PPP > ARB_PPP_MAX) PPP = ARB_PPP_MAX;
 
-    connect(ui->pbGenUpDown,SIGNAL(pressed()),this,SLOT(GenerateUpDown()));
-    connect(ui->pbGenSine,SIGNAL(pressed()),this,SLOT(GenerateSine()));
-    connect(ui->pbPlot,SIGNAL(pressed()),this,SLOT(PlotData()));
-    connect(ui->pbInvert,SIGNAL(pressed()),this,SLOT(InvertData()));
-    connect(ui->buttonBox,SIGNAL(accepted()),this,SLOT(WaveformAccepted()));
+    connect(ui->pbGenUpDown,  &QPushButton::pressed,  this, &ARBwaveformEdit::GenerateUpDown);
+    connect(ui->pbGenSine,    &QPushButton::pressed,  this, &ARBwaveformEdit::GenerateSine);
+    connect(ui->pbPlot,       &QPushButton::pressed,  this, &ARBwaveformEdit::PlotData);
+    connect(ui->pbInvert,     &QPushButton::pressed,  this, &ARBwaveformEdit::InvertData);
+    connect(ui->buttonBox,    &QDialogButtonBox::accepted, this, &ARBwaveformEdit::WaveformAccepted);
 
-    // Setup the plot used to display the waaveform
+    // Initialise the waveform preview plot
     ui->plot->addGraph();
-    // give the axes some labels:
     ui->plot->xAxis->setLabel("index");
     ui->plot->yAxis->setLabel("amplitude");
-    // set axes ranges, so we see all data:
-    ui->plot->xAxis->setRange(0, PPP-1);
-    ui->plot->yAxis->setRange(-105, 105);
+    ui->plot->xAxis->setRange(0, PPP - 1);
+    ui->plot->yAxis->setRange(-(ARB_AMP_MAX + ARB_YAXIS_MARGIN), ARB_AMP_MAX + ARB_YAXIS_MARGIN);
     ui->plot->replot();
 }
 
@@ -35,101 +53,22 @@ ARBwaveformEdit::~ARBwaveformEdit()
     delete ui;
 }
 
+// -----------------------------------------------------------------------------
+// SetWaveform — loads an external waveform buffer into the editor and plots it.
+// -----------------------------------------------------------------------------
 void ARBwaveformEdit::SetWaveform(int *wf)
 {
-   int i;
-
-   if(wf == NULL) return;
-   ui->txtData->clear();
-   for(i=0; i<PPP; i++)
-   {
-       Waveform[i] = wf[i];
-       ui->txtData->appendPlainText(QString::number(Waveform[i]));
-   }
-   ui->txtData->moveCursor (QTextCursor::Start);
-   QVector<double> x(PPP), y(PPP);
-   for(i=0; i<PPP; i++)
-   {
-       x[i] = i;
-       y[i] = Waveform[i];
-   }
-   ui->plot->graph(0)->setData(x, y);
-   ui->plot->replot();
-}
-
-void ARBwaveformEdit::GetWaveform(int *wf)
-{
-   int i;
-
-   for(i=0; i<32; i++) wf[i] = Waveform[i];
-}
-
-void ARBwaveformEdit::GenerateUpDown(void)
-{
-   int up,down,binsper,i;
-
-   up = ui->leUp->text().toInt();
-   down = ui->leDown->text().toInt();
-   binsper = PPP/(up + down);
-   // Fill waveform with data
-   ui->txtData->clear();
-   for(i=0; i<PPP; i++)
-   {
-       if(i < up * binsper) Waveform[i] = 100;
-       else Waveform[i] = -100;
-       ui->txtData->appendPlainText(QString::number(Waveform[i]));
-   }
-   ui->txtData->moveCursor (QTextCursor::Start);
-   QVector<double> x(PPP), y(PPP);
-   for(i=0; i<PPP; i++)
-   {
-       x[i] = i;
-       y[i] = Waveform[i];
-   }
-   ui->plot->graph(0)->setData(x, y);
-   ui->plot->replot();
-}
-
-void ARBwaveformEdit::GenerateSine(void)
-{
-   int i;
-
-   // Fill waveform with data
-   ui->txtData->clear();
-   for(i=0; i<PPP; i++)
-   {
-       Waveform[i] = qSin(qDegreesToRadians((ui->leCycles->text().toFloat() * 360.0 * i)/PPP) + qDegreesToRadians(ui->lePhase->text().toFloat())) * 100.0;
-       ui->txtData->appendPlainText(QString::number(Waveform[i]));
-   }
-   ui->txtData->moveCursor (QTextCursor::Start);
-   QVector<double> x(PPP), y(PPP);
-   for(i=0; i<PPP; i++)
-   {
-       x[i] = i;
-       y[i] = Waveform[i];
-   }
-   ui->plot->graph(0)->setData(x, y);
-   ui->plot->replot();
-}
-
-void ARBwaveformEdit::PlotData(void)
-{
-    int i;
-
-    // Read the data from the text box into the waveform
-    QString text = ui->txtData->toPlainText();
-    QStringList valStrings = text.split( "\n" );
-    // Write the data to the waveform buffer
-    for(i=0; i<PPP; i++)
+    if(wf == NULL) return;
+    ui->txtData->clear();
+    for(int i = 0; i < PPP; i++)
     {
-        if(valStrings.count() > i)
-        {
-            Waveform[i] = valStrings[i].toFloat();
-        }
-        else Waveform[i] = 0;
+        Waveform[i] = wf[i];
+        ui->txtData->appendPlainText(QString::number(Waveform[i]));
     }
+    ui->txtData->moveCursor(QTextCursor::Start);
+
     QVector<double> x(PPP), y(PPP);
-    for(i=0; i<PPP; i++)
+    for(int i = 0; i < PPP; i++)
     {
         x[i] = i;
         y[i] = Waveform[i];
@@ -138,37 +77,101 @@ void ARBwaveformEdit::PlotData(void)
     ui->plot->replot();
 }
 
+// -----------------------------------------------------------------------------
+// GetWaveform — copies the internal waveform buffer to the caller.
+// Note: copies the full ARB_PPP_MAX buffer regardless of current PPP, so the
+// caller's buffer must be at least ARB_PPP_MAX elements.
+// -----------------------------------------------------------------------------
+void ARBwaveformEdit::GetWaveform(int *wf)
+{
+    for(int i = 0; i < ARB_PPP_MAX; i++) wf[i] = Waveform[i];
+}
+
+// -----------------------------------------------------------------------------
+// GenerateUpDown — generates a square wave with the specified up/down ratio.
+// -----------------------------------------------------------------------------
+void ARBwaveformEdit::GenerateUpDown(void)
+{
+    int up      = ui->leUp->text().toInt();
+    int down    = ui->leDown->text().toInt();
+    int binsper = PPP / (up + down);
+
+    ui->txtData->clear();
+    for(int i = 0; i < PPP; i++)
+    {
+        Waveform[i] = (i < up * binsper) ? (int)ARB_AMP_MAX : (int)-ARB_AMP_MAX;
+        ui->txtData->appendPlainText(QString::number(Waveform[i]));
+    }
+    ui->txtData->moveCursor(QTextCursor::Start);
+
+    QVector<double> x(PPP), y(PPP);
+    for(int i = 0; i < PPP; i++) { x[i] = i; y[i] = Waveform[i]; }
+    ui->plot->graph(0)->setData(x, y);
+    ui->plot->replot();
+}
+
+// -----------------------------------------------------------------------------
+// GenerateSine — generates a sine wave with the specified cycles and phase.
+// -----------------------------------------------------------------------------
+void ARBwaveformEdit::GenerateSine(void)
+{
+    ui->txtData->clear();
+    for(int i = 0; i < PPP; i++)
+    {
+        Waveform[i] = qSin(qDegreesToRadians((ui->leCycles->text().toFloat() * 360.0 * i) / PPP)
+                           + qDegreesToRadians(ui->lePhase->text().toFloat())) * ARB_AMP_MAX;
+        ui->txtData->appendPlainText(QString::number(Waveform[i]));
+    }
+    ui->txtData->moveCursor(QTextCursor::Start);
+
+    QVector<double> x(PPP), y(PPP);
+    for(int i = 0; i < PPP; i++) { x[i] = i; y[i] = Waveform[i]; }
+    ui->plot->graph(0)->setData(x, y);
+    ui->plot->replot();
+}
+
+// -----------------------------------------------------------------------------
+// PlotData — reads the text box, parses values into the waveform buffer,
+// and refreshes the plot.
+// -----------------------------------------------------------------------------
+void ARBwaveformEdit::PlotData(void)
+{
+    QStringList valStrings = ui->txtData->toPlainText().split("\n");
+    for(int i = 0; i < PPP; i++)
+    {
+        Waveform[i] = (valStrings.count() > i) ? valStrings[i].toFloat() : 0;
+    }
+
+    QVector<double> x(PPP), y(PPP);
+    for(int i = 0; i < PPP; i++) { x[i] = i; y[i] = Waveform[i]; }
+    ui->plot->graph(0)->setData(x, y);
+    ui->plot->replot();
+}
+
+// -----------------------------------------------------------------------------
+// InvertData — negates all waveform values, updates the text box and plot.
+// -----------------------------------------------------------------------------
 void ARBwaveformEdit::InvertData(void)
 {
-    int i;
-
-    // Read the data from the text box into the waveform
-    QString text = ui->txtData->toPlainText();
-    QStringList valStrings = text.split( "\n" );
-    // Write the data to the waveform buffer
-    for(i=0; i<PPP; i++)
-    {
-        if(valStrings.count() > i)
-        {
-            Waveform[i] = -valStrings[i].toFloat();
-        }
-        else Waveform[i] = 0;
-    }
+    QStringList valStrings = ui->txtData->toPlainText().split("\n");
     QVector<double> x(PPP), y(PPP);
     ui->txtData->clear();
-    for(i=0; i<PPP; i++)
+    for(int i = 0; i < PPP; i++)
     {
+        Waveform[i] = (valStrings.count() > i) ? -valStrings[i].toFloat() : 0;
         x[i] = i;
         y[i] = Waveform[i];
         ui->txtData->appendPlainText(QString::number(Waveform[i]));
     }
-    ui->txtData->moveCursor (QTextCursor::Start);
+    ui->txtData->moveCursor(QTextCursor::Start);
     ui->plot->graph(0)->setData(x, y);
     ui->plot->replot();
 }
 
+// -----------------------------------------------------------------------------
+// WaveformAccepted — emits WaveformReady() when the dialog is accepted.
+// -----------------------------------------------------------------------------
 void ARBwaveformEdit::WaveformAccepted(void)
 {
-    // Signal to the parent that data is avalible
     emit WaveformReady();
 }
