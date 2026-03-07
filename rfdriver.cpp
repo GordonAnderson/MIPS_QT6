@@ -18,6 +18,9 @@
 // RFdriver  ***************************************************************************************
 // *************************************************************************************************
 
+// RFdriver — constructor. Sets up the two-channel combo box, wires the
+// frequency and drive line edits, auto-tune buttons, and the manual Update
+// push-button.
 RFdriver::RFdriver(Ui::MIPS *w, Comms *c)
 {
     rui   = w;
@@ -33,6 +36,8 @@ RFdriver::RFdriver(Ui::MIPS *w, Comms *c)
     rui->leSRFDRV->setValidator(new QDoubleValidator);
 }
 
+// SetNumberOfChannels — rebuilds the channel selector combo to show num
+// channels (1-based labels). Reconnects currentTextChanged afterwards.
 void RFdriver::SetNumberOfChannels(int num)
 {
     disconnect(rui->comboRFchan, SIGNAL(currentTextChanged(QString)), 0, 0);
@@ -43,6 +48,8 @@ void RFdriver::SetNumberOfChannels(int num)
     connect(rui->comboRFchan, &QComboBox::currentTextChanged, this, &RFdriver::UpdateRFdriver);
 }
 
+// Update — polls frequency, drive, positive/negative peak voltage, and power
+// readbacks for the currently selected channel and refreshes the UI.
 void RFdriver::Update(void)
 {
     rui->tabMIPS->setEnabled(false);
@@ -56,8 +63,8 @@ void RFdriver::Update(void)
     rui->statusBar->showMessage(tr(""));
 }
 
-// Iterates through all channels, selecting each in turn to populate the group box,
-// and saves the parameters to file.
+// Save — iterates through all channels selecting each in turn, writes every
+// leS* line edit name/channel/value triplet to Filename as CSV.
 void RFdriver::Save(QString Filename)
 {
     if(NumChannels == 0) return;
@@ -90,8 +97,8 @@ void RFdriver::Save(QString Filename)
     }
 }
 
-// Loads parameters from file. For the selected channel the UI is updated and MIPS is
-// written; for all other channels only MIPS is updated.
+// Load — reads CSV triplets from Filename and applies them to the matching
+// leS* widget for the correct channel, triggering editingFinished to push each value to MIPS.
 void RFdriver::Load(QString Filename)
 {
     if(NumChannels == 0) return;
@@ -133,11 +140,15 @@ void RFdriver::Load(QString Filename)
     }
 }
 
+// UpdateRFdriver — slot for the manual Update push-button and channel change.
+// Delegates to Update().
 void RFdriver::UpdateRFdriver(void)
 {
     Update();
 }
 
+// leSRFFRQ_editingFinished — slot for frequency line edit returnPressed.
+// Sends SRFFRQ,channel,value to MIPS.
 void RFdriver::leSRFFRQ_editingFinished()
 {
     if(!rui->leSRFFRQ->isModified()) return;
@@ -145,6 +156,8 @@ void RFdriver::leSRFFRQ_editingFinished()
     rui->leSRFFRQ->setModified(false);
 }
 
+// leSRFDRV_editingFinished — slot for drive line edit returnPressed.
+// Sends SRFDRV,channel,value to MIPS.
 void RFdriver::leSRFDRV_editingFinished()
 {
     if(!rui->leSRFDRV->isModified()) return;
@@ -152,6 +165,8 @@ void RFdriver::leSRFDRV_editingFinished()
     rui->leSRFDRV->setModified(false);
 }
 
+// AutoTune — prompts the user and sends TUNERFCH,channel. Only one channel
+// can be tuning at a time; MIPS returns an error if another tune is active.
 void RFdriver::AutoTune(void)
 {
     QMessageBox msgBox;
@@ -174,6 +189,8 @@ void RFdriver::AutoTune(void)
     }
 }
 
+// AutoRetune — prompts the user and sends RETUNERFCH,channel to refine the
+// existing tune without a full frequency sweep.
 void RFdriver::AutoRetune(void)
 {
     QMessageBox msgBox;
@@ -200,6 +217,8 @@ void RFdriver::AutoRetune(void)
 // RFchannel  **************************************************************************************
 // *************************************************************************************************
 
+// RFchannel — constructor. Records position and identity. Call Show() to
+// create the group box with Drive/Freq/readback line edits and Tune/Retune buttons.
 RFchannel::RFchannel(QWidget *parent, QString name, QString MIPSname, int x, int y) : QWidget(parent)
 {
     p          = parent;
@@ -213,6 +232,8 @@ RFchannel::RFchannel(QWidget *parent, QString name, QString MIPSname, int x, int
     UpdateOff  = false;
 }
 
+// Show — creates and lays out the RF channel group box with all line edits,
+// labels, and buttons, installs drag-to-move and value-scroll event filters.
 void RFchannel::Show(void)
 {
     gbRF = new QGroupBox(Title, p);
@@ -252,6 +273,8 @@ void RFchannel::Show(void)
     Freq->setMouseTracking(true);
 }
 
+// eventFilter — handles drag-to-move via moveWidget() and mouse-wheel value
+// adjustment on Drive (step 1) and Freq (step 1000 Hz).
 bool RFchannel::eventFilter(QObject *obj, QEvent *event)
 {
     if(moveWidget(obj, gbRF, gbRF, event)) return true;
@@ -393,6 +416,7 @@ void RFchannel::Update(QString sVals)
     gbRF->repaint();
 }
 
+// DriveChange — slot for Drive returnPressed. Sends SRFDRV,channel,value.
 void RFchannel::DriveChange(void)
 {
     if(comms == NULL) return;
@@ -401,6 +425,7 @@ void RFchannel::DriveChange(void)
     Drive->setModified(false);
 }
 
+// FreqChange — slot for Freq returnPressed. Sends SRFFRQ,channel,value.
 void RFchannel::FreqChange(void)
 {
     if(comms == NULL) return;
@@ -409,6 +434,8 @@ void RFchannel::FreqChange(void)
     Freq->setModified(false);
 }
 
+// TunePressed — prompts the user and initiates a full RF head tune sequence
+// (zeros drive, waits 1 s, sends TUNERFCH,channel).
 void RFchannel::TunePressed(void)
 {
     QMessageBox msgBox;
@@ -432,6 +459,8 @@ void RFchannel::TunePressed(void)
     if(comms != NULL) comms->SendCommand("TUNERFCH," + QString::number(Channel) + "\n");
 }
 
+// RetunePressed — prompts the user and sends RETUNERFCH,channel for a fast
+// retune of the existing resonance without a full frequency sweep.
 void RFchannel::RetunePressed(void)
 {
     QMessageBox msgBox;
@@ -448,6 +477,8 @@ void RFchannel::RetunePressed(void)
     if(comms != NULL) comms->SendCommand("RETUNERFCH," + QString::number(Channel) + "\n");
 }
 
+// Shutdown — saves the drive setpoint and zeroes it for safe power-down.
+// Restore — returns the drive to the saved setpoint.
 void RFchannel::Shutdown(void)
 {
     if(isShutdown) return;
@@ -471,6 +502,9 @@ void RFchannel::Restore(void)
 // RFCchannel — closed-loop RF driver channel  *****************************************************
 // *************************************************************************************************
 
+// RFCchannel — constructor. Records position and identity. Call Show() to
+// create the group box with Drive/Setpoint/Freq/readback line edits, open/closed-loop
+// radio buttons, and Tune/Retune buttons.
 RFCchannel::RFCchannel(QWidget *parent, QString name, QString MIPSname, int x, int y) : QWidget(parent)
 {
     p          = parent;
@@ -484,6 +518,9 @@ RFCchannel::RFCchannel(QWidget *parent, QString name, QString MIPSname, int x, i
     UpdateOff  = false;
 }
 
+// Show — creates and lays out the closed-loop RF channel group box with all line
+// edits, labels, radio buttons, and Tune/Retune buttons. Installs event filters for
+// drag-to-move and mouse-wheel adjustment on Drive, Setpoint, and Freq.
 void RFCchannel::Show(void)
 {
     gbRF = new QGroupBox(Title, p);
@@ -534,6 +571,8 @@ void RFCchannel::Show(void)
     Freq->setMouseTracking(true);
 }
 
+// eventFilter — handles drag-to-move via moveWidget() and mouse-wheel value
+// adjustment on Drive (step 1), Setpoint (step 1), and Freq (step 1000 Hz).
 bool RFCchannel::eventFilter(QObject *obj, QEvent *event)
 {
     if(moveWidget(obj, gbRF, gbRF, event)) return true;
@@ -711,6 +750,7 @@ void RFCchannel::Update(QString sVals)
     gbRF->repaint();
 }
 
+// DriveChange — slot for Drive returnPressed. Sends SRFDRV,channel,value.
 void RFCchannel::DriveChange(void)
 {
     if(comms == NULL) return;
@@ -719,6 +759,7 @@ void RFCchannel::DriveChange(void)
     Drive->setModified(false);
 }
 
+// SetpointChange — slot for Setpoint returnPressed. Sends SRFVLT,channel,value.
 void RFCchannel::SetpointChange(void)
 {
     if(comms == NULL) return;
@@ -727,6 +768,7 @@ void RFCchannel::SetpointChange(void)
     Setpoint->setModified(false);
 }
 
+// FreqChange — slot for Freq returnPressed. Sends SRFFRQ,channel,value.
 void RFCchannel::FreqChange(void)
 {
     if(comms == NULL) return;
@@ -735,6 +777,8 @@ void RFCchannel::FreqChange(void)
     Freq->setModified(false);
 }
 
+// TunePressed — prompts the user and initiates a full RF head tune sequence
+// (zeros drive, waits 1 s, sends TUNERFCH,channel).
 void RFCchannel::TunePressed(void)
 {
     QMessageBox msgBox;
@@ -758,6 +802,8 @@ void RFCchannel::TunePressed(void)
     if(comms != NULL) comms->SendCommand("TUNERFCH," + QString::number(Channel) + "\n");
 }
 
+// RetunePressed — prompts the user and sends RETUNERFCH,channel for a fast
+// retune of the existing resonance without a full frequency sweep.
 void RFCchannel::RetunePressed(void)
 {
     QMessageBox msgBox;
@@ -774,6 +820,8 @@ void RFCchannel::RetunePressed(void)
     if(comms != NULL) comms->SendCommand("RETUNERFCH," + QString::number(Channel) + "\n");
 }
 
+// rbChange — slot for the open/closed-loop radio buttons. Sends SRFMODE,channel,AUTO|MANUAL
+// and updates widget read-only states to match the new mode.
 void RFCchannel::rbChange(void)
 {
     QString res = "SRFMODE,";
@@ -797,6 +845,8 @@ void RFCchannel::rbChange(void)
     comms->SendCommand(res);
 }
 
+// Shutdown — saves Drive and Setpoint, then zeroes both for safe power-down.
+// Restore — returns Drive and Setpoint to their saved values.
 void RFCchannel::Shutdown(void)
 {
     if(isShutdown) return;

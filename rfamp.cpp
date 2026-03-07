@@ -59,6 +59,7 @@ RFamp::RFamp(QWidget *parent, QString name, QString MIPSname, int Module) :
     ui->gbRFamp->setMouseTracking(true);
 }
 
+// ~RFamp — destructor. Releases the UI form.
 RFamp::~RFamp()
 {
     delete ui;
