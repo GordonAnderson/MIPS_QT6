@@ -115,6 +115,7 @@ void DIO::Update(void)
     dui->statusBar->clearMessage();
 }
 
+// UpdateDIO — slot for the manual Update push-button. Delegates to Update().
 void DIO::UpdateDIO(void)
 {
     Update();
@@ -136,6 +137,8 @@ void DIO::DOUpdated(void)
     }
 }
 
+// TrigHigh / TrigLow / TrigPulse — send the corresponding TRIGOUT command
+// to the connected MIPS unit.
 void DIO::TrigHigh(void)
 {
     comms->SendCommand("TRIGOUT,HIGH\n");
@@ -151,6 +154,7 @@ void DIO::TrigPulse(void)
     comms->SendCommand("TRIGOUT,PULSE\n");
 }
 
+// RFgenerate — sends BURST,<count> using the value from the Burst field.
 void DIO::RFgenerate(void)
 {
     QString res;
@@ -159,6 +163,7 @@ void DIO::RFgenerate(void)
     comms->SendCommand(res.toStdString().c_str());
 }
 
+// SetFreq — slot for leSFREQ editingFinished. Sends the new frequency to MIPS.
 void DIO::SetFreq(void)
 {
     QString res;
@@ -169,6 +174,7 @@ void DIO::SetFreq(void)
     dui->leSFREQ->setModified(false);
 }
 
+// SetWidth — slot for leSWIDTH editingFinished. Sends the new pulse width to MIPS.
 void DIO::SetWidth(void)
 {
     QString res;
@@ -179,6 +185,8 @@ void DIO::SetWidth(void)
     dui->leSWIDTH->setModified(false);
 }
 
+// Save — writes the state of all chkS* digital output checkboxes to a
+// timestamped CSV settings file.
 void DIO::Save(QString Filename)
 {
     QString res;
@@ -206,6 +214,7 @@ void DIO::Save(QString Filename)
     }
 }
 
+// Load — reads a settings file and restores the digital output checkbox states.
 void DIO::Load(QString Filename)
 {
     QStringList resList;
@@ -267,6 +276,8 @@ void DIO::RemoteNavigation(void)
     dui->pbSelect->setEnabled(false);
 }
 
+// RemoteNavSmallUP / LargeUP / SmallDown / LargeDown / Select — send the
+// corresponding ASCII control code to the MIPS front-panel serial navigator.
 void DIO::RemoteNavSmallUP(void)
 {
     char str[2] = { NAV_SMALL_UP, 0 };
@@ -301,6 +312,8 @@ void DIO::RemoteNavSelect(void)
 // DIOchannel — control panel widget for a single DIO channel
 // =============================================================================
 
+// DIOchannel — constructor. Records position and identity information;
+// call Show() to create the visible checkbox widget.
 DIOchannel::DIOchannel(QWidget *parent, QString name, QString MIPSname, int x, int y) : QWidget(parent)
 {
     p       = parent;
@@ -329,12 +342,14 @@ void DIOchannel::Show(void)
     DIO->setMouseTracking(true);
 }
 
+// eventFilter — delegates drag-to-move to moveWidget().
 bool DIOchannel::eventFilter(QObject *obj, QEvent *event)
 {
     if(moveWidget(obj, frmDIO, DIO, event)) return true;
     return false;
 }
 
+// Report — returns a "title,1|0" CSV string with the current checkbox state.
 QString DIOchannel::Report(void)
 {
     QString res;
@@ -349,6 +364,8 @@ QString DIOchannel::Report(void)
     return(res);
 }
 
+// SetValues — parses a "title,1|0" CSV string and applies the state to the
+// checkbox. Returns false if the title does not match.
 bool DIOchannel::SetValues(QString strVals)
 {
     QStringList resList;
@@ -399,6 +416,8 @@ QString DIOchannel::ProcessCommand(QString cmd)
     return "?";
 }
 
+// Update — queries GDIO,channel from MIPS and syncs the checkbox. Signals
+// are blocked during the update to prevent DIOChange from firing.
 void DIOchannel::Update(void)
 {
     QString res;

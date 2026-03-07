@@ -20,6 +20,9 @@
 // =============================================================================
 #include "filament.h"
 
+// Filament — constructor. Installs QDoubleValidator and connects returnPressed
+// on all leS* setpoints in both filament group boxes, and wires the enable
+// checkboxes.
 Filament::Filament(Ui::MIPS *w, Comms *c)
 {
     fui   = w;
@@ -40,12 +43,16 @@ Filament::Filament(Ui::MIPS *w, Comms *c)
     connect(fui->chkEnableFilament2, SIGNAL(toggled(bool)), this, SLOT(Filament2Enable()));
 }
 
+// Filament1Enable — slot for chkEnableFilament1 toggled. Sends SFLENA,1,ON
+// or SFLENA,1,OFF to MIPS.
 void Filament::Filament1Enable(void)
 {
     if(fui->chkEnableFilament1->isChecked()) comms->SendCommand("SFLENA,1,ON\n");
     else                                     comms->SendCommand("SFLENA,1,OFF\n");
 }
 
+// Filament2Enable — slot for chkEnableFilament2 toggled. Sends SFLENA,2,ON
+// or SFLENA,2,OFF to MIPS.
 void Filament::Filament2Enable(void)
 {
     if(fui->chkEnableFilament2->isChecked()) comms->SendCommand("SFLENA,2,ON\n");

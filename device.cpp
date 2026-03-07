@@ -21,6 +21,8 @@
 #include "device.h"
 #include "Utilities.h"
 
+// Device — constructor. Records the widget identity, config file path, and
+// default scale factors. Call Show() to load the config and open the port.
 Device::Device(QWidget *parent, QString Name, QString FileName, QString units, int x, int y)
 {
     InitList.clear();
@@ -35,6 +37,7 @@ Device::Device(QWidget *parent, QString Name, QString FileName, QString units, i
     serial = new QSerialPort(this);
 }
 
+// ~Device — destructor. Closes the serial port if it is still open.
 Device::~Device()
 {
     if(serial->isOpen()) serial->close();
@@ -72,6 +75,7 @@ void Device::Show(void)
     labels[0]->setMouseTracking(true);
 }
 
+// eventFilter — delegates drag-to-move to moveWidget().
 bool Device::eventFilter(QObject *obj, QEvent *event)
 {
     if(moveWidget(obj, frmDevice, labels[0], event)) return true;
@@ -188,6 +192,7 @@ void Device::Update(void)
     }
 }
 
+// Report — returns a "title,value" CSV string with the current displayed value.
 QString Device::Report(void)
 {
     QString res;

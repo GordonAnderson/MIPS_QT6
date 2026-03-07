@@ -121,18 +121,22 @@ void ADC::ADCsetup(void)
     if(mips!= NULL) mips->statusMessage("ADC setup failed! Press ADC abort.");
 }
 
+// ADCtrigger — sends ADCTRIG to start acquisition and reports status.
 void ADC::ADCtrigger(void)
 {
     comms->SendString("ADCTRIG\n");
     if(mips!= NULL) mips->statusMessage("ADC Triggered!");
 }
 
+// ADCabort — sends ADCABORT to halt acquisition.
 void ADC::ADCabort(void)
 {
     comms->SendString("ADCABORT\n");
     if(mips!= NULL) mips->statusMessage("ADC aborted! Press ADC setup to restart.");
 }
 
+// ADCrecordingDone — slot called when the comms layer signals the DMA
+// recording is complete. Releases the ADC buffer and reports status.
 void ADC::ADCrecordingDone(void)
 {
     comms->ADCrelease();
@@ -199,6 +203,8 @@ void ADC::SetZoom(void)
 // ADCchannel — control panel widget for a single ADC input channel
 // =============================================================================
 
+// ADCchannel — constructor. Records widget identity and defaults for scale
+// factors (m=1, b=0), format, and limits. Call Show() to create the widgets.
 ADCchannel::ADCchannel(QWidget *parent, QString name, QString MIPSname, int x, int y) : QWidget(parent)
 {
     p      = parent;
@@ -231,12 +237,14 @@ void ADCchannel::Show(void)
     labels[0]->setMouseTracking(true);
 }
 
+// eventFilter — delegates drag-to-move to moveWidget().
 bool ADCchannel::eventFilter(QObject *obj, QEvent *event)
 {
     if(moveWidget(obj, frmADC, labels[0], event)) return true;
     return false;
 }
 
+// Report — returns a "title,value" CSV string with the current displayed value.
 QString ADCchannel::Report(void)
 {
     QString res;
@@ -249,6 +257,8 @@ QString ADCchannel::Report(void)
     return(res);
 }
 
+// SetValues — parses a "title,value" CSV string and applies it to the display.
+// Returns false if the title does not match.
 bool ADCchannel::SetValues(QString strVals)
 {
     QStringList resList;
