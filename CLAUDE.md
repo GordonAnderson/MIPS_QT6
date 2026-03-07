@@ -26,3 +26,18 @@
 ## Repo
 - github.com/GordonAnderson/MIPS_QT6
 - Local: ~/Projects/MIPS_QT6
+
+## Phase 1 complete — committed files
+arb.cpp/.h, faims.cpp/.h, cmdlineapp.cpp/.h, scriptingconsole.cpp/.h,
+rfdriver.cpp/.h, mipscomms.cpp/.h, settingsdialog.cpp/.h, 
+zmqworker.cpp/.h, compressor.cpp/.h, psviewer.cpp/.h,
+arbwaveformedit.cpp/.h, pse.cpp/.h, psg.cpp/.h, twave.cpp/.h,
+rfamp.cpp/.h, dcbias.cpp/.h, filament.cpp/.h, tcpserver.cpp/.h,
+modbus.cpp/.h, program.cpp/.h, properties.cpp/.h, dio.cpp/.h,
+adc.cpp/.h, device.cpp/.h, help.cpp/.h, console.cpp/.h,
+ringbuffer.cpp/.h, cdirselectiondlg.cpp/.h, Utilities.cpp/.h,
+main.cpp, plot.cpp/.h
+
+## Phase 1 deferred to Phase 3 (structural)
+comms.cpp/.h, timinggenerator.cpp/.h, mips.cpp/.h, controlpanel.cpp/.h
+```
