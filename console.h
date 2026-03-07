@@ -32,32 +32,37 @@
 **
 ****************************************************************************/
 
+// =============================================================================
+// console.h — GAA Custom Electronics modifications
+// Modified by: Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — documented for host app v2.22
+// =============================================================================
 #ifndef CONSOLE_H
 #define CONSOLE_H
 
 #include "ui_mips.h"
-#include "mips.h"
 #include "comms.h"
 
 #include <QPlainTextEdit>
-#include <QDebug>
-#include <QtCore/QtGlobal>
-#include <QtSerialPort/QSerialPort>
-#include <QStatusBar>
-#include <QMessageBox>
 #include <QObject>
 #include <QApplication>
-#include <QFileInfo>
 
+// -----------------------------------------------------------------------------
+// Console — terminal widget for the MIPS Terminal tab. Extends QPlainTextEdit
+// with black/yellow colour scheme, keyboard input forwarding via the getData
+// signal, clipboard paste support, and Save/Load of session transcripts.
+// Lines beginning with '#' in loaded files are treated as comments and are
+// displayed but not forwarded as commands.
+// -----------------------------------------------------------------------------
 class Console : public QPlainTextEdit
 {
     Q_OBJECT
 
 signals:
-    void getData(const QByteArray &data);
+    void getData(const QByteArray &data);  // emitted for each keystroke or pasted block
 
 public:
-    explicit Console(QWidget *parent = 0,Ui::MIPS *w = NULL, Comms *c = NULL);
+    explicit Console(QWidget *parent = 0, Ui::MIPS *w = NULL, Comms *c = NULL);
     void putData(const QByteArray &data);
     void setLocalEchoEnabled(bool set);
     void resize(QWidget *parent);
@@ -65,7 +70,7 @@ public:
     void Load(QString Filename);
 
     Ui::MIPS *cui;
-    Comms *comms;
+    Comms    *comms;
 
 protected:
     virtual void keyPressEvent(QKeyEvent *e);
@@ -75,7 +80,6 @@ protected:
 
 private:
     bool localEchoEnabled;
-
 };
 
 #endif // CONSOLE_H
