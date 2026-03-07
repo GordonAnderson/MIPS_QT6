@@ -371,6 +371,8 @@ void Twave::rbTW1rev(void) { comms->SendCommand("STWDIR,1,REV\n"); }
 void Twave::rbTW2fwd(void) { comms->SendCommand("STWDIR,2,FWD\n"); }
 void Twave::rbTW2rev(void) { comms->SendCommand("STWDIR,2,REV\n"); }
 
+// pbUpdate — slot for the Update push-button; delegates to Update().
+// pbForceTrigger — sends TWCTRG to force a Twave trigger pulse.
 void Twave::pbUpdate(void)       { Update(); }
 void Twave::pbForceTrigger(void) { comms->SendCommand("TWCTRG\n"); }
 

@@ -48,6 +48,7 @@ ARBwaveformEdit::ARBwaveformEdit(QWidget *parent, int ppp) :
     ui->plot->replot();
 }
 
+// ~ARBwaveformEdit — destructor. Releases the UI form.
 ARBwaveformEdit::~ARBwaveformEdit()
 {
     delete ui;

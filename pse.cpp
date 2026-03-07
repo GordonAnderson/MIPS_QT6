@@ -22,6 +22,7 @@ static const int PSG_DEFAULT_DELTA_T = 100; // Default time step (clock counts) 
 // psgPoint serialisation operators
 // ---------------------------------------------------------------------------
 
+// operator<< — serialises a psgPoint to a binary QDataStream.
 QDataStream &operator<<(QDataStream &out, const psgPoint &point)
 {
     out << point.Name << quint32(point.TimePoint);
@@ -31,6 +32,7 @@ QDataStream &operator<<(QDataStream &out, const psgPoint &point)
     return out;
 }
 
+// operator>> — deserialises a psgPoint from a binary QDataStream.
 QDataStream &operator>>(QDataStream &in, psgPoint &point)
 {
     quint32 TimePoint;
@@ -50,6 +52,7 @@ QDataStream &operator>>(QDataStream &in, psgPoint &point)
 // psgPoint
 // ---------------------------------------------------------------------------
 
+// psgPoint — constructor. Initialises all channels to zero/false and clears name fields.
 psgPoint::psgPoint()
 {
     for(int i = 0; i < PSG_CHANNELS; i++)
@@ -104,6 +107,7 @@ pseDialog::pseDialog(QList<psgPoint *> *psg, QWidget *parent) :
     ui->gbInsertPulse->setVisible(false);
 }
 
+// ~pseDialog — destructor. Releases the UI form.
 pseDialog::~pseDialog()
 {
     delete ui;
@@ -176,6 +180,7 @@ void pseDialog::UpdateDialog(psgPoint *point)
     }
 }
 
+// on_pbNext_pressed — advances to the next time point and refreshes the dialog.
 void pseDialog::on_pbNext_pressed()
 {
     if(CurrentIndex < p->size() - 1) CurrentIndex++;
@@ -184,6 +189,7 @@ void pseDialog::on_pbNext_pressed()
     ui->gbCurrentPoint->setTitle("Current time point: " + QString::number(CurrentIndex + 1) + " of " + QString::number(p->size()));
 }
 
+// on_pbPrevious_pressed — moves back to the previous time point and refreshes the dialog.
 void pseDialog::on_pbPrevious_pressed()
 {
     if(CurrentIndex > 0) CurrentIndex--;
@@ -259,26 +265,32 @@ void pseDialog::on_pbDelete_pressed()
     ui->gbCurrentPoint->setTitle("Current time point: " + QString::number(CurrentIndex + 1) + " of " + QString::number(p->size()));
 }
 
+// on_leName_textChanged — updates the active point's Name as the user types.
 void pseDialog::on_leName_textChanged(const QString &arg1)
 {
     activePoint->Name = arg1;
 }
 
+// on_leClocks_textChanged — updates the active point's TimePoint clock count.
 void pseDialog::on_leClocks_textChanged(const QString &arg1)
 {
     activePoint->TimePoint = arg1.toInt();
 }
 
+// on_leCycles_textChanged — updates the active point's loop repeat count.
 void pseDialog::on_leCycles_textChanged(const QString &arg1)
 {
     activePoint->LoopCount = arg1.toInt();
 }
 
+// on_chkLoop_clicked — sets or clears the active point's Loop flag.
 void pseDialog::on_chkLoop_clicked(bool checked)
 {
     activePoint->Loop = checked;
 }
 
+// on_comboLoop_currentIndexChanged — sets the active point's LoopName to the
+// selected combo box entry (the loop target time-point name).
 void pseDialog::on_comboLoop_currentIndexChanged(const QString &arg1)
 {
     activePoint->LoopName = arg1;

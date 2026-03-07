@@ -60,11 +60,13 @@ PSG::PSG(Ui::MIPS *w, Comms *c)
     connect(pui->pbVisPulseSequence,  &QPushButton::pressed,          this, &PSG::on_pbVisPulseSequence_pressed);
 }
 
+// Load — delegates to on_pbLoadFromFile_pressed().
 void PSG::Load(void)
 {
     on_pbLoadFromFile_pressed();
 }
 
+// Save — delegates to on_pbSaveToFile_pressed().
 void PSG::Save(void)
 {
     on_pbSaveToFile_pressed();
@@ -330,16 +332,20 @@ void PSG::on_pbEditCurrent_pressed()
     pse->exec();
 }
 
+// on_leSequenceNumber_textEdited — sends STBLNUM to select the active table sequence.
 void PSG::on_leSequenceNumber_textEdited()
 {
     comms->SendCommand("STBLNUM," + pui->leSequenceNumber->text() + "\n");
 }
 
+// on_chkAutoAdvance_clicked — enables or disables automatic table advance via STBLADV.
 void PSG::on_chkAutoAdvance_clicked()
 {
     comms->SendCommand(pui->chkAutoAdvance->isChecked() ? "STBLADV,ON\n" : "STBLADV,OFF\n");
 }
 
+// on_pbTrigger_pressed — sends TBLSTRT to start table execution and displays
+// status responses in the status bar.
 void PSG::on_pbTrigger_pressed()
 {
     comms->SendCommand("TBLSTRT\n");
@@ -351,17 +357,20 @@ void PSG::on_pbTrigger_pressed()
     pui->statusBar->showMessage(pui->statusBar->currentMessage() + " " + comms->getline());
 }
 
+// on_pbExitTableMode_pressed — aborts table execution and returns MIPS to local mode.
 void PSG::on_pbExitTableMode_pressed()
 {
     comms->SendCommand("TBLABORT\n");
     comms->SendCommand("SMOD,LOC\n");
 }
 
+// on_pbRead_pressed — reads the DC bias voltage for the specified time-point/channel.
 void PSG::on_pbRead_pressed()
 {
     pui->leValue->setText(comms->SendMess("GTBLVLT," + pui->leTimePoint->text() + "," + pui->leChannel->text() + "\n"));
 }
 
+// on_pbWrite_pressed — writes the DC bias voltage for the specified time-point/channel.
 void PSG::on_pbWrite_pressed()
 {
     comms->SendCommand("STBLVLT," + pui->leTimePoint->text() + "," + pui->leChannel->text() + "," + pui->leValue->text() + "\n");

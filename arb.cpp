@@ -21,6 +21,8 @@
 // ARB  ********************************************************************************************
 // *************************************************************************************************
 
+// ARB — constructor. Populates the module and waveform type combo boxes, wires
+// all leS* line edits and push-button/combo signals, and initialises default state.
 ARB::ARB(Ui::MIPS *w, Comms *c)
 {
     aui   = w;
@@ -89,6 +91,8 @@ ARB::ARB(Ui::MIPS *w, Comms *c)
     connect(aui->pbARBforceTrigger,    &QPushButton::pressed,              this, &ARB::pbForceTrigger);
 }
 
+// SetNumberOfChannels — updates the total channel count and rebuilds the module
+// combo box entries (one entry per 8-channel module).
 void ARB::SetNumberOfChannels(int num)
 {
     NumChannels = num;
@@ -99,6 +103,10 @@ void ARB::SetNumberOfChannels(int num)
     }
 }
 
+// pbForceTrigger — sends TARBTRG to force an ARB trigger.
+// rbModeCompress/Normal — switch the ARB compressor to Compress or Normal mode.
+// rbSwitchClose/Open — close or open the ARB compressor switch.
+// rbTWfwd/rev — set Twave direction for module 1 to Forward or Reverse.
 void ARB::pbForceTrigger(void)   { comms->SendCommand("TARBTRG\n"); }
 void ARB::rbModeCompress(void)   { comms->SendCommand("SARBCMODE,Compress\n"); }
 void ARB::rbModeNormal(void)     { comms->SendCommand("SARBCMODE,Normal\n"); }
@@ -107,23 +115,28 @@ void ARB::rbSwitchOpen(void)     { comms->SendCommand("SARBCSW,Open\n"); }
 void ARB::rbTWfwd(void)          { comms->SendCommand("SWFDIR,1,FWD\n"); }
 void ARB::rbTWrev(void)          { comms->SendCommand("SWFDIR,1,REV\n"); }
 
+// ARBtypeSelected — slot for waveform type combo; sends SWFTYP for the current module.
 void ARB::ARBtypeSelected(void)
 {
     comms->SendCommand("SWFTYP," + aui->comboARBmodule->currentText() + "," + aui->comboSWFTYP->currentText() + "\n");
 }
 
+// ARBtrigger — disables then re-enables module 1 output to re-arm it.
 void ARB::ARBtrigger(void)
 {
     comms->SendCommand("SWFDIS,1\n");
     comms->SendCommand("SWFENA,1\n");
 }
 
+// ARBtrigger_2 — disables then re-enables module 2 output to re-arm it.
 void ARB::ARBtrigger_2(void)
 {
     comms->SendCommand("SWFDIS,2\n");
     comms->SendCommand("SWFENA,2\n");
 }
 
+// ARBtabSelected — slot for ARB/Twave tab change. Switches the ARB firmware mode
+// on all active modules to match the selected tab, then calls Update().
 void ARB::ARBtabSelected(void)
 {
     if(aui->tabARB->tabText(aui->tabARB->currentIndex()) == "ARB mode")
@@ -141,6 +154,8 @@ void ARB::ARBtabSelected(void)
     Update();
 }
 
+// SetARBchannel — sets a single ARB channel voltage for module 1 (SARBCHS if
+// channel is 0, otherwise SARBCH,1,channel,level).
 void ARB::SetARBchannel(void)
 {
     QString res = aui->leChan->text();
@@ -156,6 +171,7 @@ void ARB::SetARBchannel(void)
     comms->SendCommand(res);
 }
 
+// SetARBchannel_2 — same as SetARBchannel but for module 2.
 void ARB::SetARBchannel_2(void)
 {
     QString res = aui->leChan->text();
@@ -171,6 +187,7 @@ void ARB::SetARBchannel_2(void)
     comms->SendCommand(res);
 }
 
+// SetARBchannelRange — sends SACHRNG for module 1 with channel, start, stop, level.
 void ARB::SetARBchannelRange(void)
 {
     QString res = "SACHRNG,1," + aui->leRangeChan->text() + "," + aui->leRangeStart->text()
@@ -179,6 +196,7 @@ void ARB::SetARBchannelRange(void)
     comms->SendCommand(res);
 }
 
+// SetARBchannelRange_2 — same as SetARBchannelRange but for module 2.
 void ARB::SetARBchannelRange_2(void)
 {
     QString res = "SACHRNG,2," + aui->leRangeChan_2->text() + "," + aui->leRangeStart_2->text()
@@ -187,6 +205,8 @@ void ARB::SetARBchannelRange_2(void)
     comms->SendCommand(res);
 }
 
+// ARBmoduleSelected — slot for module combo; reads all Twave parameters and the
+// direction/waveform type for the newly selected module and refreshes the UI.
 void ARB::ARBmoduleSelected(void)
 {
     QString res;
@@ -208,9 +228,9 @@ void ARB::ARBmoduleSelected(void)
     aui->comboSWFTYP->setCurrentIndex(aui->comboSWFTYP->findData(res));
 }
 
-// Slot connected to leS* fields in the module/compressor/timing group boxes.
-// Derives the MIPS command name from the widget's objectName (strips "le" prefix,
-// replaces underscores with commas) and sends the new value.
+// ARBUpdated — slot for leS* fields in the module/compressor/timing group boxes.
+// Derives the MIPS command from the widget name (strips "le", replaces "_" with ",")
+// and sends the new value.
 void ARB::ARBUpdated(void)
 {
     QObject* obj = sender();
@@ -222,8 +242,8 @@ void ARB::ARBUpdated(void)
     qobject_cast<QLineEdit *>(obj)->setModified(false);
 }
 
-// Slot connected to leS* fields in the Twave/dual-output group boxes.
-// Prepends the current module number to the command.
+// ARBUpdatedParms — slot for leS* fields in the Twave/dual-output group boxes.
+// Prepends the current module number to the MIPS command.
 void ARB::ARBUpdatedParms(void)
 {
     QString chan = aui->comboARBmodule->currentText();
@@ -234,11 +254,14 @@ void ARB::ARBUpdatedParms(void)
     qobject_cast<QLineEdit *>(obj)->setModified(false);
 }
 
+// ARBupdate — slot for the ARB Update push-button; delegates to Update().
 void ARB::ARBupdate(void)
 {
     Update();
 }
 
+// Update — polls the firmware for the current channel count and all ARB/Twave
+// parameters, refreshes the UI, and enables/disables group boxes as appropriate.
 void ARB::Update(void)
 {
     QString res;
@@ -327,11 +350,13 @@ void ARB::Update(void)
     }
 }
 
+// ARBclearLog — clears the accumulated MIPS command log string.
 void ARB::ARBclearLog(void)
 {
     LogString = "";
 }
 
+// ARBviewLog — opens the Help viewer with the accumulated command log.
 void ARB::ARBviewLog(void)
 {
     LogedData->SetTitle("Log of commands sent to MIPS");
@@ -339,6 +364,8 @@ void ARB::ARBviewLog(void)
     LogedData->show();
 }
 
+// Save — writes all leS* settings for each module plus direction/waveform type
+// and the command log to Filename.
 void ARB::Save(QString Filename)
 {
     if(Filename == "") return;
@@ -389,6 +416,8 @@ void ARB::Save(QString Filename)
     }
 }
 
+// Load — reads a settings file line by line, sends each non-comment line directly
+// to MIPS as a command, then calls Update() to refresh the UI.
 void ARB::Load(QString Filename)
 {
     if(Filename == "") return;
@@ -409,6 +438,8 @@ void ARB::Load(QString Filename)
     }
 }
 
+// ReadWaveform — retrieves the waveform from the editor dialog and sends it to
+// the current module via SWFARB.
 void ARB::ReadWaveform(void)
 {
     int Waveform[32];
@@ -420,6 +451,8 @@ void ARB::ReadWaveform(void)
         aui->statusBar->showMessage("Error sending waveform to MIPS", 2000);
 }
 
+// EditARBwaveform — reads the current waveform from MIPS, opens the ARBwaveformEdit
+// dialog pre-populated with that data, and connects its WaveformReady signal.
 void ARB::EditARBwaveform(void)
 {
     int     Waveform[32];
@@ -459,6 +492,8 @@ void ARB::EditARBwaveform(void)
 // ARBchannel  *************************************************************************************
 // *************************************************************************************************
 
+// ARBchannel — constructor. Records position and identity. Call Show() to create
+// the group box with Frequency/Amplitude/Aux/Offset line edits and waveform controls.
 ARBchannel::ARBchannel(QWidget *parent, QString name, QString MIPSname, int x, int y) : QWidget(parent)
 {
     p          = parent;
@@ -474,6 +509,9 @@ ARBchannel::ARBchannel(QWidget *parent, QString name, QString MIPSname, int x, i
     UpdateOff  = false;
 }
 
+// Show — creates and lays out the ARB channel group box with all line edits,
+// waveform combo, Edit button, and direction radio buttons. Installs event filters
+// for drag-to-move and mouse-wheel value adjustment.
 void ARBchannel::Show(void)
 {
     gbARB = new QGroupBox(Title, p);
@@ -532,6 +570,8 @@ void ARBchannel::Show(void)
     leSWFVOFF->installEventFilter(this); leSWFVOFF->setMouseTracking(true);
 }
 
+// eventFilter — handles drag-to-move via moveWidget() and mouse-wheel value
+// adjustment on the four line edits (Freq step ×10, others step ×1).
 bool ARBchannel::eventFilter(QObject *obj, QEvent *event)
 {
     if(moveWidget(obj, gbARB, gbARB, event)) return true;
@@ -550,8 +590,8 @@ bool ARBchannel::eventFilter(QObject *obj, QEvent *event)
     return QObject::eventFilter(obj, event);
 }
 
-// Returns a comma-separated string:
-//   Name,Frequency,Amplitude,AuxOutput,OffsetOutput,Direction,Waveform
+// Report — returns a CSV string: Name,Frequency,Amplitude,AuxOutput,OffsetOutput,Direction,Waveform.
+// Active values are substituted for shutdown channels.
 QString ARBchannel::Report(void)
 {
     QString title;
@@ -569,6 +609,8 @@ QString ARBchannel::Report(void)
     return res;
 }
 
+// SetValues — parses a CSV string produced by Report() and applies each field
+// to the corresponding line edit or control. Returns false if the title does not match.
 bool ARBchannel::SetValues(QString strVals)
 {
     QString title;
@@ -602,6 +644,8 @@ bool ARBchannel::SetValues(QString strVals)
     return true;
 }
 
+// Update — reads all ARB channel parameters from MIPS and refreshes the line
+// edits, waveform combo, and direction radio buttons.
 void ARBchannel::Update(void)
 {
     QString res;
@@ -633,8 +677,8 @@ void ARBchannel::Update(void)
     Updating = false;
 }
 
-// Slot connected to returnPressed on all leS* fields in the group box.
-// Derives the MIPS command from the widget's objectName and sends the value.
+// leChange — slot for returnPressed on all leS* line edits. Derives the MIPS
+// command from the widget name (strips "le") and sends channel,value.
 void ARBchannel::leChange(void)
 {
     QObject* obj = sender();
@@ -646,6 +690,7 @@ void ARBchannel::leChange(void)
     le->setModified(false);
 }
 
+// rbChange — slot for the Forward/Reverse radio buttons. Sends SWFDIR,channel,FWD|REV.
 void ARBchannel::rbChange(void)
 {
     if(comms == NULL) return;
@@ -654,12 +699,15 @@ void ARBchannel::rbChange(void)
     comms->SendCommand(res);
 }
 
+// wfChange — slot for waveform combo currentIndexChanged. Sends SWFTYP,channel,type.
 void ARBchannel::wfChange(void)
 {
     if(comms == NULL) return;
     comms->SendCommand("SWFTYP," + QString::number(Channel) + "," + Waveform->currentText() + "\n");
 }
 
+// ReadWaveform — retrieves the waveform from the editor and sends it to MIPS
+// via SWFARB,channel,val0,val1,...
 void ARBchannel::ReadWaveform(void)
 {
     int Wform[32];
@@ -674,6 +722,8 @@ void ARBchannel::ReadWaveform(void)
     }
 }
 
+// wfEdit — reads the current ARB waveform from MIPS and opens the ARBwaveformEdit
+// dialog pre-populated with that data, connecting WaveformReady to ReadWaveform.
 void ARBchannel::wfEdit(void)
 {
     int Wform[32];
@@ -706,6 +756,8 @@ void ARBchannel::wfEdit(void)
     ARBwfEdit->show();
 }
 
+// Shutdown — saves Amplitude, Aux, and Offset setpoints then zeroes all three.
+// Restore — returns Amplitude, Aux, and Offset to their saved values.
 void ARBchannel::Shutdown(void)
 {
     if(isShutdown) return;
@@ -727,8 +779,8 @@ void ARBchannel::Restore(void)
     leSWFVOFF->setText(activeVOFF); leSWFVOFF->setModified(true); emit leSWFVOFF->editingFinished();
 }
 
-// Processes scripting commands for this channel.
-// Field names: Frequency, Amplitude, Aux output, Offset output, Forward, Reverse, Waveform.
+// ProcessCommand — scripting API handler. Supports get/set for Frequency, Amplitude,
+// Aux output, Offset output, Forward, Reverse, and Waveform fields.
 // Returns "?" if the command was not handled.
 QString ARBchannel::ProcessCommand(QString cmd)
 {
