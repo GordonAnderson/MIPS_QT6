@@ -56,6 +56,8 @@
 // Ctrl+V modifier flag on Mac (Qt::MetaModifier maps to Cmd key)
 static const int PASTE_MODIFIER = 0x4000000;
 
+// Console — constructor. Sets a black background / yellow text palette to
+// match hardware terminal convention. localEchoEnabled defaults to false.
 Console::Console(QWidget *parent, Ui::MIPS *w, Comms *c)
     : QPlainTextEdit(parent), localEchoEnabled(false)
 {
@@ -84,6 +86,8 @@ void Console::putData(const QByteArray &data)
     bar->setValue(bar->maximum());
 }
 
+// setLocalEchoEnabled — when true, keystrokes are echoed locally in addition
+// to being forwarded via getData.
 void Console::setLocalEchoEnabled(bool set)
 {
     localEchoEnabled = set;
@@ -121,17 +125,21 @@ void Console::keyPressEvent(QKeyEvent *e)
     }
 }
 
+// mousePressEvent — claims keyboard focus so subsequent keystrokes are routed
+// to this console widget.
 void Console::mousePressEvent(QMouseEvent *e)
 {
     Q_UNUSED(e)
     setFocus();
 }
 
+// mouseDoubleClickEvent — intentionally suppressed; double-click has no action.
 void Console::mouseDoubleClickEvent(QMouseEvent *e)
 {
     Q_UNUSED(e)
 }
 
+// contextMenuEvent — intentionally suppressed; right-click menu is disabled.
 void Console::contextMenuEvent(QContextMenuEvent *e)
 {
     Q_UNUSED(e)

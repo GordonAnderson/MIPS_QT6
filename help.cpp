@@ -17,6 +17,8 @@
 #include <QTextOption>
 #include <QDir>
 
+// Help — constructor. Sets up the plain-text viewer with a monospaced font
+// (Courier, 14 pt on macOS / 11 pt elsewhere) and 8-space tab stops.
 Help::Help(QWidget *parent) :
     QDialog(parent),
     ui(new Ui::Help)
@@ -38,31 +40,37 @@ Help::Help(QWidget *parent) :
     ui->plainTextEdit->setFont(font);
 }
 
+// ~Help — destructor. Releases the UI form object.
 Help::~Help()
 {
     delete ui;
 }
 
+// getText — returns the current plain-text content of the viewer.
 QString Help::getText(void)
 {
     return(ui->plainTextEdit->toPlainText());
 }
 
+// setText — replaces the viewer content with comment.
 void Help::setText(QString comment)
 {
     ui->plainTextEdit->setPlainText(comment);
 }
 
+// appendText — appends comment as a new paragraph to the viewer.
 void Help::appendText(QString comment)
 {
     ui->plainTextEdit->appendPlainText(comment);
 }
 
+// SetTitle — sets the dialog window title.
 void Help::SetTitle(QString title)
 {
     QWidget::setWindowTitle(title);
 }
 
+// LoadStr — replaces the viewer content with DisplayText directly (no file I/O).
 void Help::LoadStr(QString DisplayText)
 {
     ui->plainTextEdit->setPlainText(DisplayText);

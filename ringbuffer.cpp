@@ -17,11 +17,13 @@
 #include "ringbuffer.h"
 #include <QElapsedTimer>
 
+// RingBuffer — constructor. Initialises the buffer to the empty state.
 RingBuffer::RingBuffer(void)
 {
     clear();
 }
 
+// clear — resets head, tail, count, and line counter to zero.
 void RingBuffer::clear(void)
 {
     head  = 0;

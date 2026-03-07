@@ -27,6 +27,9 @@ void signalHandler(int signal)
     exit(signal);
 }
 
+// main — application entry point. Installs signal handlers, constructs the
+// QApplication and MIPS main window, optionally passing argv[1] as the initial
+// control panel file path, then starts the Qt event loop.
 int main(int argc, char *argv[])
 {
     QString cpf;

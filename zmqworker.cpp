@@ -31,6 +31,8 @@
 // =============================================================================
 #include "zmqworker.h"
 
+// ZmqReqRep — constructor. Initialises timeout to 1 000 ms and clears all
+// state; call begin() to create the worker thread and connect to a server.
 ZmqReqRep::ZmqReqRep(QObject *parent) :
     QObject(parent)
 {
@@ -42,6 +44,7 @@ ZmqReqRep::ZmqReqRep(QObject *parent) :
     serverAddress.clear();
 }
 
+// ~ZmqReqRep — stops the worker thread and nulls the pointers.
 ZmqReqRep::~ZmqReqRep()
 {
     stop();
@@ -119,6 +122,8 @@ QString ZmqReqRep::command(QString cmd)
     return "?";
 }
 
+// sendMessage — convenience method that emits requestTriggered directly
+// without parsing a command string.
 void ZmqReqRep::sendMessage(QString msg)
 {
     emit requestTriggered(msg, mStimeout);
