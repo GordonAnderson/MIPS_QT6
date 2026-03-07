@@ -25,6 +25,9 @@
 #include <QPushButton>
 #include <QLineEdit>
 
+// CDirSelectionDlg — constructor. Builds the directory-browser layout:
+// a QFileSystemModel restricted to folders only, a QTreeView set to the
+// initialPath, a folder-name QLineEdit, and OK/Cancel buttons.
 CDirSelectionDlg::CDirSelectionDlg(const QString initialPath, QWidget *parent)
     : QDialog(parent), m_initialPath(initialPath)
 {
@@ -78,18 +81,21 @@ CDirSelectionDlg::CDirSelectionDlg(const QString initialPath, QWidget *parent)
     setLayout(mainLayout);
 }
 
+// accept — records result 1 and hides the dialog (caller checks result()).
 void CDirSelectionDlg::accept(void)
 {
     this->setResult(1);
     this->hide();
 }
 
+// reject — records result 0 and hides the dialog.
 void CDirSelectionDlg::reject(void)
 {
     this->setResult(0);
     this->hide();
 }
 
+// setTitle — sets the dialog window title.
 void CDirSelectionDlg::setTitle(QString title)
 {
     this->setWindowTitle(title);
@@ -113,6 +119,7 @@ QString CDirSelectionDlg::selectedPath(void)
     return fileInfo.canonicalPath() + "/" + m_folderName->text();
 }
 
+// directory — returns a QDir for the currently selected tree-view item.
 QDir CDirSelectionDlg::directory() const
 {
     return QDir(m_model->fileInfo(m_treeView->selectionModel()->currentIndex()).absoluteFilePath());

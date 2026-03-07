@@ -41,6 +41,9 @@ QT_USE_NAMESPACE
 // Placeholder string shown when a port info field is unavailable
 static const char blankString[] = QT_TRANSLATE_NOOP("SettingsDialog", "N/A");
 
+// SettingsDialog — constructor. Populates all combo boxes with standard
+// QSerialPort values, enumerates available ports, wires up signals, and
+// reads the initial settings into currentSettings.
 SettingsDialog::SettingsDialog(QWidget *parent) :
     QDialog(parent),
     ui(new Ui::SettingsDialog)
@@ -60,6 +63,8 @@ SettingsDialog::SettingsDialog(QWidget *parent) :
     updateSettings();
 }
 
+// showEvent — re-enumerates serial ports each time the dialog is shown so
+// newly plugged devices appear without restarting the application.
 void SettingsDialog::showEvent(QShowEvent *event)
 {
     QWidget::showEvent(event);
@@ -67,6 +72,7 @@ void SettingsDialog::showEvent(QShowEvent *event)
     fillPortsInfo();
 }
 
+// ~SettingsDialog — destructor. Releases the UI form object.
 SettingsDialog::~SettingsDialog()
 {
     delete ui;
@@ -79,11 +85,13 @@ int SettingsDialog::numberOfPorts()
     return(ui->serialPortInfoListBox->count() - 1);
 }
 
+// getPortName — returns the display name of the port at index num.
 QString SettingsDialog::getPortName(int num)
 {
     return(ui->serialPortInfoListBox->itemText(num));
 }
 
+// settings — returns the current serial port settings struct.
 SettingsDialog::Settings SettingsDialog::settings() const
 {
     return currentSettings;
@@ -103,6 +111,8 @@ void SettingsDialog::showPortInfo(int idx)
     ui->pidLabel->setText(tr("Product Identifier: %1").arg(list.count() > 6 ? list.at(6) : tr(blankString)));
 }
 
+// apply — saves the current UI selections into currentSettings and hides
+// the dialog.
 void SettingsDialog::apply()
 {
     updateSettings();

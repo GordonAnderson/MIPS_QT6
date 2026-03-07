@@ -101,11 +101,15 @@ JSengine::JSengine(QWidget *parent)
     engine.globalObject().setProperty("mips", mips);
 }
 
+// doMsDelay — sleeps the engine thread for ms milliseconds. Called from
+// running scripts via the mips.msDelay() JavaScript binding.
 void JSengine::doMsDelay(int ms)
 {
     QThread::msleep(ms);
 }
 
+// doWaitForUpdate — blocks until one complete update cycle has finished.
+// Polls sysUpdating() to detect a false→true→false transition.
 void JSengine::doWaitForUpdate(void)
 {
     while(sysUpdating() == true)  doMsDelay(100);
@@ -113,6 +117,8 @@ void JSengine::doWaitForUpdate(void)
     while(sysUpdating() == true)  doMsDelay(100);
 }
 
+// setInterrupted — propagates an interrupt request to the QJSEngine, causing
+// the running script to throw a JS exception on the next statement boundary.
 void JSengine::setInterrupted(bool state)
 {
     engine.setInterrupted(state);
@@ -158,6 +164,9 @@ QJSValue JSengine::runEngine(void)
 // Script
 // ---------------------------------------------------------------------------
 
+// Script — constructor. Creates a dedicated QThread and JSengine, wires
+// BlockingQueuedConnection signals for cross-thread safety, and starts
+// the thread ready for script execution.
 Script::Script(QWidget *parent, QString scriptName, QString fileName, Properties *prop, QStatusBar *statusbar)
 {
     p                = parent;
@@ -178,6 +187,8 @@ Script::Script(QWidget *parent, QString scriptName, QString fileName, Properties
     thread->start();
 }
 
+// ~Script — interrupts any running script, disconnects all signals, and
+// cleanly shuts down the engine thread before releasing resources.
 Script::~Script()
 {
     engine->setInterrupted(true);
@@ -191,6 +202,9 @@ Script::~Script()
     thread->deleteLater();
 }
 
+// run — loads the script file if not already cached, then emits startEngine()
+// to run it on the worker thread. Returns false if the engine is already
+// running or the file cannot be opened.
 bool Script::run(void)
 {
     if(engine == nullptr) engine = new JSengine(p);
@@ -225,6 +239,8 @@ bool Script::run(void)
     return false;
 }
 
+// scriptFinished — slot called by the engine when a script completes.
+// Logs the result or error message to the Properties log and status bar.
 void Script::scriptFinished(QJSValue result)
 {
     if(result.isError())
@@ -239,10 +255,16 @@ void Script::scriptFinished(QJSValue result)
     }
 }
 
+// engineDone — slot called when the worker thread finishes; reserved for
+// future cleanup.
 void Script::engineDone()
 {
 }
 
+// ProcessCommand — scripting API for a named Script object. Supports:
+//   name.run / name.abort / name.isRunning — control and status queries
+//   name.scriptText / name.scriptCall      — read/write cached text and call
+// Returns "?" for unrecognised commands.
 QString Script::ProcessCommand(QString cmd)
 {
     if((scriptName + ".run") == cmd.trimmed())
@@ -276,6 +298,9 @@ QString Script::ProcessCommand(QString cmd)
 // ScriptingConsole
 // ---------------------------------------------------------------------------
 
+// ScriptingConsole — constructor. Creates the dialog UI, a dedicated thread,
+// and a JSengine. Connects engine result and lifecycle signals and starts
+// the thread ready for interactive script execution.
 ScriptingConsole::ScriptingConsole(QWidget *parent, Properties *prop) :
     QDialog(parent),
     ui(new Ui::ScriptingConsole)
@@ -295,6 +320,8 @@ ScriptingConsole::ScriptingConsole(QWidget *parent, Properties *prop) :
     thread->start();
 }
 
+// ~ScriptingConsole — interrupts any running script, disconnects signals,
+// shuts down the engine thread, and releases the UI.
 ScriptingConsole::~ScriptingConsole()
 {
     engine->setInterrupted(true);
@@ -309,11 +336,15 @@ ScriptingConsole::~ScriptingConsole()
     delete ui;
 }
 
+// paintEvent — refreshes the Execute button label on each repaint to reflect
+// whether a script is currently running.
 void ScriptingConsole::paintEvent(QPaintEvent *)
 {
     UpdateStatus();
 }
 
+// scriptFinished — slot called when the engine completes. Displays the result
+// in red for errors, plain text otherwise.
 void ScriptingConsole::scriptFinished(QJSValue result)
 {
     QString markup;
@@ -323,10 +354,14 @@ void ScriptingConsole::scriptFinished(QJSValue result)
     ui->lblStatus->setText(markup);
 }
 
+// engineDone — slot called when the worker thread finishes; reserved for
+// future cleanup.
 void ScriptingConsole::engineDone()
 {
 }
 
+// RunScript — copies the editor text into the engine and emits startEngine()
+// to run it on the worker thread. No-op if the engine is already running.
 void ScriptingConsole::RunScript(void)
 {
     if(engine->isRunning == true) return;
@@ -338,17 +373,23 @@ void ScriptingConsole::RunScript(void)
     emit startEngine();
 }
 
+// on_pbEvaluate_clicked — Execute button handler; clears the button pressed
+// state and delegates to RunScript().
 void ScriptingConsole::on_pbEvaluate_clicked()
 {
     ui->pbEvaluate->setDown(false);
     RunScript();
 }
 
+// UpdateStatus — sets the Execute button label to "Script is running!" while
+// the engine is active, or "Execute" when idle.
 void ScriptingConsole::UpdateStatus(void)
 {
     ui->pbEvaluate->setText(engine->isRunning ? "Script is running!" : "Execute");
 }
 
+// on_pbSave_clicked — opens a save-file dialog and writes the editor text to
+// a .scrpt file.
 void ScriptingConsole::on_pbSave_clicked()
 {
     QFileDialog fileDialog;
@@ -366,6 +407,8 @@ void ScriptingConsole::on_pbSave_clicked()
     }
 }
 
+// on_pbLoad_clicked — opens a file-open dialog and loads a .scrpt file into
+// the editor.
 void ScriptingConsole::on_pbLoad_clicked()
 {
     QFileDialog fileDialog;
@@ -396,6 +439,8 @@ void ScriptingConsole::on_pbAbort_clicked()
     if(properties != NULL) properties->Log("Script aborted");
 }
 
+// on_pbHelp_clicked — opens the scripting help viewer loaded from the
+// embedded :/scripthelp.txt resource.
 void ScriptingConsole::on_pbHelp_clicked()
 {
     Help *help = new Help();
@@ -408,6 +453,9 @@ void ScriptingConsole::on_pbHelp_clicked()
 // ScriptButton
 // ---------------------------------------------------------------------------
 
+// ScriptButton — constructor. Creates a QPushButton at (x,y) backed by a
+// dedicated JSengine thread. Traverses to the top-level window to find the
+// ControlPanel for signal connections, then starts the engine thread.
 ScriptButton::ScriptButton(QWidget *parent, QString name, QString ScriptFile, int x, int y, Properties *prop, QStatusBar *statusbar)
 {
     p               = parent;
@@ -441,6 +489,8 @@ ScriptButton::ScriptButton(QWidget *parent, QString name, QString ScriptFile, in
     thread->start();
 }
 
+// ~ScriptButton — interrupts any running script, disconnects signals, and
+// cleanly shuts down the engine thread.
 ScriptButton::~ScriptButton()
 {
     engine->setInterrupted(true);
@@ -454,6 +504,8 @@ ScriptButton::~ScriptButton()
     thread->deleteLater();
 }
 
+// Show — creates the push-button widget at the stored (X, Y) position and
+// installs drag-to-move support.
 void ScriptButton::Show(void)
 {
     pbButton = new QPushButton(Title, p);
@@ -464,18 +516,23 @@ void ScriptButton::Show(void)
     pbButton->setMouseTracking(true);
 }
 
+// eventFilter — delegates drag-to-move to moveWidget().
 bool ScriptButton::eventFilter(QObject *obj, QEvent *event)
 {
     if(moveWidget(obj, pbButton, pbButton, event)) return true;
     return false;
 }
 
+// onTimerTimeout — re-enables the push button 250 ms after it was pressed to
+// debounce rapid repeated clicks.
 void ScriptButton::onTimerTimeout(void)
 {
     pbButton->setEnabled(true);
     buttonTimer->stop();
 }
 
+// scriptFinished — slot called when the engine completes. If reportResults is
+// set, logs the outcome and restores the default cursor.
 void ScriptButton::scriptFinished(QJSValue result)
 {
     if(reportResults)
@@ -494,11 +551,15 @@ void ScriptButton::scriptFinished(QJSValue result)
     }
 }
 
+// engineDone — slot called when the worker thread finishes. Restores the
+// default cursor in case the thread exited abnormally.
 void ScriptButton::engineDone()
 {
     QApplication::restoreOverrideCursor();
 }
 
+// pbButtonPressed — Qt pressed() slot. Sets keyboard focus then delegates to
+// ButtonPressed(true) for the full load-and-run sequence.
 void ScriptButton::pbButtonPressed(void)
 {
     pbButton->setFocus();

@@ -92,6 +92,8 @@ bool adjustValue(QObject *obj,QLineEdit *Vsp, QEvent *event,float multiplier)
 static std::mt19937 generator(std::time(nullptr));
 static std::uniform_int_distribution<> distribution;
 
+// generateRandomInt — returns a uniformly distributed random integer in
+// [min, max] inclusive, using the Mersenne Twister seeded at startup.
 int generateRandomInt(int min, int max) {
     distribution.param(std::uniform_int_distribution<>::param_type(min, max));
     return distribution(generator);
