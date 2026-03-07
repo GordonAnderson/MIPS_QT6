@@ -481,8 +481,7 @@ Plot::~Plot()
     delete ui;
 }
 
-// This event needs to emit a signal informing the owner then the plot
-// is closing. The owner needs to delete the plot object.
+// closeEvent — emits DialogClosed(this) so the owner can delete the Plot object.
 void Plot::closeEvent (QCloseEvent *)
 {
     emit DialogClosed(this);
@@ -509,6 +508,8 @@ void Plot::resizeEvent(QResizeEvent *event)
     QWidget::resizeEvent(event);
 }
 
+// eventFilter — handles keyboard navigation through stored scans (arrow keys,
+// Shift+J to jump by number). Passes all other events to the base class.
 bool Plot::eventFilter(QObject *obj, QEvent *event)
 {
 
@@ -540,6 +541,8 @@ bool Plot::eventFilter(QObject *obj, QEvent *event)
     return QObject::eventFilter(obj, event);
 }
 
+// mousePressedHM — right-click handler for heat map widgets. Shows the
+// heatmap context menu with the Heatmap toggle action.
 void Plot::mousePressedHM(QMouseEvent* event)
 {
     if (event->button() == Qt::RightButton)
@@ -550,6 +553,7 @@ void Plot::mousePressedHM(QMouseEvent* event)
     }
 }
 
+// mouseMove — updates the status bar with X/Y coordinates when Track mode is active.
 void Plot::mouseMove(QMouseEvent*event)
 {
     if(TrackOption->isChecked())
@@ -560,6 +564,8 @@ void Plot::mouseMove(QMouseEvent*event)
     }
 }
 
+// mousePressed — right-click handler for the main graph. Shows the full
+// context menu with save, export, load, zoom, filter, and heatmap options.
 void Plot::mousePressed(QMouseEvent* event)
 {
     if (event->button() == Qt::RightButton)
@@ -581,8 +587,8 @@ void Plot::mousePressed(QMouseEvent* event)
     }
 }
 
-// Save all the comments to a text file. The comments include
-// all the plot commands.
+// Save — writes the entire comment/command block to filename as a .plot text file
+// and updates the plotFile title element.
 void Plot::Save(QString filename)
 {
     if(filename.isEmpty()) return;
@@ -596,13 +602,15 @@ void Plot::Save(QString filename)
     }
 }
 
+// slotSaveMenu — opens a file-save dialog and calls Save() with the chosen path.
 void Plot::slotSaveMenu(void)
 {
     QString fileName = QFileDialog::getSaveFileName(this, "Save plot data","","Plot (*.plot);;All files (*.*)");
     Save(fileName);
 }
 
-// This function will export the current data to a CSV file
+// slotExportMenu — opens dialogs to select a CSV file and a plot number, then
+// exports that scan's X/Y data with optional Savitzky-Golay filtering.
 void Plot::slotExportMenu(void)
 {
     QList<float> I,A;
@@ -662,6 +670,7 @@ void Plot::slotExportMenu(void)
     statusBar->showMessage("Export failed!");
 }
 
+// slotLoadMenu — opens a file-open dialog and calls Load() with the chosen path.
 void Plot::slotLoadMenu(void)
 {
     QString fileName = QFileDialog::getOpenFileName(this, "Load plot data","","Plot (*.plot);;All files (*.*)");
@@ -698,6 +707,8 @@ void Plot::Load(QString filename)
     }
 }
 
+// slotCommentMenu — shows the comments text area and hides the graph, allowing
+// the user to view and edit the raw command/comment block.
 void Plot::slotCommentMenu(void)
 {
     if(!ui->txtComments->isVisible())
@@ -708,6 +719,8 @@ void Plot::slotCommentMenu(void)
     }
 }
 
+// slotCloseComments — restores the graph view, hides the comments editor, and
+// saves any edits back to the Comments string.
 void Plot::slotCloseComments(void)
 {
     ui->Graph->setVisible(true);
@@ -809,7 +822,9 @@ void Plot::slotZoomOutOneLevel(void)
     }
 }
 
-//Savitzky-Golay filter
+// SavitzkyGolayFilter — applies the Savitzky-Golay smoothing filter of the given
+// order index (0–3 → 5/7/9/11-point) to Y, writing the result into *Yf.
+// Pass order < 0 to copy Y unchanged.
 void Plot::SavitzkyGolayFilter(int order, QList<float> Y, QList<float> *Yf)
 {
     float   val;
@@ -1284,6 +1299,7 @@ QString Plot::PlotCommand(QString cmd, bool PlotOnly)
     return "";
 }
 
+// slotXaxisZoomOption — toggles X-axis zoom mode and calls ZoomSelect() to apply it.
 void Plot::slotXaxisZoomOption(void)
 {
     if(XaxisZoomOption->isChecked()) XaxisZoomOption->setChecked(true);
@@ -1291,6 +1307,7 @@ void Plot::slotXaxisZoomOption(void)
     ZoomSelect();
 }
 
+// slotYaxisZoomOption — toggles Y-axis zoom mode and calls ZoomSelect() to apply it.
 void Plot::slotYaxisZoomOption(void)
 {
     if(YaxisZoomOption->isChecked()) YaxisZoomOption->setChecked(true);
@@ -1298,6 +1315,8 @@ void Plot::slotYaxisZoomOption(void)
     ZoomSelect();
 }
 
+// slotFilterOption — prompts the user for a Savitzky-Golay polynomial length
+// (5/7/9/11 or 0 to disable), then repaints the current scan with the new filter.
 void Plot::slotFilterOption(void)
 {
     QMessageBox msgBox;
@@ -1370,6 +1389,8 @@ void Plot::slotRescaleYToDataInRange(QCPRange newXRange) {
 }
 
 
+// ZoomSelect — configures QCustomPlot interaction mode (lasso zoom or scroll-wheel)
+// based on the current X/Y zoom checkbox states.
 void Plot::ZoomSelect(void)
 {
     if(XaxisZoomOption->isChecked() && YaxisZoomOption->isChecked())
@@ -1419,6 +1440,9 @@ void Plot::ZoomSelect(void)
     else ui->Graph->setInteractions(QCP::iNone);
 }
 
+// slotHeatMap — toggles the dual QCPColorMap heatmap view. When enabled,
+// builds heatmap data for both ion channels from plotGraphs, applies the
+// Savitzky-Golay filter, and configures color scale and tick labels.
 void Plot::slotHeatMap(void)
 {
     if(plotGraphs.count() <= 0) return;
@@ -1570,12 +1594,14 @@ void Plot::slotHeatMap(void)
     this->resize(this->width()+1,this->height());
 }
 
+// slotTrackOption — toggles cursor-position tracking in the status bar.
 void Plot::slotTrackOption(void)
 {
     if(TrackOption->isChecked()) TrackOption->setChecked(true);
     else TrackOption->setChecked(false);
 }
 
+// slotClipBoard — copies the current graph as a pixmap to the system clipboard.
 void Plot::slotClipBoard(void)
 {
     // Set the clilpboard image
@@ -1591,6 +1617,8 @@ void Plot::slotClipBoard(void)
 // PlotData         ********************************************************************************
 // *************************************************************************************************
 
+// PlotData — constructor. Creates an embedded Plot widget inside a plain QWidget
+// frame at (x, y) with the given dimensions. Call Show() to make it visible.
 PlotData::PlotData(QWidget *parent, QString name, QString Yname, QString Xname, int numGraphs, int width, int height, int x, int y) : QWidget(parent)
 {
     p      = parent;
@@ -1605,6 +1633,7 @@ PlotData::PlotData(QWidget *parent, QString name, QString Yname, QString Xname, 
     layout->addWidget(plot);
 }
 
+// Show — makes the container and embedded plot visible, and clears any stale graph data.
 void PlotData::Show(void)
 {
     w->show();
@@ -1612,6 +1641,8 @@ void PlotData::Show(void)
     plot->PlotCommand("Clear",true);
 }
 
+// Report — returns a multi-line CSV string prefixed with the widget title,
+// replaying every stored PlotCommand so the state can be saved and restored.
 QString PlotData::Report(void)
 {
     QString res;
@@ -1629,6 +1660,8 @@ QString PlotData::Report(void)
     return res;
 }
 
+// SetValues — parses a "title,<PlotCommand>" CSV string and forwards the command
+// to the embedded Plot. Returns false if the title does not match.
 bool PlotData::SetValues(QString strVals)
 {
     QStringList resList;
@@ -1645,6 +1678,9 @@ bool PlotData::SetValues(QString strVals)
     return true;
 }
 
+// ProcessCommand — scripting API handler. Strips the widget title prefix and
+// passes the right-hand side of a "title=<PlotCommand>" string to PlotCommand().
+// Returns "?" if the title does not match.
 QString PlotData::ProcessCommand(QString cmd)
 {
     QString title;
