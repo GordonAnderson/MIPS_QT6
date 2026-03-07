@@ -1,3 +1,21 @@
+// =============================================================================
+// psg.h
+//
+// Pulse sequence generator (PSG) tab controller for the MIPS host application.
+//
+// Manages the PSG tab UI: building and downloading MIPS table commands,
+// loading/saving pulse sequence files (.psg), and launching the pulse sequence
+// editor (pseDialog) and viewer (psviewer).
+//
+// Hardware:    MIPS timing/table module (commands: STBLDAT, STBLCLK, STBLTRG,
+//              SMOD, TBLSTRT, TBLABORT, GTBLADV, GTBLNUM, STBLVLT, etc.)
+// Depends on:  comms.h, pse.h, psviewer.h, ui_mips.h
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
+
 #ifndef PSG_H
 #define PSG_H
 
@@ -29,9 +47,9 @@ public:
     QString BuildTableCommand(QList<psgPoint*> P);
 
     Ui::MIPS *pui;
-    Comms *comms;
+    Comms    *comms;
     pseDialog *pse;
-    psviewer *psv;
+    psviewer  *psv;
     QList<psgPoint*> psg;
 
 private slots:
