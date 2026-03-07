@@ -1,3 +1,25 @@
+// =============================================================================
+// arb.h
+//
+// ARB (Arbitrary Waveform Generator) module classes for the MIPS host app.
+//
+// Provides two classes:
+//
+//   ARB        — manages the ARB tab on the main MIPS UI. Handles Twave and
+//                ARB mode switching, channel/range setting, compressor controls,
+//                waveform editing, and save/load of all ARB parameters.
+//
+//   ARBchannel — a dynamically created widget group representing one ARB
+//                output channel. Supports frequency, amplitude, aux, offset,
+//                waveform type, and direction control.
+//
+// Depends on:  ui_mips.h, mips.h, comms.h, arbwaveformedit.h, Utilities.h
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
+
 #ifndef ARB_H
 #define ARB_H
 
@@ -19,7 +41,7 @@ class ARBwaveformEdit;
 
 class ARB : public QDialog
 {
-     Q_OBJECT
+    Q_OBJECT
 
 public:
     ARB(Ui::MIPS *w, Comms *c);
@@ -30,13 +52,13 @@ public:
     Comms *comms;
 
 private:
-    Ui::MIPS *aui;
-    int NumChannels;
-    int PPP;
-    QString LogString;
-    Help *LogedData;
+    Ui::MIPS        *aui;
+    int              NumChannels;
+    int              PPP;
+    QString          LogString;
+    Help            *LogedData;
     ARBwaveformEdit *ARBwfEdit;
-    bool Compressor;
+    bool             Compressor;
 
 private slots:
     void ARBUpdated(void);
@@ -63,12 +85,12 @@ private slots:
     void rbSwitchClose(void);
     void rbSwitchOpen(void);
     void pbForceTrigger(void);
-
 };
 
 class ARBchannel : public QWidget
 {
     Q_OBJECT
+
 public:
     ARBchannel(QWidget *parent, QString name, QString MIPSname, int x, int y);
     void    Show(void);
@@ -78,16 +100,17 @@ public:
     void    Shutdown(void);
     void    Restore(void);
     QString ProcessCommand(QString cmd);
-    QWidget     *p;
+    QWidget    *p;
     QString     Title;
-    int         X,Y;
+    int         X, Y;
     QString     MIPSnm;
     int         Channel;
     int         PPP;
-    Comms       *comms;
-    QStatusBar  *statusBar;
+    Comms      *comms;
+    QStatusBar *statusBar;
     bool        isShutdown;
-    QGroupBox    *gbARB;
+    QGroupBox  *gbARB;
+
 private:
     QLineEdit    *leSWFREQ;
     QLineEdit    *leSWFVRNG;
@@ -102,14 +125,16 @@ private:
     QString      activeVRNG;
     QString      activeVAUX;
     QString      activeVOFF;
-    bool          Updating;
-    bool          UpdateOff;
+    bool         Updating;
+    bool         UpdateOff;
+
 private slots:
     void leChange(void);
     void rbChange(void);
     void wfChange(void);
     void wfEdit(void);
     void ReadWaveform(void);
+
 protected:
     bool eventFilter(QObject *obj, QEvent *event);
 };
