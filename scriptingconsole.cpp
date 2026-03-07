@@ -1,30 +1,27 @@
+// =============================================================================
+// scriptingconsole.cpp
 //
-// scriptconsole.cpp
+// JavaScript scripting engine classes for the MIPS host application.
 //
-// This file contains the classes that support the script console as well
-// as the script buttons. The JSengine class encapulates the script engine,
-// the JSengine blocks so it is run in a seperate thread. The mips object and
-// its functions, that are invokable from the script, are interfaced through
-// the JSengine class. All the interface functions block and use signals to
-// interface to the main thread.
+// The JSengine class encapsulates the QJSEngine and runs in a separate thread.
+// All invokable functions block using Qt::BlockingQueuedConnection signals to
+// marshal calls safely back to the main thread (ControlPanel slots).
 //
-// The script class allows scripts to be executed without using the script
-// console or the script button.
+// Note: QString assignment to JSengine::script is not thread safe. Callers
+// must set engine->script before emitting startEngine() while the engine is
+// idle (isRunning == false).
 //
-// If a script communicates with a MIPS system the user needs to make sure
-// the main loop is not in the update loop and actively communicating with
-// the MIPS hardware. Functions are provided to halt updating and to see if
-// the system is in the update loop.
+// To do:
+//   - Look into ways to better integrate scripts and the main loop. Consider
+//     running the update loop in its own thread to avoid blocking the main UI.
 //
-// To do list
-//  - look into ways to better integrate scripts and the main loop.
-//    consider the update loop running in its own tread and thus not
-//    blocking the main UI.
+// Depends on:  scriptingconsole.h, ui_scriptingconsole.h, controlpanel.h,
+//              properties.h, Utilities.h, help.h
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — documented for host app v2.22
 //
-// Gordon Anderson
-// GAA Custom Electronics, LLC
-// gaa@gaa-ce.com
-//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
 
 #include "scriptingconsole.h"
 #include "ui_scriptingconsole.h"
@@ -46,62 +43,62 @@
 
 #include "controlpanel.h"
 
-/*! \brief JSengine class implementation
+// ---------------------------------------------------------------------------
+// JSengine
+// ---------------------------------------------------------------------------
+
+/*! \brief JSengine constructor
  *
- * The JSengine class is a wrapper around the QJSEngine class that allows
- * scripts to be run in a worker thread. The JSengine class provides a
- * number of signals that can be used to communicate with the main thread.
- * The JSengine class also provides a number of functions that can be called
- * from the script.
+ * Connects each JSengine signal to the corresponding ControlPanel slot using
+ * Qt::BlockingQueuedConnection so that invokable script functions block until
+ * the main thread has completed the requested operation and returned a value.
  */
 JSengine::JSengine(QWidget *parent)
 {
     p = parent;
-    ControlPanel *cp;
-    cp = (ControlPanel *)p;
+    ControlPanel *cp = (ControlPanel *)p;
 
-    connect(this,SIGNAL(SaveSig(QString)),cp,SLOT(Save(QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(LoadSig(QString)),cp,SLOT(Load(QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(GetLineSig(QString)),cp,SLOT(GetLine(QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(SendStringSig(QString,QString)),cp,SLOT(SendString(QString,QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(SendCommandSig(QString,QString)),cp,SLOT(SendCommand(QString,QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(SendMessSig(QString,QString)),cp,SLOT(SendMess(QString,QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(SystemEnableSig()),cp,SLOT(SystemEnable()),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(SystemShutdownSig()),cp,SLOT(SystemShutdown()),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(isShutDownSig()),cp,SLOT(isShutDown()),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(AcquireSig(QString)),cp,SLOT(Acquire(QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(isAcquiringSig()),cp,SLOT(isAcquiring()),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(DismissAcquireSig()),cp,SLOT(DismissAcquire()),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(statusMessageSig(QString)),cp,SLOT(statusMessage(QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(popupMessageSig(QString)),cp,SLOT(popupMessage(QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(popupYesNoMessageSig(QString)),cp,SLOT(popupYesNoMessage(QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(popupUserInputSig(QString,QString)),cp,SLOT(popupUserInput(QString,QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(sysUpdatingSig()),cp,SLOT(sysUpdating()),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(UpdateHaltedSig(bool)),cp,SLOT(UpdateHalted(bool)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(UpdateHaltedSigNB(bool)),cp,SLOT(UpdateHalted(bool)));
-    connect(this,SIGNAL(SelectFileSig(QString,QString,QString)),cp,SLOT(SelectFile(QString,QString,QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(ReadCSVfileSig(QString,QString)),cp,SLOT(ReadCSVfile(QString,QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(ReadCSVentrySig(int,int)),cp,SLOT(ReadCSVentry(int,int)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(CommandSig(QString)),cp,SLOT(Command(QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(CreatePlotSig(QString,QString,QString,int)),cp,SLOT(CreatePlot(QString,QString,QString,int)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(PlotCommandSig(QString)),cp,SLOT(PlotCommand(QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(isCommsSig()),cp,SLOT(isComms()),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(MakePathNameUniqueSig(QString)),cp,SLOT(MakePathNameUnique(QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(GenerateUniqueFileNameSig()),cp,SLOT(GenerateUniqueFileName()),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(MakeFileNameUniqueSig(QString)),cp,SLOT(MakeFileNameUnique(QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(AppendToFileSig(QString,QString)),cp,SLOT(AppendToFile(QString,QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(ReadFileLineSig(QString,int)),cp,SLOT(ReadFileLine(QString,int)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(ReadFileSig(QString)),cp,SLOT(ReadFile(QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(elapsedTimeSig(bool)),cp,SLOT(elapsedTime(bool)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(tcpSocketSig(QString,QString,QString)),cp,SLOT(tcpSocket(QString,QString,QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(setValueSig(const QString &,const QVariant &)),cp,SLOT(setValue(const QString &,const QVariant &)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(getValueSig(const QString &)),cp,SLOT(getValue(const QString &)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(CreateProcessSig(QString,QString)),cp,SLOT(CreateProcess(QString,QString)),Qt::BlockingQueuedConnection);
-    connect(this,SIGNAL(ZMQsig(QString)),cp,SLOT(ZMQ(QString)),Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(SaveSig(QString)),                          cp, SLOT(Save(QString)),                          Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(LoadSig(QString)),                          cp, SLOT(Load(QString)),                          Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(GetLineSig(QString)),                       cp, SLOT(GetLine(QString)),                       Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(SendStringSig(QString,QString)),            cp, SLOT(SendString(QString,QString)),            Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(SendCommandSig(QString,QString)),           cp, SLOT(SendCommand(QString,QString)),           Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(SendMessSig(QString,QString)),              cp, SLOT(SendMess(QString,QString)),              Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(SystemEnableSig()),                         cp, SLOT(SystemEnable()),                         Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(SystemShutdownSig()),                       cp, SLOT(SystemShutdown()),                       Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(isShutDownSig()),                           cp, SLOT(isShutDown()),                           Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(AcquireSig(QString)),                       cp, SLOT(Acquire(QString)),                       Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(isAcquiringSig()),                          cp, SLOT(isAcquiring()),                          Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(DismissAcquireSig()),                       cp, SLOT(DismissAcquire()),                       Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(statusMessageSig(QString)),                 cp, SLOT(statusMessage(QString)),                 Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(popupMessageSig(QString)),                  cp, SLOT(popupMessage(QString)),                  Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(popupYesNoMessageSig(QString)),             cp, SLOT(popupYesNoMessage(QString)),             Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(popupUserInputSig(QString,QString)),        cp, SLOT(popupUserInput(QString,QString)),        Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(sysUpdatingSig()),                          cp, SLOT(sysUpdating()),                          Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(UpdateHaltedSig(bool)),                     cp, SLOT(UpdateHalted(bool)),                     Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(UpdateHaltedSigNB(bool)),                   cp, SLOT(UpdateHalted(bool)));
+    connect(this, SIGNAL(SelectFileSig(QString,QString,QString)),    cp, SLOT(SelectFile(QString,QString,QString)),    Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(ReadCSVfileSig(QString,QString)),           cp, SLOT(ReadCSVfile(QString,QString)),           Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(ReadCSVentrySig(int,int)),                  cp, SLOT(ReadCSVentry(int,int)),                  Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(CommandSig(QString)),                       cp, SLOT(Command(QString)),                       Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(CreatePlotSig(QString,QString,QString,int)),cp, SLOT(CreatePlot(QString,QString,QString,int)),Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(PlotCommandSig(QString)),                   cp, SLOT(PlotCommand(QString)),                   Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(isCommsSig()),                              cp, SLOT(isComms()),                              Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(MakePathNameUniqueSig(QString)),            cp, SLOT(MakePathNameUnique(QString)),            Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(GenerateUniqueFileNameSig()),               cp, SLOT(GenerateUniqueFileName()),               Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(MakeFileNameUniqueSig(QString)),            cp, SLOT(MakeFileNameUnique(QString)),            Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(AppendToFileSig(QString,QString)),          cp, SLOT(AppendToFile(QString,QString)),          Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(ReadFileLineSig(QString,int)),              cp, SLOT(ReadFileLine(QString,int)),              Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(ReadFileSig(QString)),                      cp, SLOT(ReadFile(QString)),                      Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(elapsedTimeSig(bool)),                      cp, SLOT(elapsedTime(bool)),                      Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(tcpSocketSig(QString,QString,QString)),     cp, SLOT(tcpSocket(QString,QString,QString)),     Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(setValueSig(const QString &,const QVariant &)), cp, SLOT(setValue(const QString &,const QVariant &)), Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(getValueSig(const QString &)),              cp, SLOT(getValue(const QString &)),              Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(CreateProcessSig(QString,QString)),         cp, SLOT(CreateProcess(QString,QString)),         Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(ZMQsig(QString)),                           cp, SLOT(ZMQ(QString)),                           Qt::BlockingQueuedConnection);
 
     QJSValue mips = engine.newQObject(this);
-    //engine.installExtensions(QJSEngine::AllExtensions);
-    engine.globalObject().setProperty("mips",mips);
+    engine.globalObject().setProperty("mips", mips);
 }
 
 void JSengine::doMsDelay(int ms)
@@ -111,12 +108,9 @@ void JSengine::doMsDelay(int ms)
 
 void JSengine::doWaitForUpdate(void)
 {
-    // Wait for updating flag to clear
-    while(sysUpdating()==true) doMsDelay(100);
-    // Wait for updating flag to set
-    while(sysUpdating()==false) doMsDelay(100);
-    // Wait for updating flag to clear
-    while(sysUpdating()==true) doMsDelay(100);
+    while(sysUpdating() == true)  doMsDelay(100);
+    while(sysUpdating() == false) doMsDelay(100);
+    while(sysUpdating() == true)  doMsDelay(100);
 }
 
 void JSengine::setInterrupted(bool state)
@@ -125,25 +119,22 @@ void JSengine::setInterrupted(bool state)
 }
 
 /*! \brief runEngine
- * This function runs the script engine, it can either run a script or a
- * function call. If the scriptCall is empty then the script is evaluated
- * and the result is returned. If the scriptCall is not empty then it is
- * assumed to be a function call with arguments, the function is evaluated
- * and called with the arguments.
  *
- * \return QJSValue The result of the script or function call.
+ * Runs the script or a named function call. If scriptCall is empty the full
+ * script text is evaluated. If scriptCall is non-empty it is parsed as a
+ * function call with arguments: "functionName(arg1,arg2)".
  */
 QJSValue JSengine::runEngine(void)
 {
     if(scriptCall.isEmpty())
     {
-       isRunning = true;
-       result = engine.evaluate(script);
-       emit resultReady(result);
-       isRunning = false;
-       return result;
+        isRunning = true;
+        result    = engine.evaluate(script);
+        emit resultReady(result);
+        isRunning = false;
+        return result;
     }
-    // Parse call string and get arguments
+    // Parse call string and invoke the named function with arguments
     static QRegularExpression re("[()]");
     QStringList callList = scriptCall.split(re);
     if(callList.length() == 3)
@@ -151,7 +142,7 @@ QJSValue JSengine::runEngine(void)
         isRunning = true;
         QStringList argsList = callList[1].split(",");
         QJSValueList args;
-        for(int i=0;i<argsList.count();i++) args.append(argsList[i]);
+        for(int i = 0; i < argsList.count(); i++) args.append(argsList[i]);
         QJSValue fun = engine.evaluate(script);
         result = fun.call(args);
         emit resultReady(result);
@@ -163,39 +154,37 @@ QJSValue JSengine::runEngine(void)
     return result;
 }
 
-/*! \brief Script class implementation
- *
- * The script class allows scripts to be executed without using the script
- * console or the script button. The script is run in a worker thread to
- * prevent blocking the main UI thread.
- */
+// ---------------------------------------------------------------------------
+// Script
+// ---------------------------------------------------------------------------
+
 Script::Script(QWidget *parent, QString scriptName, QString fileName, Properties *prop, QStatusBar *statusbar)
 {
-    p = parent;
-    properties = prop;
-    sb = statusbar;
+    p                = parent;
+    properties       = prop;
+    sb               = statusbar;
     this->scriptName = scriptName;
-    this->fileName = fileName;
+    this->fileName   = fileName;
     scriptText.clear();
     scriptCall.clear();
 
     thread = new QThread(this);
     engine = new JSengine(p);
-    connect(engine,&JSengine::resultReady,this,&Script::scriptFinished);
+    connect(engine, &JSengine::resultReady,    this, &Script::scriptFinished);
     engine->moveToThread(thread);
-    connect(thread, SIGNAL(finished()), this, SLOT(engineDone()));
-    connect(this, SIGNAL(startEngine()), engine, SLOT(runEngine()));
-    connect(this, SIGNAL(setInterrupted(bool)), engine, SLOT(setInterrupted(bool)));
+    connect(thread, SIGNAL(finished()),            this, SLOT(engineDone()));
+    connect(this,   SIGNAL(startEngine()),         engine, SLOT(runEngine()));
+    connect(this,   SIGNAL(setInterrupted(bool)),  engine, SLOT(setInterrupted(bool)));
     thread->start();
 }
 
 Script::~Script()
 {
     engine->setInterrupted(true);
-    disconnect(engine,&JSengine::resultReady,this,&Script::scriptFinished);
-    disconnect(thread, SIGNAL(finished()), this, SLOT(engineDone()));
-    disconnect(this, SIGNAL(startEngine()), engine, SLOT(runEngine()));
-    disconnect(this, SIGNAL(setInterrupted(bool)), engine, SLOT(setInterrupted(bool)));
+    disconnect(engine, &JSengine::resultReady,   this, &Script::scriptFinished);
+    disconnect(thread, SIGNAL(finished()),           this, SLOT(engineDone()));
+    disconnect(this,   SIGNAL(startEngine()),        engine, SLOT(runEngine()));
+    disconnect(this,   SIGNAL(setInterrupted(bool)), engine, SLOT(setInterrupted(bool)));
     thread->quit();
     thread->wait();
     engine->deleteLater();
@@ -206,11 +195,11 @@ bool Script::run(void)
 {
     if(engine == nullptr) engine = new JSengine(p);
     if(engine->isRunning) return false;
-    // Load Script if needed
+
     if(scriptText.isEmpty())
     {
         QFile file(fileName);
-        if(file.open(QIODevice::ReadOnly|QIODevice::Text))
+        if(file.open(QIODevice::ReadOnly | QIODevice::Text))
         {
             if(properties != NULL) properties->Log("Script loaded: " + fileName);
             QTextStream stream(&file);
@@ -226,12 +215,10 @@ bool Script::run(void)
     }
     if(!scriptText.isEmpty())
     {
-        // Load script to the script engine, this should likely be done with
-        // a slot and not a direct call.
-        // QString is not thread safe!
-        engine->script = scriptText;
+        // Note: QString assignment is not thread safe — engine must be idle (isRunning == false)
+        engine->script     = scriptText;
         engine->scriptCall = scriptCall;
-        emit setInterrupted(false); // Make sure the interrupted flag is clear
+        emit setInterrupted(false);
         emit startEngine();
         return true;
     }
@@ -271,65 +258,50 @@ QString Script::ProcessCommand(QString cmd)
         return "";
     }
     if((scriptName + ".isRunning") == cmd.trimmed())
-    {
-        if(engine->isRunning) return "TRUE";
-        else return "FALSE";
-    }
+        return engine->isRunning ? "TRUE" : "FALSE";
     if((scriptName + ".scriptText") == cmd.trimmed())
-    {
         return scriptText;
-    }
     if((scriptName + ".scriptCall") == cmd.trimmed())
-    {
         return scriptCall;
-    }
+
     QStringList resList = cmd.split("=");
-    if((resList.count()==2) && (resList[0].trimmed() == (scriptName + ".scriptText").trimmed()))
-    {
+    if((resList.count() == 2) && (resList[0].trimmed() == (scriptName + ".scriptText").trimmed()))
         scriptText = resList[1];
-    }
-    if((resList.count()==2) && (resList[0].trimmed() == (scriptName + ".scriptCall").trimmed()))
-    {
+    if((resList.count() == 2) && (resList[0].trimmed() == (scriptName + ".scriptCall").trimmed()))
         scriptCall = resList[1];
-    }
     return "?";
 }
 
-//
-// ScriptingConsole class implementation
-//
-// The script engine is run in a worker thread to prevent blocking. The
-// worker thread and engine are created in the constructor and only deleted
-// when this object is deleted.
-//
+// ---------------------------------------------------------------------------
+// ScriptingConsole
+// ---------------------------------------------------------------------------
+
 ScriptingConsole::ScriptingConsole(QWidget *parent, Properties *prop) :
     QDialog(parent),
     ui(new Ui::ScriptingConsole)
 {
-   p = parent;
-   ui->setupUi(this);
-   properties = prop;
+    p          = parent;
+    ui->setupUi(this);
+    properties = prop;
 
-   this->setFixedSize(501,366);
-   // Create thread, if parent is "this" then this class must clean up
-   // and delete thread when this object is deleted
-   thread = new QThread(this);
-   engine = new JSengine(p);
-   connect(engine,&JSengine::resultReady,this,&ScriptingConsole::scriptFinished);
-   engine->moveToThread(thread);
-   connect(thread, SIGNAL(finished()), this, SLOT(engineDone()));
-   connect(this, SIGNAL(startEngine()), engine, SLOT(runEngine()));
-   connect(this, SIGNAL(setInterrupted(bool)), engine, SLOT(setInterrupted(bool)));
-   thread->start();
+    this->setFixedSize(501, 366);
+    thread = new QThread(this);
+    engine = new JSengine(p);
+    connect(engine, &JSengine::resultReady,   this, &ScriptingConsole::scriptFinished);
+    engine->moveToThread(thread);
+    connect(thread, SIGNAL(finished()),           this, SLOT(engineDone()));
+    connect(this,   SIGNAL(startEngine()),        engine, SLOT(runEngine()));
+    connect(this,   SIGNAL(setInterrupted(bool)), engine, SLOT(setInterrupted(bool)));
+    thread->start();
 }
 
 ScriptingConsole::~ScriptingConsole()
 {
     engine->setInterrupted(true);
-    disconnect(engine,&JSengine::resultReady,this,&ScriptingConsole::scriptFinished);
-    disconnect(thread, SIGNAL(finished()), this, SLOT(engineDone()));
-    disconnect(this, SIGNAL(startEngine()), engine, SLOT(runEngine()));
-    disconnect(this, SIGNAL(setInterrupted(bool)), engine, SLOT(setInterrupted(bool)));
+    disconnect(engine, &JSengine::resultReady,   this, &ScriptingConsole::scriptFinished);
+    disconnect(thread, SIGNAL(finished()),           this, SLOT(engineDone()));
+    disconnect(this,   SIGNAL(startEngine()),        engine, SLOT(runEngine()));
+    disconnect(this,   SIGNAL(setInterrupted(bool)), engine, SLOT(setInterrupted(bool)));
     thread->quit();
     thread->wait();
     engine->deleteLater();
@@ -344,19 +316,15 @@ void ScriptingConsole::paintEvent(QPaintEvent *)
 
 void ScriptingConsole::scriptFinished(QJSValue result)
 {
-    // Script finished with result data, display the result
     QString markup;
-    if(result.isError())
-        markup.append("<font color=\"red\">");
+    if(result.isError()) markup.append("<font color=\"red\">");
     markup.append(result.toString());
-    if(result.isError())
-        markup.append("</font>");
+    if(result.isError()) markup.append("</font>");
     ui->lblStatus->setText(markup);
 }
 
 void ScriptingConsole::engineDone()
 {
-    // The script engine is done, do any necessary work
 }
 
 void ScriptingConsole::RunScript(void)
@@ -364,12 +332,9 @@ void ScriptingConsole::RunScript(void)
     if(engine->isRunning == true) return;
     if(properties != NULL) properties->Log("Script executed");
     ui->lblStatus->setText("");
-    QString script = ui->txtScript->toPlainText();
-    // Load script to the script engine, this should likely be done with
-    // a slot and not a direct call.
-    // QString is not thread safe!
-    engine->script = script;
-    emit setInterrupted(false); // Make sure the interrupted flag is clear
+    // Note: QString assignment is not thread safe — engine must be idle before setting script
+    engine->script = ui->txtScript->toPlainText();
+    emit setInterrupted(false);
     emit startEngine();
 }
 
@@ -381,14 +346,7 @@ void ScriptingConsole::on_pbEvaluate_clicked()
 
 void ScriptingConsole::UpdateStatus(void)
 {
-    if(engine->isRunning == true)
-    {
-        ui->pbEvaluate->setText("Script is running!");
-    }
-    else
-    {
-        ui->pbEvaluate->setText("Execute");
-    }
+    ui->pbEvaluate->setText(engine->isRunning ? "Script is running!" : "Execute");
 }
 
 void ScriptingConsole::on_pbSave_clicked()
@@ -396,12 +354,11 @@ void ScriptingConsole::on_pbSave_clicked()
     QFileDialog fileDialog;
 
     if(properties != NULL) fileDialog.setDirectory(properties->ScriptPath);
-    QString fileName = fileDialog.getSaveFileName(this, tr("Save script to file"),"",tr("scrpt (*.scrpt);;All files (*.*)"));
+    QString fileName = fileDialog.getSaveFileName(this, tr("Save script to file"), "", tr("scrpt (*.scrpt);;All files (*.*)"));
     if(fileName == "") return;
     QFile file(fileName);
     if(file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
-        // We're going to streaming text to the file
         QTextStream stream(&file);
         stream << ui->txtScript->toPlainText();
         file.close();
@@ -414,27 +371,27 @@ void ScriptingConsole::on_pbLoad_clicked()
     QFileDialog fileDialog;
 
     if(properties != NULL) fileDialog.setDirectory(properties->ScriptPath);
-    QString fileName = fileDialog.getOpenFileName(this, tr("Load script from File"),"",tr("scrpt (*.scrpt);;All files (*.*)"));
+    QString fileName = fileDialog.getOpenFileName(this, tr("Load script from File"), "", tr("scrpt (*.scrpt);;All files (*.*)"));
     if(fileName == "") return;
     QFile file(fileName);
     ui->txtScript->clear();
-    if(file.open(QIODevice::ReadOnly|QIODevice::Text))
+    if(file.open(QIODevice::ReadOnly | QIODevice::Text))
     {
         QTextStream stream(&file);
-        QString text = stream.readAll();
-        ui->txtScript->append(text);
+        ui->txtScript->append(stream.readAll());
         file.close();
         if(properties != NULL) properties->Log("Script loaded: " + fileName);
     }
 }
 
-// This function will abort a running script
+// -----------------------------------------------------------------------------
+// on_pbAbort_clicked — interrupts a running script.
+// Note: cannot use emit setInterrupted(true) here because the engine blocks
+// while running. engine->setInterrupted(true) is thread-safe.
+// -----------------------------------------------------------------------------
 void ScriptingConsole::on_pbAbort_clicked()
 {
     if(engine->isRunning == false) return;
-    // Can not use emit setInterrupted(true) here because the
-    // scripting engine blocks when it runs a script.
-    // engine->setInterrupted(true); is thread safe.
     engine->setInterrupted(true);
     if(properties != NULL) properties->Log("Script aborted");
 }
@@ -442,31 +399,31 @@ void ScriptingConsole::on_pbAbort_clicked()
 void ScriptingConsole::on_pbHelp_clicked()
 {
     Help *help = new Help();
-
     help->SetTitle("Script Help");
     help->LoadHelpText(":/scripthelp.txt");
     help->show();
 }
 
-// **********************************************************************************************
-// ScriptButton   *******************************************************************************
-// **********************************************************************************************
+// ---------------------------------------------------------------------------
+// ScriptButton
+// ---------------------------------------------------------------------------
+
 ScriptButton::ScriptButton(QWidget *parent, QString name, QString ScriptFile, int x, int y, Properties *prop, QStatusBar *statusbar)
 {
-    p      = parent;
-    X      = x;
-    Y      = y;
-    Title = name;
-    FileName = ScriptFile;
-    properties = prop;
-    sb = statusbar;
-    engine = NULL;
-    CallOnUpdate = false;
-    CallOnStart = false;
+    p               = parent;
+    X               = x;
+    Y               = y;
+    Title           = name;
+    FileName        = ScriptFile;
+    properties      = prop;
+    sb              = statusbar;
+    engine          = NULL;
+    CallOnUpdate    = false;
+    CallOnStart     = false;
+    ScriptTextFixed = false;
+    reportResults   = true;
     ScriptText.clear();
     scriptAbort.clear();
-    ScriptTextFixed = false;
-    reportResults = true;
 
     pcp = p->parentWidget();
     while(pcp->parentWidget() != NULL) pcp = pcp->parentWidget();
@@ -474,25 +431,23 @@ ScriptButton::ScriptButton(QWidget *parent, QString name, QString ScriptFile, in
     buttonTimer = new QTimer(this);
     connect(buttonTimer, &QTimer::timeout, this, &ScriptButton::onTimerTimeout);
 
-    // Create thread, if parent is "this" then this class must clean up
-    // and delete thread when this object is deleted
     thread = new QThread(this);
     engine = new JSengine(pcp);
-    connect(engine,&JSengine::resultReady,this,&ScriptButton::scriptFinished);
+    connect(engine, &JSengine::resultReady,   this, &ScriptButton::scriptFinished);
     engine->moveToThread(thread);
-    connect(thread, SIGNAL(finished()), this, SLOT(engineDone()));
-    connect(this, SIGNAL(startEngine()), engine, SLOT(runEngine()));
-    connect(this, SIGNAL(setInterrupted(bool)), engine, SLOT(setInterrupted(bool)));
+    connect(thread, SIGNAL(finished()),           this, SLOT(engineDone()));
+    connect(this,   SIGNAL(startEngine()),        engine, SLOT(runEngine()));
+    connect(this,   SIGNAL(setInterrupted(bool)), engine, SLOT(setInterrupted(bool)));
     thread->start();
 }
 
 ScriptButton::~ScriptButton()
 {
     engine->setInterrupted(true);
-    disconnect(engine,&JSengine::resultReady,this,&ScriptButton::scriptFinished);
-    disconnect(thread, SIGNAL(finished()), this, SLOT(engineDone()));
-    disconnect(this, SIGNAL(startEngine()), engine, SLOT(runEngine()));
-    disconnect(this, SIGNAL(setInterrupted(bool)), engine, SLOT(setInterrupted(bool)));
+    disconnect(engine, &JSengine::resultReady,   this, &ScriptButton::scriptFinished);
+    disconnect(thread, SIGNAL(finished()),           this, SLOT(engineDone()));
+    disconnect(this,   SIGNAL(startEngine()),        engine, SLOT(runEngine()));
+    disconnect(this,   SIGNAL(setInterrupted(bool)), engine, SLOT(setInterrupted(bool)));
     thread->quit();
     thread->wait();
     engine->deleteLater();
@@ -501,26 +456,23 @@ ScriptButton::~ScriptButton()
 
 void ScriptButton::Show(void)
 {
-    pbButton = new QPushButton(Title,p);
-    pbButton->setGeometry(X,Y,150,32);
+    pbButton = new QPushButton(Title, p);
+    pbButton->setGeometry(X, Y, 150, 32);
     pbButton->setAutoDefault(false);
-    connect(pbButton,SIGNAL(pressed()),this,SLOT(pbButtonPressed()),Qt::QueuedConnection);
+    connect(pbButton, &QPushButton::pressed, this, &ScriptButton::pbButtonPressed, Qt::QueuedConnection);
     pbButton->installEventFilter(this);
     pbButton->setMouseTracking(true);
 }
 
 bool ScriptButton::eventFilter(QObject *obj, QEvent *event)
 {
-    if(moveWidget(obj, pbButton, pbButton , event)) return true;
+    if(moveWidget(obj, pbButton, pbButton, event)) return true;
     return false;
 }
 
 void ScriptButton::onTimerTimeout(void)
 {
-    // Re-enable the button
     pbButton->setEnabled(true);
-
-    // Stop the timer
     buttonTimer->stop();
 }
 
@@ -538,8 +490,8 @@ void ScriptButton::scriptFinished(QJSValue result)
             if(properties != NULL) properties->Log("Script finished!");
             if(sb != NULL) sb->showMessage("Script finished!");
         }
+        QApplication::restoreOverrideCursor();
     }
-    if(reportResults) QApplication::restoreOverrideCursor();
 }
 
 void ScriptButton::engineDone()
@@ -547,9 +499,6 @@ void ScriptButton::engineDone()
     QApplication::restoreOverrideCursor();
 }
 
-// This event fires when the button is pressed, start script and turn
-// button on when pressed. If pressed when script is running ask user
-// if he would like to abort script.
 void ScriptButton::pbButtonPressed(void)
 {
     pbButton->setFocus();
@@ -557,54 +506,45 @@ void ScriptButton::pbButtonPressed(void)
 }
 
 /*! \brief ButtonPressed
- * This function is called when the button is pressed. It will check if a
- * script is running and if so, it will ask the user if they want to abort
- * the script. If the script is not running, it will load the script from
- * the file and run it.
  *
- * \param AlwaysLoad If true, the script will be loaded from the file even
- *                   if it is already loaded.
+ * If a script is already running, asks the user whether to abort it.
+ * If not running, loads the script from file (if AlwaysLoad or not yet loaded)
+ * and executes it. If scriptAbort is defined it is run instead of the main
+ * script when the user confirms an abort.
+ *
+ * \param AlwaysLoad If true, reloads the script file even if already cached.
  */
 void ScriptButton::ButtonPressed(bool AlwaysLoad)
 {
-    QMessageBox msgBox;
-
     pbButton->setDown(false);
-    // Disable the button
     pbButton->setEnabled(false);
-
-    // Start the timer to re-enable the button after a delay
     buttonTimer->start(250);
 
     if(engine->isRunning)
     {
+        QMessageBox msgBox;
         msgBox.setText("A script is currently running, do you want to abort?");
         msgBox.setInformativeText("Select yes to abort");
         msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
         msgBox.setDefaultButton(QMessageBox::Yes);
-        if (msgBox.exec() == QMessageBox::No) return;
-        // Stop the script
-        if(engine)
-        {
-            emit engine->UpdateHaltedSigNB(false);
-            engine->setInterrupted(true);
-        }
+        if(msgBox.exec() == QMessageBox::No) return;
+        emit engine->UpdateHaltedSigNB(false);
+        engine->setInterrupted(true);
         if(properties != NULL) properties->Log("Script aborted by button");
-        // If abortScript is defined then run it
         if(!scriptAbort.isEmpty())
         {
             if(properties != NULL) properties->Log("Abort script executed");
             engine->script = scriptAbort;
-            emit setInterrupted(false); // Make sure the interrupted flag is clear
+            emit setInterrupted(false);
             emit startEngine();
         }
         return;
     }
-    // Load Script if needed
+
     if(((AlwaysLoad) || (ScriptText.isEmpty())) && !ScriptTextFixed)
     {
         QFile file(FileName);
-        if(file.open(QIODevice::ReadOnly|QIODevice::Text))
+        if(file.open(QIODevice::ReadOnly | QIODevice::Text))
         {
             if(properties != NULL) properties->Log("Script loaded: " + FileName);
             QTextStream stream(&file);
@@ -620,22 +560,22 @@ void ScriptButton::ButtonPressed(bool AlwaysLoad)
     }
     if(!ScriptText.isEmpty())
     {
-        reportResults = AlwaysLoad;
+        reportResults      = AlwaysLoad;
         if(AlwaysLoad) QApplication::setOverrideCursor(Qt::WaitCursor);
-        engine->script = ScriptText;
+        engine->script     = ScriptText;
         engine->scriptCall = scriptCall;
-        emit setInterrupted(false); // Make sure the interrupted flag is clear
+        emit setInterrupted(false);
         emit startEngine();
     }
 }
 
 /*! \brief ProcessCommand
- * This function processes a command that is sent to the script button.
- * The command can be to run the script, abort the script, or get the
- * script text or call.
  *
- * \param cmd The command to process.
- * \return QString The result of the command processing.
+ * Scripting interface for the script button. Supports:
+ *   title           — run the script (same as pressing the button)
+ *   title.scriptText / title.scriptCall / title.scriptAbort — read properties
+ *   title=ABORT     — abort a running script
+ *   title.prop=val  — write scriptText, scriptCall, or scriptAbort
  */
 QString ScriptButton::ProcessCommand(QString cmd)
 {
@@ -644,59 +584,38 @@ QString ScriptButton::ProcessCommand(QString cmd)
     title.clear();
     if(p->objectName() != "") title = p->objectName() + ".";
     title += Title;
-    if(title == cmd.trimmed())
-    {
-        ButtonPressed(false);
-        return("");
-    }
-    if((title + ".scriptText") == cmd.trimmed())
-    {
-        return ScriptText;
-    }
-    if((title + ".scriptCall") == cmd.trimmed())
-    {
-        return scriptCall;
-    }
-    if((title + ".scriptAbort") == cmd.trimmed())
-    {
-        return scriptAbort;
-    }
+
+    if(title == cmd.trimmed())                            { ButtonPressed(false); return ""; }
+    if((title + ".scriptText")  == cmd.trimmed())         return ScriptText;
+    if((title + ".scriptCall")  == cmd.trimmed())         return scriptCall;
+    if((title + ".scriptAbort") == cmd.trimmed())         return scriptAbort;
+
     QStringList resList = cmd.split("=");
-    if((resList.count()==2) && (resList[0].trimmed() == title.trimmed()))
+    if((resList.count() == 2) && (resList[0].trimmed() == title.trimmed()))
     {
         if(resList[1].trimmed().toUpper() == "ABORT")
         {
-            // Here to abort the script if its running
             emit engine->UpdateHaltedSigNB(false);
-            // Stop the script
             if(engine->isRunning == false) return "";
             engine->setInterrupted(true);
             if(properties != NULL) properties->Log("Script aborted by another script");
             return "";
         }
     }
-    if((resList.count()==2) && (resList[0].trimmed() == (title + ".scriptText").trimmed()))
-    {
-        ScriptText = resList[1];
-        return "";
-    }
-    if((resList.count()==2) && (resList[0].trimmed() == (title + ".scriptCall").trimmed()))
-    {
-        scriptCall = resList[1];
-        return "";
-    }
-    if((resList.count()==2) && (resList[0].trimmed() == (title + ".scriptAbort").trimmed()))
-    {
-        scriptAbort = resList[1];
-        return "";
-    }
-    return("?");
+    if((resList.count() == 2) && (resList[0].trimmed() == (title + ".scriptText").trimmed()))
+        { ScriptText = resList[1]; return ""; }
+    if((resList.count() == 2) && (resList[0].trimmed() == (title + ".scriptCall").trimmed()))
+        { scriptCall = resList[1]; return ""; }
+    if((resList.count() == 2) && (resList[0].trimmed() == (title + ".scriptAbort").trimmed()))
+        { scriptAbort = resList[1]; return ""; }
+    return "?";
 }
 
 /*! \brief Update
- * This function is called to update the script button. It will call the
- * ButtonPressed function if CallOnUpdate is true, and it will call the
- * ButtonPressed function if CallOnStart is true.
+ *
+ * Called on each control panel update cycle. Runs the script if CallOnUpdate
+ * is set. On the first call with CallOnStart set, shows a standby message,
+ * runs the script once, then clears the flag.
  */
 void ScriptButton::Update(void)
 {
@@ -713,4 +632,3 @@ void ScriptButton::Update(void)
         msg->hide();
     }
 }
-

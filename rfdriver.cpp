@@ -1,102 +1,108 @@
+// =============================================================================
+// rfdriver.cpp
+//
+// RF driver module classes for the MIPS host application.
+//
+// Depends on:  rfdriver.h, Utilities.h
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
+
 #include "rfdriver.h"
 #include "Utilities.h"
 #include <QElapsedTimer>
 
+// *************************************************************************************************
+// RFdriver  ***************************************************************************************
+// *************************************************************************************************
+
 RFdriver::RFdriver(Ui::MIPS *w, Comms *c)
 {
-    rui = w;
+    rui   = w;
     comms = c;
 
     SetNumberOfChannels(2);
-    connect(rui->pbUpdateRF,SIGNAL(pressed()),this,SLOT(UpdateRFdriver()));
-    connect(rui->leSRFFRQ,SIGNAL(editingFinished()),this,SLOT(leSRFFRQ_editingFinished()));
-    connect(rui->leSRFDRV,SIGNAL(editingFinished()),this,SLOT(leSRFDRV_editingFinished()));
-    connect(rui->pbAutoTune,SIGNAL(pressed()),this,SLOT(AutoTune()));
-    connect(rui->pbAutoRetune,SIGNAL(pressed()),this,SLOT(AutoRetune()));
+    connect(rui->pbUpdateRF,   &QPushButton::pressed,        this, &RFdriver::UpdateRFdriver);
+    connect(rui->leSRFFRQ,     &QLineEdit::returnPressed,    this, &RFdriver::leSRFFRQ_editingFinished);
+    connect(rui->leSRFDRV,     &QLineEdit::returnPressed,    this, &RFdriver::leSRFDRV_editingFinished);
+    connect(rui->pbAutoTune,   &QPushButton::pressed,        this, &RFdriver::AutoTune);
+    connect(rui->pbAutoRetune, &QPushButton::pressed,        this, &RFdriver::AutoRetune);
     rui->leSRFFRQ->setValidator(new QIntValidator);
     rui->leSRFDRV->setValidator(new QDoubleValidator);
 }
 
 void RFdriver::SetNumberOfChannels(int num)
 {
-    disconnect(rui->comboRFchan, SIGNAL(currentTextChanged(QString)),0,0);
+    disconnect(rui->comboRFchan, SIGNAL(currentTextChanged(QString)), 0, 0);
     NumChannels = num;
     rui->comboRFchan->clear();
-    for(int i=0;i<NumChannels;i++)
-    {
-        rui->comboRFchan->addItem(QString::number(i+1));
-    }
-    connect(rui->comboRFchan,SIGNAL(currentTextChanged(QString)),this,SLOT(UpdateRFdriver()));
+    for(int i = 0; i < NumChannels; i++)
+        rui->comboRFchan->addItem(QString::number(i + 1));
+    connect(rui->comboRFchan, &QComboBox::currentTextChanged, this, &RFdriver::UpdateRFdriver);
 }
 
 void RFdriver::Update(void)
 {
-    //QString res;
-
     rui->tabMIPS->setEnabled(false);
     rui->statusBar->showMessage(tr("Updating RF driver controls..."));
-    rui->leSRFFRQ->setText(comms->SendMess("GRFFRQ," + rui->comboRFchan->currentText() + "\n"));
-    rui->leSRFDRV->setText(comms->SendMess("GRFDRV," + rui->comboRFchan->currentText() + "\n"));
+    rui->leSRFFRQ->setText(comms->SendMess("GRFFRQ,"  + rui->comboRFchan->currentText() + "\n"));
+    rui->leSRFDRV->setText(comms->SendMess("GRFDRV,"  + rui->comboRFchan->currentText() + "\n"));
     rui->leGRFPPVP->setText(comms->SendMess("GRFPPVP," + rui->comboRFchan->currentText() + "\n"));
     rui->leGRFPPVN->setText(comms->SendMess("GRFPPVN," + rui->comboRFchan->currentText() + "\n"));
-    rui->leGRFPWR->setText(comms->SendMess("GRFPWR," + rui->comboRFchan->currentText() + "\n"));
+    rui->leGRFPWR->setText(comms->SendMess("GRFPWR,"  + rui->comboRFchan->currentText() + "\n"));
     rui->tabMIPS->setEnabled(true);
     rui->statusBar->showMessage(tr(""));
 }
 
-// Select each channel from the tab to populate the group box
-// and then save the group box parameters.
+// Iterates through all channels, selecting each in turn to populate the group box,
+// and saves the parameters to file.
 void RFdriver::Save(QString Filename)
 {
-    int i;
-    int SelectedChannel = rui->comboRFchan->currentIndex();
-    QString res;
-
     if(NumChannels == 0) return;
     if(Filename == "") return;
+
+    int SelectedChannel = rui->comboRFchan->currentIndex();
     QFile file(Filename);
     if(file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
-        // We're going to streaming text to the file
         QTextStream stream(&file);
         QDateTime dateTime = QDateTime::currentDateTime();
         stream << "# RFdriver settings, " + dateTime.toString() + "\n";
         QObjectList widgetList = rui->gbRFparms->children();
-        // Loop through all the channels
-        for(i=0;i<NumChannels;i++)
+        for(int i = 0; i < NumChannels; i++)
         {
-           rui->comboRFchan->setCurrentIndex(i);
-           // Save the parameters to the file
-           foreach(QObject *w, widgetList)
-           {
-               if(w->objectName().mid(0,3) == "leS")
-               {
-                   res = w->objectName() + "," + rui->comboRFchan->currentText() + "," + ((QLineEdit *)w)->text() + "\n";
-                   stream << res;
-               }
-           }
+            rui->comboRFchan->setCurrentIndex(i);
+            foreach(QObject *w, widgetList)
+            {
+                if(w->objectName().mid(0, 3) == "leS")
+                {
+                    QString res = w->objectName() + "," + rui->comboRFchan->currentText() + ","
+                                  + ((QLineEdit *)w)->text() + "\n";
+                    stream << res;
+                }
+            }
         }
         rui->comboRFchan->setCurrentIndex(SelectedChannel);
         file.close();
-        rui->statusBar->showMessage("Settings saved to " + Filename,2000);
+        rui->statusBar->showMessage("Settings saved to " + Filename, 2000);
     }
 }
 
-// Load all the parameters from the file, for the selected channel
-// write to UI and update MIPS, for the other channels just update MIPS.
+// Loads parameters from file. For the selected channel the UI is updated and MIPS is
+// written; for all other channels only MIPS is updated.
 void RFdriver::Load(QString Filename)
 {
-    int SelectedChannel = rui->comboRFchan->currentIndex();
-    //QString res;
-    QStringList resList;
-
     if(NumChannels == 0) return;
     if(Filename == "") return;
+
+    int SelectedChannel = rui->comboRFchan->currentIndex();
+    QStringList resList;
     QFile file(Filename);
     QObjectList widgetList = rui->gbRFparms->children();
-    if(file.open(QIODevice::ReadOnly|QIODevice::Text))
+    if(file.open(QIODevice::ReadOnly | QIODevice::Text))
     {
-        // We're going to streaming the file to the QString
         QTextStream stream(&file);
         QString line;
         do
@@ -105,12 +111,13 @@ void RFdriver::Load(QString Filename)
             resList = line.split(",");
             if(resList.count() == 3)
             {
-                if(rui->comboRFchan->currentIndex() != (resList[1].toInt()-1)) rui->comboRFchan->setCurrentIndex(resList[1].toInt()-1);
+                if(rui->comboRFchan->currentIndex() != (resList[1].toInt() - 1))
+                    rui->comboRFchan->setCurrentIndex(resList[1].toInt() - 1);
                 foreach(QObject *w, widgetList)
                 {
-                    if(w->objectName().mid(0,3) == "leS")
+                    if(w->objectName().mid(0, 3) == "leS")
                     {
-                        if(resList[2] != "") if(w->objectName() == resList[0])
+                        if(resList[2] != "" && w->objectName() == resList[0])
                         {
                             ((QLineEdit *)w)->setText(resList[2]);
                             ((QLineEdit *)w)->setModified(true);
@@ -122,9 +129,10 @@ void RFdriver::Load(QString Filename)
         } while(!line.isNull());
         rui->comboRFchan->setCurrentIndex(SelectedChannel);
         file.close();
-        rui->statusBar->showMessage("Settings loaded from " + Filename,2000);
+        rui->statusBar->showMessage("Settings loaded from " + Filename, 2000);
     }
 }
+
 void RFdriver::UpdateRFdriver(void)
 {
     Update();
@@ -156,18 +164,14 @@ void RFdriver::AutoTune(void)
     msgBox.setInformativeText("Are you sure you want to continue?");
     msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
     msgBox.setDefaultButton(QMessageBox::Yes);
-    int ret = msgBox.exec();
-    if(ret == QMessageBox::No) return;
+    if(msgBox.exec() == QMessageBox::No) return;
     if(!comms->SendCommand("TUNERFCH," + rui->comboRFchan->currentText() + "\n"))
     {
-        QString msg = "Request failed!, could be a tune in process, only one channel ";
-        msg += "can be tuned or retuned at a time. ";
-        msgBox.setText(msg);
+        msgBox.setText("Request failed! Only one channel can be tuned or retuned at a time.");
         msgBox.setInformativeText("");
         msgBox.setStandardButtons(QMessageBox::Ok);
         msgBox.exec();
     }
-
 }
 
 void RFdriver::AutoRetune(void)
@@ -175,20 +179,17 @@ void RFdriver::AutoRetune(void)
     QMessageBox msgBox;
 
     rui->pbAutoRetune->setDown(false);
-    QString msg = "This function will retune the RF head attached to channel "  + rui->comboRFchan->currentText() + ". ";
+    QString msg = "This function will retune the RF head attached to channel " + rui->comboRFchan->currentText() + ". ";
     msg += "Make sure the RF head is attached and connected to your system as needed. ";
     msg += "This process can take up to 1 minute.\n";
     msgBox.setText(msg);
     msgBox.setInformativeText("Are you sure you want to continue?");
     msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
     msgBox.setDefaultButton(QMessageBox::Yes);
-    int ret = msgBox.exec();
-    if(ret == QMessageBox::No) return;
+    if(msgBox.exec() == QMessageBox::No) return;
     if(!comms->SendCommand("RETUNERFCH," + rui->comboRFchan->currentText() + "\n"))
     {
-        QString msg = "Request failed!, could be a tune in process, only one channel ";
-        msg += "can be tuned or retuned at a time. ";
-        msgBox.setText(msg);
+        msgBox.setText("Request failed! Only one channel can be tuned or retuned at a time.");
         msgBox.setInformativeText("");
         msgBox.setStandardButtons(QMessageBox::Ok);
         msgBox.exec();
@@ -196,54 +197,52 @@ void RFdriver::AutoRetune(void)
 }
 
 // *************************************************************************************************
-// RF driver channel  ******************************************************************************
+// RFchannel  **************************************************************************************
 // *************************************************************************************************
 
 RFchannel::RFchannel(QWidget *parent, QString name, QString MIPSname, int x, int y) : QWidget(parent)
 {
-    p      = parent;
-    Title  = name;
-    MIPSnm = MIPSname;
-    X      = x;
-    Y      = y;
-    comms  = NULL;
+    p          = parent;
+    Title      = name;
+    MIPSnm     = MIPSname;
+    X          = x;
+    Y          = y;
+    comms      = NULL;
     isShutdown = false;
-    Updating = false;
-    UpdateOff = false;
+    Updating   = false;
+    UpdateOff  = false;
 }
 
 void RFchannel::Show(void)
 {
-    // Make a group box
-    gbRF = new QGroupBox(Title,p);
-    gbRF->setGeometry(X,Y,200,180);
+    gbRF = new QGroupBox(Title, p);
+    gbRF->setGeometry(X, Y, 200, 180);
     gbRF->setToolTip(MIPSnm + " RF channel " + QString::number(Channel));
-    // Add labels
-    labels[0] = new QLabel("Drive",gbRF); labels[0]->setGeometry(10,26,59,16);
-    labels[1] = new QLabel("Freq",gbRF);  labels[1]->setGeometry(10,48,59,16);
-    labels[2] = new QLabel("RF+",gbRF);   labels[2]->setGeometry(10,73,59,16);
-    labels[3] = new QLabel("RF-",gbRF);   labels[3]->setGeometry(10,96,59,16);
-    labels[4] = new QLabel("Power",gbRF); labels[4]->setGeometry(10,118,59,16);
 
-    labels[5] = new QLabel("%",gbRF);     labels[5]->setGeometry(159,26,31,21);
-    labels[6] = new QLabel("Hz",gbRF);    labels[6]->setGeometry(159,48,31,21);
-    labels[7] = new QLabel("Vp-p",gbRF);  labels[7]->setGeometry(159,73,31,21);
-    labels[8] = new QLabel("Vp-p",gbRF);  labels[8]->setGeometry(159,96,31,21);
-    labels[9] = new QLabel("W",gbRF);     labels[9]->setGeometry(159,118,31,21);
-    // Build and place the RF parameters group box
-    Drive = new QLineEdit(gbRF); Drive->setGeometry(60,22,91,21);  Drive->setValidator(new QDoubleValidator);
-    Freq = new QLineEdit(gbRF);  Freq->setGeometry(60,46,91,21);   Freq->setValidator(new QIntValidator);
-    RFP = new QLineEdit(gbRF);   RFP->setGeometry(60,70,91,21);    RFP->setReadOnly(true);
-    RFN = new QLineEdit(gbRF);   RFN->setGeometry(60,94,91,21);    RFN->setReadOnly(true);
-    Power = new QLineEdit(gbRF); Power->setGeometry(60,118,91,21); Power->setReadOnly(true);
-    // Place push buttons
-    Tune = new QPushButton("Tune",gbRF);     Tune->setGeometry(10,147,81,32);    Tune->setAutoDefault(false);
-    Retune = new QPushButton("Retune",gbRF); Retune->setGeometry(102,147,81,32); Retune->setAutoDefault(false);
-    // Connect to the event slots
-    connect(Drive,SIGNAL(editingFinished()),this,SLOT(DriveChange()));
-    connect(Freq,SIGNAL(editingFinished()),this,SLOT(FreqChange()));
-    connect(Tune,SIGNAL(pressed()),this,SLOT(TunePressed()));
-    connect(Retune,SIGNAL(pressed()),this,SLOT(RetunePressed()));
+    labels[0] = new QLabel("Drive", gbRF); labels[0]->setGeometry(10,  26, 59, 16);
+    labels[1] = new QLabel("Freq",  gbRF); labels[1]->setGeometry(10,  48, 59, 16);
+    labels[2] = new QLabel("RF+",   gbRF); labels[2]->setGeometry(10,  73, 59, 16);
+    labels[3] = new QLabel("RF-",   gbRF); labels[3]->setGeometry(10,  96, 59, 16);
+    labels[4] = new QLabel("Power", gbRF); labels[4]->setGeometry(10, 118, 59, 16);
+    labels[5] = new QLabel("%",     gbRF); labels[5]->setGeometry(159,  26, 31, 21);
+    labels[6] = new QLabel("Hz",    gbRF); labels[6]->setGeometry(159,  48, 31, 21);
+    labels[7] = new QLabel("Vp-p",  gbRF); labels[7]->setGeometry(159,  73, 31, 21);
+    labels[8] = new QLabel("Vp-p",  gbRF); labels[8]->setGeometry(159,  96, 31, 21);
+    labels[9] = new QLabel("W",     gbRF); labels[9]->setGeometry(159, 118, 31, 21);
+
+    Drive = new QLineEdit(gbRF); Drive->setGeometry(60,  22, 91, 21); Drive->setValidator(new QDoubleValidator);
+    Freq  = new QLineEdit(gbRF); Freq->setGeometry( 60,  46, 91, 21); Freq->setValidator(new QIntValidator);
+    RFP   = new QLineEdit(gbRF); RFP->setGeometry(  60,  70, 91, 21); RFP->setReadOnly(true);
+    RFN   = new QLineEdit(gbRF); RFN->setGeometry(  60,  94, 91, 21); RFN->setReadOnly(true);
+    Power = new QLineEdit(gbRF); Power->setGeometry(60, 118, 91, 21); Power->setReadOnly(true);
+
+    Tune   = new QPushButton("Tune",   gbRF); Tune->setGeometry(  10, 147, 81, 32); Tune->setAutoDefault(false);
+    Retune = new QPushButton("Retune", gbRF); Retune->setGeometry(102, 147, 81, 32); Retune->setAutoDefault(false);
+
+    connect(Drive,  &QLineEdit::returnPressed,   this, &RFchannel::DriveChange);
+    connect(Freq,   &QLineEdit::returnPressed,   this, &RFchannel::FreqChange);
+    connect(Tune,   &QPushButton::pressed,       this, &RFchannel::TunePressed);
+    connect(Retune, &QPushButton::pressed,       this, &RFchannel::RetunePressed);
 
     gbRF->installEventFilter(this);
     gbRF->setMouseTracking(true);
@@ -255,52 +254,41 @@ void RFchannel::Show(void)
 
 bool RFchannel::eventFilter(QObject *obj, QEvent *event)
 {
-    if(moveWidget(obj, gbRF, gbRF , event)) return true;
+    if(moveWidget(obj, gbRF, gbRF, event)) return true;
     if(Updating) return true;
     UpdateOff = true;
-    if(adjustValue(obj,Drive,event,1))
-    {
-        UpdateOff = false;
-        return true;
-    }
+    if(adjustValue(obj, Drive, event, 1))    { UpdateOff = false; return true; }
     UpdateOff = false;
-    if(adjustValue(obj,Freq,event,1000))
-    {
-        UpdateOff = false;
-        return true;
-    }
+    if(adjustValue(obj, Freq,  event, 1000)) { UpdateOff = false; return true; }
     UpdateOff = false;
     return QObject::eventFilter(obj, event);
 }
 
-// Returns a string with the following information
-// Name,RFdrive,RFfreq,RFvolt+,RFvolt-,Power
+// Returns a comma-separated string: Name,RFdrive,RFfreq,RFvolt+,RFvolt-,Power
 QString RFchannel::Report(void)
 {
-    QString res;
     QString title;
-
     title.clear();
     if(p->objectName() != "") title = p->objectName() + ".";
     title += Title;
-    if(isShutdown) res = title + "," + activeDrive;
-    else res = title + "," + Drive->text();
+
+    QString res = title + "," + (isShutdown ? activeDrive : Drive->text());
     res += "," + Freq->text() + "," + RFP->text() + "," + RFN->text() + "," + Power->text();
-    return(res);
+    return res;
 }
 
-// Sets the RFchannel parameters if the name matches and we have atleast 3 total parms
+// Sets RFchannel parameters if the name matches and at least 3 comma-separated values are present.
 bool RFchannel::SetValues(QString strVals)
 {
-    QStringList resList;
     QString title;
-
     title.clear();
     if(p->objectName() != "") title = p->objectName() + ".";
     title += Title;
     if(!strVals.startsWith(title)) return false;
-    resList = strVals.split(",");
+
+    QStringList resList = strVals.split(",");
     if(resList.count() < 3) return false;
+
     Freq->setText(resList[2]);
     Freq->setModified(true);
     emit Freq->editingFinished();
@@ -317,28 +305,27 @@ bool RFchannel::SetValues(QString strVals)
     return true;
 }
 
-// The following commands are processed:
-// title.Drive, read and set
-// title.Freq, read and set
-// title.RF+, read only
-// title.RF-, read only
-// title.Power, read only
-// returns "?" if the command could not be processed
+// Processes scripting commands for this channel:
+//   title.Drive, title.Freq          — read or set
+//   title.RF+, title.RF-, title.Power — read only
+//   title.color=<css>                 — set group box background colour
+// Returns "?" if the command was not handled.
 QString RFchannel::ProcessCommand(QString cmd)
 {
     QString title;
-
     title.clear();
     if(p->objectName() != "") title = p->objectName() + ".";
     title += Title;
     if(!cmd.startsWith(title)) return "?";
+
     if(cmd == title + ".Drive") return Drive->text();
-    if(cmd == title + ".Freq") return Freq->text();
-    if(cmd == title + ".RF+") return RFP->text();
-    if(cmd == title + ".RF-") return RFN->text();
+    if(cmd == title + ".Freq")  return Freq->text();
+    if(cmd == title + ".RF+")   return RFP->text();
+    if(cmd == title + ".RF-")   return RFN->text();
     if(cmd == title + ".Power") return Power->text();
+
     QStringList resList = cmd.split("=");
-    if(resList.count()==2)
+    if(resList.count() == 2)
     {
         if(cmd.startsWith(title + ".Drive"))
         {
@@ -363,62 +350,45 @@ QString RFchannel::ProcessCommand(QString cmd)
     return "?";
 }
 
-// If sVals can contain up to five values, drive, freq, RF+, RF-, Power.
-// This list is a comma seperated string. The values present are used
-// and communications with MIPS is canceled.
-// If its an empty string the MIPS is read for all the needed data.
+// Updates display fields from MIPS or from a pre-fetched comma-separated value string.
+// sVals format: freq,drive,RF+,RF-,Power  (all optional — missing values are read from MIPS).
 void RFchannel::Update(QString sVals)
 {
     QString     res;
     QStringList sValsList;
     bool        ok;
 
-    if(sVals == "") sValsList.clear();
-    else sValsList = sVals.split(",");
+    sValsList = (sVals == "") ? QStringList() : sVals.split(",");
     if(comms == NULL) return;
     if(UpdateOff) return;
     Updating = true;
     comms->rb.clear();
-    if(sValsList.count() < 2)
-    {
-      res = "GRFDRV,"   + QString::number(Channel) + "\n";
-      res = comms->SendMess(res);
-    }
-    else res = sValsList[1];
+
+    if(sValsList.count() < 2) res = comms->SendMess("GRFDRV,"  + QString::number(Channel) + "\n");
+    else                      res = sValsList[1];
     res.toFloat(&ok);
-    if(!Drive->hasFocus() && (res != "") && ok) Drive->setText(res);
-    if(sValsList.count() < 1)
-    {
-      res = "GRFFRQ,"   + QString::number(Channel) + "\n";
-      res = comms->SendMess(res);
-    }
-    else res = sValsList[0];
+    if(!Drive->hasFocus() && res != "" && ok) Drive->setText(res);
+
+    if(sValsList.count() < 1) res = comms->SendMess("GRFFRQ,"  + QString::number(Channel) + "\n");
+    else                      res = sValsList[0];
     res.toInt(&ok);
-    if(!Freq->hasFocus() && (res != "") && ok) Freq->setText(res);
-    if(sValsList.count() < 3)
-    {
-      res = "GRFPPVP,"  + QString::number(Channel) + "\n";
-      res = comms->SendMess(res);
-    }
-    else res = sValsList[2];
+    if(!Freq->hasFocus() && res != "" && ok) Freq->setText(res);
+
+    if(sValsList.count() < 3) res = comms->SendMess("GRFPPVP," + QString::number(Channel) + "\n");
+    else                      res = sValsList[2];
     res.toFloat(&ok);
-    if((res != "") && ok) RFP->setText(res);
-    if(sValsList.count() < 4)
-    {
-      res = "GRFPPVN,"  + QString::number(Channel) + "\n";
-      res = comms->SendMess(res);
-    }
-    else res = sValsList[3];
+    if(res != "" && ok) RFP->setText(res);
+
+    if(sValsList.count() < 4) res = comms->SendMess("GRFPPVN," + QString::number(Channel) + "\n");
+    else                      res = sValsList[3];
     res.toFloat(&ok);
-    if((res != "") && ok) RFN->setText(res);
-    if(sValsList.count() < 5)
-    {
-      res = "GRFPWR,"   + QString::number(Channel) + "\n";
-      res = comms->SendMess(res);
-    }
-    else res = sValsList[4];
+    if(res != "" && ok) RFN->setText(res);
+
+    if(sValsList.count() < 5) res = comms->SendMess("GRFPWR,"  + QString::number(Channel) + "\n");
+    else                      res = sValsList[4];
     res.toFloat(&ok);
-    if((res != "") && ok) Power->setText(res);
+    if(res != "" && ok) Power->setText(res);
+
     Updating = false;
     gbRF->repaint();
 }
@@ -427,8 +397,7 @@ void RFchannel::DriveChange(void)
 {
     if(comms == NULL) return;
     if(!Drive->isModified()) return;
-    QString res = "SRFDRV," + QString::number(Channel) + "," + Drive->text() + "\n";
-    comms->SendCommand(res.toStdString().c_str());
+    comms->SendCommand("SRFDRV," + QString::number(Channel) + "," + Drive->text() + "\n");
     Drive->setModified(false);
 }
 
@@ -436,8 +405,7 @@ void RFchannel::FreqChange(void)
 {
     if(comms == NULL) return;
     if(!Freq->isModified()) return;
-    QString res = "SRFFRQ," + QString::number(Channel) + "," + Freq->text() + "\n";
-    comms->SendCommand(res.toStdString().c_str());
+    comms->SendCommand("SRFFRQ," + QString::number(Channel) + "," + Freq->text() + "\n");
     Freq->setModified(false);
 }
 
@@ -453,17 +421,15 @@ void RFchannel::TunePressed(void)
     msgBox.setInformativeText("Are you sure you want to continue?");
     msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
     msgBox.setDefaultButton(QMessageBox::Yes);
-    int ret = msgBox.exec();
-    if(ret == QMessageBox::No) return;
-    // Set drive to zero then delay
-    QString res = "SRFDRV," + QString::number(Channel) + ",0\n";
-    if(comms != NULL) comms->SendCommand(res.toStdString().c_str());
+    if(msgBox.exec() == QMessageBox::No) return;
+
+    // Zero the drive and wait 1 s before tuning
+    if(comms != NULL) comms->SendCommand("SRFDRV," + QString::number(Channel) + ",0\n");
     QElapsedTimer timer;
     timer.start();
     while(timer.elapsed() < 1000) QApplication::processEvents();
 
-    res = "TUNERFCH," + QString::number(Channel) + "\n";
-    if(comms != NULL) comms->SendCommand(res);
+    if(comms != NULL) comms->SendCommand("TUNERFCH," + QString::number(Channel) + "\n");
 }
 
 void RFchannel::RetunePressed(void)
@@ -478,16 +444,14 @@ void RFchannel::RetunePressed(void)
     msgBox.setInformativeText("Are you sure you want to continue?");
     msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
     msgBox.setDefaultButton(QMessageBox::Yes);
-    int ret = msgBox.exec();
-    if(ret == QMessageBox::No) return;
-    QString res = "RETUNERFCH," + QString::number(Channel) + "\n";
-    if(comms != NULL) comms->SendCommand(res);
+    if(msgBox.exec() == QMessageBox::No) return;
+    if(comms != NULL) comms->SendCommand("RETUNERFCH," + QString::number(Channel) + "\n");
 }
 
 void RFchannel::Shutdown(void)
 {
     if(isShutdown) return;
-    isShutdown = true;
+    isShutdown  = true;
     activeDrive = Drive->text();
     Drive->setText("0");
     Drive->setModified(true);
@@ -504,62 +468,61 @@ void RFchannel::Restore(void)
 }
 
 // *************************************************************************************************
-// RF Closed loop driver channel  ******************************************************************
+// RFCchannel — closed-loop RF driver channel  *****************************************************
 // *************************************************************************************************
 
 RFCchannel::RFCchannel(QWidget *parent, QString name, QString MIPSname, int x, int y) : QWidget(parent)
 {
-    p      = parent;
-    Title  = name;
-    MIPSnm = MIPSname;
-    X      = x;
-    Y      = y;
-    comms  = NULL;
+    p          = parent;
+    Title      = name;
+    MIPSnm     = MIPSname;
+    X          = x;
+    Y          = y;
+    comms      = NULL;
     isShutdown = false;
-    Updating = false;
-    UpdateOff = false;
+    Updating   = false;
+    UpdateOff  = false;
 }
 
 void RFCchannel::Show(void)
 {
-    // Make a group box
-    gbRF = new QGroupBox(Title,p);
-    gbRF->setGeometry(X,Y,200,225);
+    gbRF = new QGroupBox(Title, p);
+    gbRF->setGeometry(X, Y, 200, 225);
     gbRF->setToolTip(MIPSnm + " RF channel " + QString::number(Channel));
-     // Add labels
-    labels[0] = new QLabel("Drive",gbRF);    labels[0]->setGeometry(8,26,59,16);
-    labels[1] = new QLabel("Setpoint",gbRF); labels[1]->setGeometry(8,48,59,16);
-    labels[2] = new QLabel("Freq",gbRF);     labels[2]->setGeometry(8,73,59,16);
-    labels[3] = new QLabel("RF+",gbRF);      labels[3]->setGeometry(8,96,59,16);
-    labels[4] = new QLabel("RF-",gbRF);      labels[4]->setGeometry(8,118,59,16);
-    labels[5] = new QLabel("Power",gbRF);    labels[5]->setGeometry(8,142,59,16);
-    labels[6] = new QLabel("%",gbRF);        labels[6]->setGeometry(159,26,31,21);
-    labels[7] = new QLabel("V",gbRF);        labels[7]->setGeometry(159,48,31,21);
-    labels[8] = new QLabel("Hz",gbRF);       labels[8]->setGeometry(159,73,31,21);
-    labels[9] = new QLabel("Vp-p",gbRF);     labels[9]->setGeometry(159,96,31,21);
-    labels[10] = new QLabel("Vp-p",gbRF);    labels[10]->setGeometry(159,118,31,21);
-    labels[11] = new QLabel("W",gbRF);       labels[11]->setGeometry(159,142,31,21);
-    // Build and place the RF parameters group box
-    Drive = new QLineEdit(gbRF);    Drive->setGeometry(60,22,91,21);     Drive->setValidator(new QDoubleValidator);
-    Setpoint = new QLineEdit(gbRF); Setpoint->setGeometry(60,46,91,21);  Setpoint->setValidator(new QDoubleValidator);
-    Freq = new QLineEdit(gbRF);     Freq->setGeometry(60,70,91,21);      Freq->setValidator(new QIntValidator);
-    RFP = new QLineEdit(gbRF);      RFP->setGeometry(60,94,91,21);       RFP->setReadOnly(true);
-    RFN = new QLineEdit(gbRF);      RFN->setGeometry(60,118,91,21);      RFN->setReadOnly(true);
-    Power = new QLineEdit(gbRF);    Power->setGeometry(60,142,91,21);    Power->setReadOnly(true);
-    // Radio buttons for mode selection
-    Open_Loop   = new QRadioButton("Open loop",gbRF);   Open_Loop->setGeometry(10,166,91,21);
-    Closed_Loop = new QRadioButton("Close loop",gbRF); Closed_Loop->setGeometry(100,166,91,21);
-    // Place push buttons
-    Tune = new QPushButton("Tune",gbRF);     Tune->setGeometry(10,190,81,32);    Tune->setAutoDefault(false);
-    Retune = new QPushButton("Retune",gbRF); Retune->setGeometry(102,190,81,32); Retune->setAutoDefault(false);
-    // Connect to the event slots
-    connect(Drive,SIGNAL(editingFinished()),this,SLOT(DriveChange()));
-    connect(Setpoint,SIGNAL(editingFinished()),this,SLOT(SetpointChange()));
-    connect(Freq,SIGNAL(editingFinished()),this,SLOT(FreqChange()));
-    connect(Tune,SIGNAL(pressed()),this,SLOT(TunePressed()));
-    connect(Retune,SIGNAL(pressed()),this,SLOT(RetunePressed()));
-    connect(Open_Loop,SIGNAL(clicked(bool)),this,SLOT(rbChange()));
-    connect(Closed_Loop,SIGNAL(clicked(bool)),this,SLOT(rbChange()));
+
+    labels[0]  = new QLabel("Drive",    gbRF); labels[0]->setGeometry( 8,  26, 59, 16);
+    labels[1]  = new QLabel("Setpoint", gbRF); labels[1]->setGeometry( 8,  48, 59, 16);
+    labels[2]  = new QLabel("Freq",     gbRF); labels[2]->setGeometry( 8,  73, 59, 16);
+    labels[3]  = new QLabel("RF+",      gbRF); labels[3]->setGeometry( 8,  96, 59, 16);
+    labels[4]  = new QLabel("RF-",      gbRF); labels[4]->setGeometry( 8, 118, 59, 16);
+    labels[5]  = new QLabel("Power",    gbRF); labels[5]->setGeometry( 8, 142, 59, 16);
+    labels[6]  = new QLabel("%",        gbRF); labels[6]->setGeometry(159,  26, 31, 21);
+    labels[7]  = new QLabel("V",        gbRF); labels[7]->setGeometry(159,  48, 31, 21);
+    labels[8]  = new QLabel("Hz",       gbRF); labels[8]->setGeometry(159,  73, 31, 21);
+    labels[9]  = new QLabel("Vp-p",     gbRF); labels[9]->setGeometry(159,  96, 31, 21);
+    labels[10] = new QLabel("Vp-p",     gbRF); labels[10]->setGeometry(159, 118, 31, 21);
+    labels[11] = new QLabel("W",        gbRF); labels[11]->setGeometry(159, 142, 31, 21);
+
+    Drive    = new QLineEdit(gbRF); Drive->setGeometry(   60,  22, 91, 21); Drive->setValidator(new QDoubleValidator);
+    Setpoint = new QLineEdit(gbRF); Setpoint->setGeometry(60,  46, 91, 21); Setpoint->setValidator(new QDoubleValidator);
+    Freq     = new QLineEdit(gbRF); Freq->setGeometry(    60,  70, 91, 21); Freq->setValidator(new QIntValidator);
+    RFP      = new QLineEdit(gbRF); RFP->setGeometry(     60,  94, 91, 21); RFP->setReadOnly(true);
+    RFN      = new QLineEdit(gbRF); RFN->setGeometry(     60, 118, 91, 21); RFN->setReadOnly(true);
+    Power    = new QLineEdit(gbRF); Power->setGeometry(   60, 142, 91, 21); Power->setReadOnly(true);
+
+    Open_Loop   = new QRadioButton("Open loop",  gbRF); Open_Loop->setGeometry(  10, 166, 91, 21);
+    Closed_Loop = new QRadioButton("Close loop", gbRF); Closed_Loop->setGeometry(100, 166, 91, 21);
+
+    Tune   = new QPushButton("Tune",   gbRF); Tune->setGeometry(  10, 190, 81, 32); Tune->setAutoDefault(false);
+    Retune = new QPushButton("Retune", gbRF); Retune->setGeometry(102, 190, 81, 32); Retune->setAutoDefault(false);
+
+    connect(Drive,       &QLineEdit::returnPressed,    this, &RFCchannel::DriveChange);
+    connect(Setpoint,    &QLineEdit::returnPressed,    this, &RFCchannel::SetpointChange);
+    connect(Freq,        &QLineEdit::returnPressed,    this, &RFCchannel::FreqChange);
+    connect(Tune,        &QPushButton::pressed,        this, &RFCchannel::TunePressed);
+    connect(Retune,      &QPushButton::pressed,        this, &RFCchannel::RetunePressed);
+    connect(Open_Loop,   &QRadioButton::clicked,       this, &RFCchannel::rbChange);
+    connect(Closed_Loop, &QRadioButton::clicked,       this, &RFCchannel::rbChange);
 
     gbRF->installEventFilter(this);
     gbRF->setMouseTracking(true);
@@ -573,63 +536,48 @@ void RFCchannel::Show(void)
 
 bool RFCchannel::eventFilter(QObject *obj, QEvent *event)
 {
-    if(moveWidget(obj, gbRF, gbRF , event)) return true;
+    if(moveWidget(obj, gbRF, gbRF, event)) return true;
     if(Updating) return true;
     UpdateOff = true;
-    if(adjustValue(obj,Drive,event,1))
-    {
-        UpdateOff = false;
-        return true;
-    }
-    if(adjustValue(obj,Setpoint,event,1))
-    {
-        UpdateOff = false;
-        return true;
-    }
+    if(adjustValue(obj, Drive,    event, 1))    { UpdateOff = false; return true; }
+    if(adjustValue(obj, Setpoint, event, 1))    { UpdateOff = false; return true; }
     UpdateOff = false;
-    if(adjustValue(obj,Freq,event,1000))
-    {
-        UpdateOff = false;
-        return true;
-    }
+    if(adjustValue(obj, Freq,     event, 1000)) { UpdateOff = false; return true; }
     UpdateOff = false;
     return QObject::eventFilter(obj, event);
 }
 
-// Returns a string with the following information
-// Name,RFdrive,RFsetpoint,RFfreq,RFvolt+,RFvolt-,Power
+// Returns a comma-separated string: Name,RFdrive,RFsetpoint,RFfreq,RFvolt+,RFvolt-,Power
 QString RFCchannel::Report(void)
 {
-    QString res;
     QString title;
-
     title.clear();
     if(p->objectName() != "") title = p->objectName() + ".";
     title += Title;
-    if(isShutdown) res = title + "," + activeDrive;
-    else res = title + "," + Drive->text();
+
+    QString res = title + "," + (isShutdown ? activeDrive : Drive->text());
     res += "," + Freq->text() + "," + Setpoint->text() + "," + RFP->text() + "," + RFN->text() + "," + Power->text();
-    return(res);
+    return res;
 }
 
-// Sets the RFchannel parameters if the name matches and we have at least 4 total parms
+// Sets RFCchannel parameters if the name matches and at least 4 comma-separated values are present.
 bool RFCchannel::SetValues(QString strVals)
 {
-    QStringList resList;
     QString title;
-
     title.clear();
     if(p->objectName() != "") title = p->objectName() + ".";
     title += Title;
     if(!strVals.startsWith(title)) return false;
-    resList = strVals.split(",");
+
+    QStringList resList = strVals.split(",");
     if(resList.count() < 4) return false;
+
     Freq->setText(resList[2]);
     Freq->setModified(true);
     emit Freq->editingFinished();
     if(isShutdown)
     {
-        activeDrive = resList[1];
+        activeDrive    = resList[1];
         activeSetpoint = resList[3];
     }
     else
@@ -644,30 +592,28 @@ bool RFCchannel::SetValues(QString strVals)
     return true;
 }
 
-// The following commands are processed:
-// title.Drive, read and set
-// title.Setpoint, read and set
-// title.Freq, read and set
-// title.RF+, read only
-// title.RF-, read only
-// title.Power, read only
-// returns "?" if the command could not be processed
+// Processes scripting commands for this channel:
+//   title.Drive, title.Setpoint, title.Freq  — read or set
+//   title.RF+, title.RF-, title.Power         — read only
+//   title.color=<css>                          — set group box background colour
+// Returns "?" if the command was not handled.
 QString RFCchannel::ProcessCommand(QString cmd)
 {
     QString title;
-
     title.clear();
     if(p->objectName() != "") title = p->objectName() + ".";
     title += Title;
     if(!cmd.startsWith(title)) return "?";
-    if(cmd == title + ".Drive") return Drive->text();
+
+    if(cmd == title + ".Drive")    return Drive->text();
     if(cmd == title + ".Setpoint") return Setpoint->text();
-    if(cmd == title + ".Freq") return Freq->text();
-    if(cmd == title + ".RF+") return RFP->text();
-    if(cmd == title + ".RF-") return RFN->text();
-    if(cmd == title + ".Power") return Power->text();
+    if(cmd == title + ".Freq")     return Freq->text();
+    if(cmd == title + ".RF+")      return RFP->text();
+    if(cmd == title + ".RF-")      return RFN->text();
+    if(cmd == title + ".Power")    return Power->text();
+
     QStringList resList = cmd.split("=");
-    if(resList.count()==2)
+    if(resList.count() == 2)
     {
         if(cmd.startsWith(title + ".Drive"))
         {
@@ -699,70 +645,52 @@ QString RFCchannel::ProcessCommand(QString cmd)
     return "?";
 }
 
-// If sVals can contain up to five values, drive, freq, RF+, RF-, Power.
-// This list is a comma seperated string. The values present are used
-// and communications with MIPS is canceled.
-// If its an empty string the MIPS is read for all the needed data.
-// Setpoint value and open / closed loop must be read, never sent in sVals.
+// Updates display fields from MIPS or from a pre-fetched comma-separated value string.
+// sVals format: freq,drive,RF+,RF-,Power  (all optional — missing values are read from MIPS).
+// Setpoint and open/closed loop mode are always read from MIPS; they are never passed in sVals.
 void RFCchannel::Update(QString sVals)
 {
     QString     res;
     QStringList sValsList;
     bool        ok;
 
-    if(sVals == "") sValsList.clear();
-    else sValsList = sVals.split(",");
+    sValsList = (sVals == "") ? QStringList() : sVals.split(",");
     if(comms == NULL) return;
     if(UpdateOff) return;
     Updating = true;
     comms->rb.clear();
-    if(sValsList.count() < 2)
-    {
-      res = "GRFDRV,"   + QString::number(Channel) + "\n";
-      res = comms->SendMess(res);
-    }
-    else res = sValsList[1];
+
+    if(sValsList.count() < 2) res = comms->SendMess("GRFDRV,"  + QString::number(Channel) + "\n");
+    else                      res = sValsList[1];
     res.toFloat(&ok);
-    if(!Drive->hasFocus() && (res != "") && ok) Drive->setText(res);
-    if(sValsList.count() < 1)
-    {
-      res = "GRFFRQ,"   + QString::number(Channel) + "\n";
-      res = comms->SendMess(res);
-    }
-    else res = sValsList[0];
+    if(!Drive->hasFocus() && res != "" && ok) Drive->setText(res);
+
+    if(sValsList.count() < 1) res = comms->SendMess("GRFFRQ,"  + QString::number(Channel) + "\n");
+    else                      res = sValsList[0];
     res.toInt(&ok);
-    if(!Freq->hasFocus() && (res != "") && ok) Freq->setText(res);
-    if(sValsList.count() < 3)
-    {
-      res = "GRFPPVP,"  + QString::number(Channel) + "\n";
-      res = comms->SendMess(res);
-    }
-    else res = sValsList[2];
+    if(!Freq->hasFocus() && res != "" && ok) Freq->setText(res);
+
+    if(sValsList.count() < 3) res = comms->SendMess("GRFPPVP," + QString::number(Channel) + "\n");
+    else                      res = sValsList[2];
     res.toFloat(&ok);
-    if((res != "") && ok) RFP->setText(res);
-    if(sValsList.count() < 4)
-    {
-      res = "GRFPPVN,"  + QString::number(Channel) + "\n";
-      res = comms->SendMess(res);
-    }
-    else res = sValsList[3];
+    if(res != "" && ok) RFP->setText(res);
+
+    if(sValsList.count() < 4) res = comms->SendMess("GRFPPVN," + QString::number(Channel) + "\n");
+    else                      res = sValsList[3];
     res.toFloat(&ok);
-    if((res != "") && ok) RFN->setText(res);
-    if(sValsList.count() < 5)
-    {
-      res = "GRFPWR,"   + QString::number(Channel) + "\n";
-      res = comms->SendMess(res);
-    }
-    else res = sValsList[4];
+    if(res != "" && ok) RFN->setText(res);
+
+    if(sValsList.count() < 5) res = comms->SendMess("GRFPWR,"  + QString::number(Channel) + "\n");
+    else                      res = sValsList[4];
     res.toFloat(&ok);
-    if((res != "") && ok) Power->setText(res);
-    // Update the setpoint and mode
-    res = "GRFVLT,"   + QString::number(Channel) + "\n";
-    res = comms->SendMess(res);
+    if(res != "" && ok) Power->setText(res);
+
+    // Setpoint and loop mode are always read from MIPS
+    res = comms->SendMess("GRFVLT,"  + QString::number(Channel) + "\n");
     res.toFloat(&ok);
-    if(!Setpoint->hasFocus() && (res != "") && ok) Setpoint->setText(res);
-    res = "GRFMODE," + QString::number(Channel) + "\n";
-    res = comms->SendMess(res);
+    if(!Setpoint->hasFocus() && res != "" && ok) Setpoint->setText(res);
+
+    res = comms->SendMess("GRFMODE," + QString::number(Channel) + "\n");
     if(res == "AUTO")
     {
         Closed_Loop->setChecked(true);
@@ -787,8 +715,7 @@ void RFCchannel::DriveChange(void)
 {
     if(comms == NULL) return;
     if(!Drive->isModified()) return;
-    QString res = "SRFDRV," + QString::number(Channel) + "," + Drive->text() + "\n";
-    comms->SendCommand(res.toStdString().c_str());
+    comms->SendCommand("SRFDRV," + QString::number(Channel) + "," + Drive->text() + "\n");
     Drive->setModified(false);
 }
 
@@ -796,8 +723,7 @@ void RFCchannel::SetpointChange(void)
 {
     if(comms == NULL) return;
     if(!Setpoint->isModified()) return;
-    QString res = "SRFVLT," + QString::number(Channel) + "," + Setpoint->text() + "\n";
-    comms->SendCommand(res.toStdString().c_str());
+    comms->SendCommand("SRFVLT," + QString::number(Channel) + "," + Setpoint->text() + "\n");
     Setpoint->setModified(false);
 }
 
@@ -805,8 +731,7 @@ void RFCchannel::FreqChange(void)
 {
     if(comms == NULL) return;
     if(!Freq->isModified()) return;
-    QString res = "SRFFRQ," + QString::number(Channel) + "," + Freq->text() + "\n";
-    comms->SendCommand(res.toStdString().c_str());
+    comms->SendCommand("SRFFRQ," + QString::number(Channel) + "," + Freq->text() + "\n");
     Freq->setModified(false);
 }
 
@@ -822,17 +747,15 @@ void RFCchannel::TunePressed(void)
     msgBox.setInformativeText("Are you sure you want to continue?");
     msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
     msgBox.setDefaultButton(QMessageBox::Yes);
-    int ret = msgBox.exec();
-    if(ret == QMessageBox::No) return;
-    // Set drive to zero then delay
-    QString res = "SRFDRV," + QString::number(Channel) + ",0\n";
-    if(comms != NULL) comms->SendCommand(res.toStdString().c_str());
+    if(msgBox.exec() == QMessageBox::No) return;
+
+    // Zero the drive and wait 1 s before tuning
+    if(comms != NULL) comms->SendCommand("SRFDRV," + QString::number(Channel) + ",0\n");
     QElapsedTimer timer;
     timer.start();
     while(timer.elapsed() < 1000) QApplication::processEvents();
 
-    res = "TUNERFCH," + QString::number(Channel) + "\n";
-    if(comms != NULL) comms->SendCommand(res);
+    if(comms != NULL) comms->SendCommand("TUNERFCH," + QString::number(Channel) + "\n");
 }
 
 void RFCchannel::RetunePressed(void)
@@ -847,10 +770,8 @@ void RFCchannel::RetunePressed(void)
     msgBox.setInformativeText("Are you sure you want to continue?");
     msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
     msgBox.setDefaultButton(QMessageBox::Yes);
-    int ret = msgBox.exec();
-    if(ret == QMessageBox::No) return;
-    QString res = "RETUNERFCH," + QString::number(Channel) + "\n";
-    if(comms != NULL) comms->SendCommand(res);
+    if(msgBox.exec() == QMessageBox::No) return;
+    if(comms != NULL) comms->SendCommand("RETUNERFCH," + QString::number(Channel) + "\n");
 }
 
 void RFCchannel::rbChange(void)
@@ -879,12 +800,12 @@ void RFCchannel::rbChange(void)
 void RFCchannel::Shutdown(void)
 {
     if(isShutdown) return;
-    isShutdown = true;
-    activeDrive = Drive->text();
+    isShutdown     = true;
+    activeDrive    = Drive->text();
+    activeSetpoint = Setpoint->text();
     Drive->setText("0");
     Drive->setModified(true);
     emit Drive->editingFinished();
-    activeSetpoint = Setpoint->text();
     Setpoint->setText("0");
     Setpoint->setModified(true);
     emit Setpoint->editingFinished();
@@ -901,4 +822,3 @@ void RFCchannel::Restore(void)
     Setpoint->setModified(true);
     emit Setpoint->editingFinished();
 }
-
