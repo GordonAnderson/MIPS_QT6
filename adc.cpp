@@ -1,6 +1,30 @@
+// =============================================================================
+// adc.cpp
+//
+// Implements two classes for ADC (Analog-to-Digital Converter) interaction:
+//
+//   ADC         — controls the high-speed digitizer tab. Manages buffer
+//                 allocation, acquisition setup, triggering, abort, and
+//                 accumulated average plotting via QCustomPlot.
+//
+//   ADCchannel  — lightweight control panel widget that reads and displays
+//                 a single ADC input channel value, with optional linear
+//                 scaling (display = m * readValue + b) and log scaling.
+//
+// Hardware:    MIPS ADC module (commands: ADCINIT, ADCTRIG, ADCABORT, ADC,n)
+// Depends on:  comms.h, Utilities.h, QCustomPlot
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Created:     2021
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
 #include "adc.h"
 #include "Utilities.h"
 
+// -----------------------------------------------------------------------------
+// ADC constructor — connects UI signals to slots and initialises the plot axes.
+// -----------------------------------------------------------------------------
 ADC::ADC(QObject *parent, Ui::MIPS *w, Comms *c)
 {
     ui = w;
@@ -14,27 +38,31 @@ ADC::ADC(QObject *parent, Ui::MIPS *w, Comms *c)
     QObjectList widgetList = ui->gbADCdigitizer->children();
     foreach(QObject *w, widgetList)
     {
-       if(w->objectName().contains("leS"))
-       {
-           ((QLineEdit *)w)->setValidator(new QIntValidator);
-           connect(((QLineEdit *)w),SIGNAL(editingFinished()),this,SLOT(ADCupdated()));
-       }
+        if(w->objectName().contains("leS"))
+        {
+            ((QLineEdit *)w)->setValidator(new QIntValidator);
+            connect(((QLineEdit *)w),SIGNAL(editingFinished()),this,SLOT(ADCupdated()));
+        }
     }
 
-    connect(ui->pbADCinit,SIGNAL(pressed()),this,SLOT(ADCsetup()));
-    connect(ui->pbADCtrigger,SIGNAL(pressed()),this,SLOT(ADCtrigger()));
-    connect(ui->pbADCabort,SIGNAL(pressed()),this,SLOT(ADCabort()));
-    connect(comms,SIGNAL(ADCvectorReady()),this,SLOT(ADCvectorReady()));
-    connect(comms,SIGNAL(ADCrecordingDone()),this,SLOT(ADCrecordingDone()));
-    connect(ui->chkADCzoomX,SIGNAL(clicked(bool)),this,SLOT(SetZoom()));
-    connect(ui->chkADCzoomY,SIGNAL(clicked(bool)),this,SLOT(SetZoom()));
+    connect(ui->pbADCinit,    SIGNAL(pressed()),          this, SLOT(ADCsetup()));
+    connect(ui->pbADCtrigger, SIGNAL(pressed()),          this, SLOT(ADCtrigger()));
+    connect(ui->pbADCabort,   SIGNAL(pressed()),          this, SLOT(ADCabort()));
+    connect(comms, SIGNAL(ADCvectorReady()),              this, SLOT(ADCvectorReady()));
+    connect(comms, SIGNAL(ADCrecordingDone()),            this, SLOT(ADCrecordingDone()));
+    connect(ui->chkADCzoomX,  SIGNAL(clicked(bool)),     this, SLOT(SetZoom()));
+    connect(ui->chkADCzoomY,  SIGNAL(clicked(bool)),     this, SLOT(SetZoom()));
 
-    // Setup the plot
+    // Setup the plot axes
     ui->ADCdata->xAxis->setLabel("Time, sec");
     ui->ADCdata->yAxis->setLabel("ADC counts");
     ui->ADCdata->addGraph();
 }
 
+// -----------------------------------------------------------------------------
+// Update — polls all ADC parameter line edits from hardware on each update
+// cycle. Skips fields that currently have focus unless UpdateSelected is true.
+// -----------------------------------------------------------------------------
 void ADC::Update(bool UpdateSelected)
 {
     QString res;
@@ -42,17 +70,21 @@ void ADC::Update(bool UpdateSelected)
     QObjectList widgetList = ui->gbADCdigitizer->children();
     foreach(QObject *w, widgetList)
     {
-       if(w->objectName().contains("le"))
-       {
+        if(w->objectName().contains("le"))
+        {
             if((!((QLineEdit *)w)->hasFocus()) || (UpdateSelected))
             {
-               res = "G" + w->objectName().mid(3).replace("_",",") + "\n";
-               ((QLineEdit *)w)->setText(comms->SendMess(res));
+                res = "G" + w->objectName().mid(3).replace("_",",") + "\n";
+                ((QLineEdit *)w)->setText(comms->SendMess(res));
             }
-       }
+        }
     }
 }
 
+// -----------------------------------------------------------------------------
+// ADCupdated — called when any ADC parameter line edit finishes editing.
+// Derives the MIPS set command from the widget object name and sends it.
+// -----------------------------------------------------------------------------
 void ADC::ADCupdated(void)
 {
     QObject* obj = sender();
@@ -64,6 +96,10 @@ void ADC::ADCupdated(void)
     ((QLineEdit *)obj)->setModified(false);
 }
 
+// -----------------------------------------------------------------------------
+// ADCsetup — allocates sample buffers and sends ADCINIT to arm the digitizer.
+// Waits for the comms layer to confirm buffer transfer before returning.
+// -----------------------------------------------------------------------------
 void ADC::ADCsetup(void)
 {
     int NumSamples;
@@ -87,14 +123,14 @@ void ADC::ADCsetup(void)
 
 void ADC::ADCtrigger(void)
 {
-   comms->SendString("ADCTRIG\n");
-   if(mips!= NULL) mips->statusMessage("ADC Triggered!");
+    comms->SendString("ADCTRIG\n");
+    if(mips!= NULL) mips->statusMessage("ADC Triggered!");
 }
 
 void ADC::ADCabort(void)
 {
-   comms->SendString("ADCABORT\n");
-   if(mips!= NULL) mips->statusMessage("ADC aborted! Press ADC setup to restart.");
+    comms->SendString("ADCABORT\n");
+    if(mips!= NULL) mips->statusMessage("ADC aborted! Press ADC setup to restart.");
 }
 
 void ADC::ADCrecordingDone(void)
@@ -103,6 +139,10 @@ void ADC::ADCrecordingDone(void)
     if(mips!= NULL) mips->statusMessage("ADC recording complete!, Press ADC setup to restart.");
 }
 
+// -----------------------------------------------------------------------------
+// ADCvectorReady — called each time a complete ADC vector arrives. Accumulates
+// into ADCbufferSum for averaging, then replots the running average waveform.
+// -----------------------------------------------------------------------------
 void ADC::ADCvectorReady(void)
 {
     int NumSamples;
@@ -113,11 +153,10 @@ void ADC::ADCvectorReady(void)
     for(int i=0; i<NumSamples; i++) ADCbufferSum[i] += ADCbuffer[i];
     Rate = ui->leSADCRATE->text().toInt();
     QVector<double> x(NumSamples), y(NumSamples);
-    // Here when the buffer has been filled
     for(int i=0; i<NumSamples; i++)
     {
-       y[i] = ADCbufferSum[i] / NumScans;
-       x[i] = (float)i / (float)Rate;
+        y[i] = ADCbufferSum[i] / NumScans;
+        x[i] = (float)i / (float)Rate;
     }
     ui->ADCdata->graph(0)->setData(x, y);
     ui->ADCdata->yAxis->rescale(true);
@@ -126,6 +165,10 @@ void ADC::ADCvectorReady(void)
     if(mips!= NULL) mips->statusMessage("ADC vector read!, waiting for next trigger.");
 }
 
+// -----------------------------------------------------------------------------
+// SetZoom — configures QCustomPlot interaction mode based on the X/Y zoom
+// checkboxes. Both unchecked disables all interaction.
+// -----------------------------------------------------------------------------
 void ADC::SetZoom(void)
 {
     if(ui->chkADCzoomX->isChecked() && ui->chkADCzoomY->isChecked())
@@ -152,9 +195,9 @@ void ADC::SetZoom(void)
     }
 }
 
-// *************************************************************************************************
-// ADC channels    *********************************************************************************
-// *************************************************************************************************
+// =============================================================================
+// ADCchannel — control panel widget for a single ADC input channel
+// =============================================================================
 
 ADCchannel::ADCchannel(QWidget *parent, QString name, QString MIPSname, int x, int y) : QWidget(parent)
 {
@@ -164,21 +207,24 @@ ADCchannel::ADCchannel(QWidget *parent, QString name, QString MIPSname, int x, i
     X      = x;
     Y      = y;
     comms  = NULL;
-    Units = "V";
-    m = 1;
-    b = 0;
-    U = 0;
+    Units  = "V";
+    m      = 1;
+    b      = 0;
+    U      = 0;
     Format = "%.3f";
     LLimit.clear();
 }
 
+// Show — creates and positions the widget frame, value display, title label,
+// and units label on the parent control panel.
 void ADCchannel::Show(void)
 {
-    frmADC = new QFrame(p); frmADC->setGeometry(X,Y,180,21);
-    Vadc = new QLineEdit(frmADC); Vadc->setGeometry(70,0,70,21); Vadc->setValidator(new QDoubleValidator);
-    labels[0] = new QLabel(Title,frmADC); labels[0]->setGeometry(0,0,59,16);
-    labels[1] = new QLabel(Units,frmADC);   labels[1]->setGeometry(150,0,31,16);
-    Vadc->setToolTip("ADC input CH" +  QString::number(Channel) + ", "  + MIPSnm);
+    frmADC    = new QFrame(p);              frmADC->setGeometry(X, Y, 180, 21);
+    Vadc      = new QLineEdit(frmADC);      Vadc->setGeometry(70, 0, 70, 21);
+    Vadc->setValidator(new QDoubleValidator);
+    labels[0] = new QLabel(Title, frmADC);  labels[0]->setGeometry(0,   0, 59, 16);
+    labels[1] = new QLabel(Units, frmADC);  labels[1]->setGeometry(150, 0, 31, 16);
+    Vadc->setToolTip("ADC input CH" + QString::number(Channel) + ", " + MIPSnm);
     frmADC->installEventFilter(this);
     frmADC->setMouseTracking(true);
     labels[0]->installEventFilter(this);
@@ -187,7 +233,7 @@ void ADCchannel::Show(void)
 
 bool ADCchannel::eventFilter(QObject *obj, QEvent *event)
 {
-    if(moveWidget(obj, frmADC, labels[0] , event)) return true;
+    if(moveWidget(obj, frmADC, labels[0], event)) return true;
     return false;
 }
 
@@ -220,10 +266,11 @@ bool ADCchannel::SetValues(QString strVals)
     return true;
 }
 
-// The following commands are processed:
-// title            return the offset value
-// title=val        sets the offset value
-// returns "?" if the command could not be processed
+// ProcessCommand — handles scripting API commands for this widget.
+// Supported commands:
+//   title        — returns the current ADC reading
+//   (no set command — ADC channels are read-only)
+// Returns "?" if the command is not recognised.
 QString ADCchannel::ProcessCommand(QString cmd)
 {
     QString title;
@@ -236,23 +283,25 @@ QString ADCchannel::ProcessCommand(QString cmd)
     return "?";
 }
 
-// display = m*readValue + b
+// Update — reads the ADC channel from hardware and updates the display.
+// Applies linear scaling: display = m * readValue + b.
+// If U != 0, applies log scaling: display = 10^(readValue - U).
+// If LLimit is set and the value is below it, displays "OFF".
 void ADCchannel::Update(void)
 {
     QString res;
 
     if(comms == NULL) return;
     comms->rb.clear();
-    res = "ADC,"  + QString::number(Channel) + "\n";
+    res = "ADC," + QString::number(Channel) + "\n";
     res = comms->SendMess(res);
     if(res == "") return;
     float Volts = res.toFloat() * m + b;
     if(U != 0)
     {
-        res = res.asprintf(Format.toStdString().c_str(),pow(10, Volts - U));
+        res = res.asprintf(Format.toStdString().c_str(), pow(10, Volts - U));
         if(!LLimit.isEmpty()) if(Volts < LLimit.toFloat()) res = "OFF";
     }
-    else res = res.asprintf(Format.toStdString().c_str(),Volts);
+    else res = res.asprintf(Format.toStdString().c_str(), Volts);
     if(!Vadc->hasFocus()) Vadc->setText(res);
 }
-
