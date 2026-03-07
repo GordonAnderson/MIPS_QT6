@@ -50,6 +50,10 @@ static const float DCB_REL_ERROR_THRESHOLD  = 0.01f;  // 1 % of setpoint
 // DCbias — tab panel for the built-in DC bias board
 // =============================================================================
 
+// DCbias — constructor. Stores the UI handle and Comms pointer, initialises
+// state flags, sets up QDoubleValidator and event filters on every leSDCB_*
+// line edit across all three bias group boxes, and connects the Update button
+// and power-enable checkbox.
 DCbias::DCbias(Ui::MIPS *w, Comms *c)
 {
     dui   = w;
@@ -78,6 +82,9 @@ DCbias::DCbias(Ui::MIPS *w, Comms *c)
     connect(dui->chkPowerEnable,  SIGNAL(toggled(bool)),   this, SLOT(DCbiasPower()));
 }
 
+// eventFilter — suppresses normal processing while the update cycle is active.
+// Sets UpdateOff during mouse-wheel value adjustment via adjustValue() to
+// prevent background polling from overwriting the in-progress edit.
 bool DCbias::eventFilter(QObject *obj, QEvent *event)
 {
     if(Updating) return true;
@@ -249,12 +256,16 @@ void DCbias::Update(void)
     Updating = false;
 }
 
+// DCbiasPower — slot for chkPowerEnable toggled. Sends SDCPWR,ON or
+// SDCPWR,OFF to the connected MIPS unit.
 void DCbias::DCbiasPower(void)
 {
     if(dui->chkPowerEnable->isChecked()) comms->SendCommand("SDCPWR,ON\n");
     else                                 comms->SendCommand("SDCPWR,OFF\n");
 }
 
+// UpdateDCbias — slot for the manual "Update" push-button. Delegates to
+// Update() to re-read all channel values from MIPS.
 void DCbias::UpdateDCbias(void)
 {
     Update();
@@ -345,6 +356,8 @@ void DCbias::Load(QString Filename)
 // DCBchannel — draggable single-channel DC bias setpoint + readback widget
 // =============================================================================
 
+// DCBchannel — constructor. Records position and identity information;
+// call Show() afterwards to create the visible setpoint/readback widgets.
 DCBchannel::DCBchannel(QWidget *parent, QString name, QString MIPSname, int x, int y)
     : QWidget(parent)
 {
@@ -382,6 +395,9 @@ void DCBchannel::Show(void)
     Vsp->setMouseTracking(true);
 }
 
+// eventFilter — handles drag-to-move via moveWidget() and mouse-wheel value
+// adjustment on Vsp via adjustValue(). Sets UpdateOff while the wheel event
+// is in progress so background polling does not overwrite the edit.
 bool DCBchannel::eventFilter(QObject *obj, QEvent *event)
 {
     if(moveWidget(obj, frmDCB, labels[0], event)) return true;
@@ -396,6 +412,8 @@ bool DCBchannel::eventFilter(QObject *obj, QEvent *event)
     return QObject::eventFilter(obj, event);
 }
 
+// Report — returns a "title,Vsp,Vrb" CSV string representing the channel's
+// current state. While shut down, the saved active voltage replaces Vsp.
 QString DCBchannel::Report(void)
 {
     QString res, title;
@@ -408,6 +426,9 @@ QString DCBchannel::Report(void)
     return(res);
 }
 
+// SetValues — parses a "title,vsp" CSV string and applies the setpoint.
+// While shut down, stores the value for later Restore rather than sending it.
+// Returns false if the string does not match this channel's title.
 bool DCBchannel::SetValues(QString strVals)
 {
     QStringList resList;
@@ -607,6 +628,8 @@ void DCBchannel::Restore(void)
 // DCBoffset — draggable per-board offset/range adjustment widget
 // =============================================================================
 
+// DCBoffset — constructor. Records position and identity information;
+// call Show() afterwards to create the visible offset widget.
 DCBoffset::DCBoffset(QWidget *parent, QString name, QString MIPSname, int x, int y)
     : QWidget(parent)
 {
@@ -618,6 +641,8 @@ DCBoffset::DCBoffset(QWidget *parent, QString name, QString MIPSname, int x, int
     comms  = NULL;
 }
 
+// Show — creates the offset frame with a single Voff line edit, installs
+// drag support on the frame and title label.
 void DCBoffset::Show(void)
 {
     frmDCBO   = new QFrame(p);        frmDCBO->setGeometry(X, Y, 170, 21);
@@ -632,12 +657,14 @@ void DCBoffset::Show(void)
     labels[0]->setMouseTracking(true);
 }
 
+// eventFilter — delegates drag-to-move to moveWidget(); no value-scroll support.
 bool DCBoffset::eventFilter(QObject *obj, QEvent *event)
 {
     if(moveWidget(obj, frmDCBO, labels[0], event)) return true;
     return false;
 }
 
+// Report — returns a "title,offset" CSV string with the current Voff value.
 QString DCBoffset::Report(void)
 {
     QString res, title;
@@ -649,6 +676,9 @@ QString DCBoffset::Report(void)
     return(res);
 }
 
+// SetValues — parses a "title,offset" CSV string and applies the offset,
+// triggering VoffChange to send SDCBOF to MIPS.
+// Returns false if the string does not match this widget's title.
 bool DCBoffset::SetValues(QString strVals)
 {
     QStringList resList;
@@ -691,6 +721,8 @@ QString DCBoffset::ProcessCommand(QString cmd)
     return "?";
 }
 
+// Update — queries GDCBOF,channel from MIPS and refreshes Voff unless it
+// currently has focus.
 void DCBoffset::Update(void)
 {
     QString res;
@@ -703,6 +735,8 @@ void DCBoffset::Update(void)
     if(!Voff->hasFocus()) Voff->setText(res);
 }
 
+// VoffChange — slot called when the user finishes editing Voff. Sends
+// SDCBOF,channel,value to MIPS.
 void DCBoffset::VoffChange(void)
 {
     if(comms == NULL) return;
@@ -716,6 +750,8 @@ void DCBoffset::VoffChange(void)
 // DCBenable — draggable checkbox that controls DC bias board power (SDCPWR)
 // =============================================================================
 
+// DCBenable — constructor. Records position and identity information;
+// call Show() afterwards to create the visible checkbox widget.
 DCBenable::DCBenable(QWidget *parent, QString name, QString MIPSname, int x, int y)
     : QWidget(parent)
 {
@@ -728,6 +764,8 @@ DCBenable::DCBenable(QWidget *parent, QString name, QString MIPSname, int x, int
     isShutdown = false;
 }
 
+// Show — creates the enable frame with a labelled QCheckBox, installs drag
+// support, and connects checkStateChanged to DCBenaChange.
 void DCBenable::Show(void)
 {
     frmDCBena = new QFrame(p);       frmDCBena->setGeometry(X, Y, 170, 21);
@@ -741,12 +779,15 @@ void DCBenable::Show(void)
     DCBena->setMouseTracking(true);
 }
 
+// eventFilter — delegates drag-to-move to moveWidget().
 bool DCBenable::eventFilter(QObject *obj, QEvent *event)
 {
     if(moveWidget(obj, frmDCBena, DCBena, event)) return true;
     return false;
 }
 
+// Report — returns a "title,ON|OFF" CSV string. While shut down, reports the
+// saved enable state rather than the live checkbox state.
 QString DCBenable::Report(void)
 {
     QString res, title;
@@ -761,6 +802,9 @@ QString DCBenable::Report(void)
     return(res);
 }
 
+// SetValues — parses a "title,ON|OFF" CSV string and applies it to the
+// checkbox. While shut down, stores the state for Restore rather than
+// applying it immediately. Returns false if the title does not match.
 bool DCBenable::SetValues(QString strVals)
 {
     QStringList resList;
@@ -813,6 +857,8 @@ QString DCBenable::ProcessCommand(QString cmd)
     return "?";
 }
 
+// Update — queries GDCPWR from MIPS and syncs the checkbox state. Signals
+// are blocked during the update to prevent DCBenaChange from firing.
 void DCBenable::Update(void)
 {
     QString res;
@@ -826,6 +872,8 @@ void DCBenable::Update(void)
     DCBena->blockSignals(oldState);
 }
 
+// DCBenaChange — slot called when the checkbox state changes. Sends
+// SDCPWR,ON or SDCPWR,OFF to MIPS.
 void DCBenable::DCBenaChange(void)
 {
     DCBena->setFocus();
