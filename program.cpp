@@ -28,6 +28,9 @@
 // =============================================================================
 #include "program.h"
 
+// Program — constructor. Stores UI, Comms, and Console references, resolves
+// the application directory for finding bossac, and connects the four firmware
+// action menu items to their respective slots.
 Program::Program(Ui::MIPS *w, Comms *c, Console *con)
 {
     pui     = w;
@@ -101,6 +104,8 @@ void Program::executeProgrammerCommand(QString cmd)
     connect(&process, SIGNAL(readyReadStandardError()),  this, SLOT(readProcessOutput()));
 }
 
+// setBootloaderBootBit — sets the SAM bootloader boot flag via bossac -b.
+// Intended as an error recovery tool; warns the user before proceeding.
 void Program::setBootloaderBootBit(void)
 {
     QMessageBox msgBox;

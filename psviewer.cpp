@@ -92,6 +92,7 @@ psviewer::psviewer(QList<psgPoint *> *P, QWidget *parent) :
     connect(ui->comboPlotItem, &QComboBox::currentIndexChanged,  this, &psviewer::PlotSelectedItem);
 }
 
+// ~psviewer — destructor. Releases the UI form.
 psviewer::~psviewer()
 {
     delete ui;

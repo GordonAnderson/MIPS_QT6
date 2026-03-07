@@ -52,6 +52,7 @@ Compressor::Compressor(QWidget *parent, QString name, QString MIPSname):
     connect(ui->pbARBforceTrigger, &QPushButton::pressed, this, &Compressor::pbARBforceTriggerSlot);
 }
 
+// ~Compressor — destructor. Releases the UI form.
 Compressor::~Compressor()
 {
     delete ui;

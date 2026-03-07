@@ -23,6 +23,9 @@
 // ModBus
 // ---------------------------------------------------------------------------
 
+// ModBus — constructor. Configures and connects a QModbusRtuSerialClient to
+// the given port, baud rate, and parity (N/E/O). Sets Status to "Connected"
+// on success, or an error string on failure.
 ModBus::ModBus(QString Port, QString Baud, QString Parity)
 {
     int p = 0;
@@ -43,6 +46,7 @@ ModBus::ModBus(QString Port, QString Baud, QString Parity)
     else Status = "Connected";
 }
 
+// ~ModBus — disconnects the Modbus device.
 ModBus::~ModBus()
 {
     modbusDevice.disconnect();
@@ -52,6 +56,9 @@ ModBus::~ModBus()
 // ModChannel
 // ---------------------------------------------------------------------------
 
+// ModChannel — constructor. Records the channel identity, Modbus address,
+// register table, channel index, linear scale (M) and offset (B), and
+// display position. Call Show() to create the visible widgets.
 ModChannel::ModChannel(QWidget *parent, QString Name, int Add, int Table, int Chan, float m, float b, QString units,int x, int y)
 {
     modbus     = NULL;
@@ -68,6 +75,8 @@ ModChannel::ModChannel(QWidget *parent, QString Name, int Add, int Table, int Ch
     Writable   = false;
 }
 
+// Show — creates the channel frame with a value line edit and unit label,
+// installs drag support, and issues an initial Read() to populate the field.
 void ModChannel::Show(void)
 {
     frmModChannel = new QFrame(p);                frmModChannel->setGeometry(X,Y,180,21);
@@ -82,12 +91,15 @@ void ModChannel::Show(void)
     Read();
 }
 
+// eventFilter — delegates drag-to-move to moveWidget().
 bool ModChannel::eventFilter(QObject *obj, QEvent *event)
 {
     if(moveWidget(obj, frmModChannel, labels[0] , event)) return true;
     return false;
 }
 
+// Write — converts the displayed value through (val - B) / M and sends an
+// asynchronous Modbus write request. Stores any error in WriteError.
 void ModChannel::Write(void)
 {
     if (modbus == NULL) return;
@@ -129,6 +141,8 @@ void ModChannel::Write(void)
     }
 }
 
+// Read — issues an asynchronous Modbus read request for one register. The
+// result is applied in readReady() when the reply signal fires.
 void ModChannel::Read(void)
 {
     if (modbus == NULL) return;
@@ -142,6 +156,9 @@ void ModChannel::Read(void)
     } else ReadError = tr("Read error: ") + modbus->modbusDevice.errorString();
 }
 
+// readReady — slot called when the Modbus read reply arrives. Applies the
+// linear scale (val * M + B) and updates the line edit, or stores the error
+// string in ReadError on failure.
 void ModChannel::readReady()
 {
     auto reply = qobject_cast<QModbusReply *>(sender());
@@ -168,17 +185,22 @@ void ModChannel::readReady()
     reply->deleteLater();
 }
 
+// Update — called on each control panel update cycle. Issues a Read() unless
+// the channel is writable and the field currently has focus.
 void ModChannel::Update(void)
 {
     if((Writable) && (leModChannel->hasFocus())) return;
     Read();
 }
 
+// leModChannelChange — slot called on returnPressed. Triggers a Modbus write
+// with the current line edit value.
 void ModChannel::leModChannelChange(void)
 {
     Write();
 }
 
+// Report — returns a "title,value" CSV string for method file save.
 QString ModChannel::Report(void)
 {
     QString res;
@@ -191,6 +213,12 @@ QString ModChannel::Report(void)
     return(res);
 }
 
+// ProcessCommand — scripting API for this channel. Supports:
+//   title          — returns the current value
+//   title=val      — sets the value (only if Writable)
+//   title.Update   — triggers an immediate read
+//   title.Status   — returns connection/read/write status
+// Returns "?" for unrecognised commands.
 QString ModChannel::ProcessCommand(QString cmd)
 {
     QString title;
@@ -230,6 +258,9 @@ QString ModChannel::ProcessCommand(QString cmd)
     return "?";
 }
 
+// SetValues — parses a "title,value" CSV string and applies the value.
+// No-op and returns false if the channel is not writable or the title
+// does not match.
 bool ModChannel::SetValues(QString strVals)
 {
     QStringList resList;
