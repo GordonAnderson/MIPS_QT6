@@ -3350,54 +3350,6 @@ QString  ControlPanel::ZMQ(QString command)
 }
 
 
-// *************************************************************************************************
-// Save and load buttons  **************************************************************************
-// *************************************************************************************************
-
-SaveLoad::SaveLoad(QWidget *parent, QString nameSave, QString nameLoad, int x, int y) : QWidget(parent)
-{
-    p          = parent;
-    TitleSave  = nameSave;
-    TitleLoad  = nameLoad;
-    X          = x;
-    Y          = y;
-}
-
-void SaveLoad::Show(void)
-{
-    pbSave = new QPushButton(TitleSave,p);
-    pbSave->setGeometry(X,Y,150,32);
-    pbSave->setAutoDefault(false);
-    pbLoad = new QPushButton(TitleLoad,p);
-    pbLoad->setGeometry(X,Y+40,150,32);
-    pbLoad->setAutoDefault(false);
-    pbSave->setMouseTracking(true);
-    pbLoad->setMouseTracking(true);
-    pbSave->installEventFilter(this);
-    pbLoad->installEventFilter(this);
-    connect(pbSave,SIGNAL(pressed()),this,SLOT(pbSavePressed()));
-    connect(pbLoad,SIGNAL(pressed()),this,SLOT(pbLoadPressed()));
-}
-
-bool SaveLoad::eventFilter(QObject *obj, QEvent *event)
-{
-    if(obj == pbSave){ if(moveWidget(obj, pbSave, pbSave , event)) return true; }
-    if(obj == pbLoad){ if(moveWidget(obj, pbLoad, pbLoad , event)) return true; }
-    return false;
-}
-
-void SaveLoad::pbSavePressed(void)
-{
-    pbSave->setDown(false);
-    emit Save();
-}
-
-void SaveLoad::pbLoadPressed(void)
-{
-//    QApplication::processEvents();
-    pbLoad->setDown(false);
-    emit Load();
-}
 
 // *************************************************************************************************
 // Load Control Panel button  **********************************************************************
