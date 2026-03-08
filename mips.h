@@ -25,6 +25,9 @@ namespace Ui {
 class MIPS;
 }
 
+/*! \brief Blocking one-second delay that keeps the event loop alive (defined in connection.cpp). */
+void delay();
+
 class Console;
 class SettingsDialog;
 class pseDialog;
