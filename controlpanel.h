@@ -76,31 +76,7 @@ class ScriptingConsole;
 
 #include "table.h"
 
-class Slider : public QWidget
-{
-    Q_OBJECT
-public:
-    Slider(QWidget *parent, QString name, QString orentation, int min, int max, int width, int x, int y);
-    void    Show(void);
-    QString Report(void);
-    bool    SetValues(QString strVals);
-    QString ProcessCommand(QString cmd);
-    QWidget          *p;
-    QString          Title;
-    int              X,Y;
-    QString          scriptName = "";
-    QString          scriptCall = "";
-    QString          Orientation;
-    int              Min;
-    int              Max;
-    int              Width;
-signals:
-    void change(QString scriptName);
-private:
-    QSlider        *slider;
-public slots:
-    void sliderChange(int value);
-};
+#include "slider.h"
 
 typedef struct
 {

@@ -33,6 +33,7 @@ qt_add_executable(MIPS WIN32 MACOSX_BUNDLE
     statuslight.cpp statuslight.h
     textmessage.cpp textmessage.h
     table.cpp table.h
+    slider.cpp slider.h
     dcbias.cpp dcbias.h
     device.cpp device.h
     dio.cpp dio.h
