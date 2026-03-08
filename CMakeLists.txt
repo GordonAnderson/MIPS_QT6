@@ -29,6 +29,7 @@ qt_add_executable(MIPS WIN32 MACOSX_BUNDLE
     dcbgroups.cpp dcbgroups.h
     esi.cpp esi.h
     ccontrol.cpp ccontrol.h
+    cpanel.cpp cpanel.h
     dcbias.cpp dcbias.h
     device.cpp device.h
     dio.cpp dio.h

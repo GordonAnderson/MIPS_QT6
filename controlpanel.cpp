@@ -3356,69 +3356,6 @@ QString  ControlPanel::ZMQ(QString command)
 
 
 
-// **********************************************************************************************
-// Cpanel   *************************************************************************************
-// **********************************************************************************************
-
-Cpanel::Cpanel(QWidget *parent, QString name, QString CPfileName, int x, int y, QList<Comms*> S, Properties *prop, ControlPanel *pcp)
-{
-    cp = new ControlPanel(0,CPfileName,S,prop,pcp);
-    p      = parent;
-    X      = x;
-    Y      = y;
-    Title = name;
-    connect(cp,SIGNAL(DialogClosed(QString)),this,SLOT(slotDialogClosed()));
-}
-
-void Cpanel::Show(void)
-{
-    pbButton = new QPushButton(Title,p);
-    pbButton->setGeometry(X,Y,150,32);
-    pbButton->setAutoDefault(false);
-    connect(pbButton,SIGNAL(pressed()),this,SLOT(pbButtonPressed()));
-    pbButton->installEventFilter(this);
-    pbButton->setMouseTracking(true);
-}
-
-void Cpanel::Update(void)
-{
-    if(cp->isVisible()) cp->Update();
-}
-
-bool Cpanel::eventFilter(QObject *obj, QEvent *event)
-{
-    if(moveWidget(obj, pbButton, pbButton , event)) return true;
-    return false;
-}
-
-QString Cpanel::ProcessCommand(QString cmd)
-{
-    QString res;
-
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    if(cmd == res)
-    {
-        pbButtonPressed();
-        return "";
-    }
-    res = Title + ".";
-    if(!cmd.startsWith(res)) return "?";
-    return cp->Command(cmd.mid(res.length()));
-}
-
-void Cpanel::pbButtonPressed(void)
-{
-    pbButton->setDown(false);
-    cp->show();
-    cp->raise();
-}
-
-void Cpanel::slotDialogClosed(void)
-{
-    cp->hide();
-}
 
 // *************************************************************************************************
 // Status Light  ***********************************************************************************

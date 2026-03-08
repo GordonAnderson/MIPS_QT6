@@ -66,29 +66,7 @@ class ScriptingConsole;
 
 #include "ccontrol.h"
 
-// Creates a new control panel and places a button on the parent control
-// panel that will show this new control panel.
-class Cpanel : public QWidget
-{
-    Q_OBJECT
-
-public:
-    explicit Cpanel(QWidget *parent, QString name, QString CPfileName, int x, int y, QList<Comms*> S, Properties *prop, ControlPanel *pcp);
-//    ~Cpanel();
-    void             Show(void);    // This will show the button, pressing the button will show the control panel
-    void             Update(void);
-    QString          ProcessCommand(QString cmd);
-    QString          Title;
-    int              X,Y;
-    QWidget          *p;
-    ControlPanel     *cp;
-    QPushButton      *pbButton;
-private slots:
-    void pbButtonPressed(void);
-    void slotDialogClosed(void);
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
+#include "cpanel.h"
 
 #include "cpbutton.h"
 
