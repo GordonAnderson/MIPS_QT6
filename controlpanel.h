@@ -64,60 +64,7 @@ class ScriptingConsole;
 
 #include "esi.h"
 
-class Ccontrol : public QWidget
-{
-    Q_OBJECT
-public:
-    Ccontrol(QWidget *parent, QString name, QString MIPSname,QString Type, QString Gcmd, QString Scmd, QString RBcmd, QString Units, int x, int y);
-    void    Show(void);
-    void    Update(void);
-    QString Report(void);
-    bool    SetValues(QString strVals);
-    void    SetList(QString strOptions);
-    void    Shutdown(void);
-    void    Restore(void);
-    QString ProcessCommand(QString cmd);
-    QWidget          *p;
-    QString          Title;
-    int              X,Y;
-    int              skipCount = SKIPCOUNT;
-    QString          MIPSnm;
-    QString          Ctype;
-    QString          Dtype;
-    QString          GetCmd;
-    QString          SetCmd;
-    QString          ReadbackCmd;
-    QString          UnitsText;
-    QString          ActiveValue;
-    QString          ShutdownValue;
-    Comms            *comms;
-    bool             isShutdown;
-    float            Step;
-    QFrame           *frmCc=NULL;
-    QPushButton      *pbButton=NULL;
-    QString          scriptName = "";
-    QString          scriptCall = "";
-private:
-    QLineEdit        *Vsp=NULL;
-    QLineEdit        *Vrb;
-    QCheckBox        *chkBox;
-    QComboBox        *comboBox;
-    QLabel           *labels[2]={NULL,NULL};
-    bool             Updating;
-    bool             UpdateOff;
-    bool             firstUpdate = true;
-    QRandomGenerator generator;
-    int              updateCount;
-signals:
-    void change(QString scriptName);
-private slots:
-    void VspChange(void);
-    void pbButtonPressed(void);
-    void chkBoxStateChanged(Qt::CheckState);
-    void comboBoxChanged(int);
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
+#include "ccontrol.h"
 
 // Creates a new control panel and places a button on the parent control
 // panel that will show this new control panel.
