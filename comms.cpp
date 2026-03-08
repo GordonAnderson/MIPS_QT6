@@ -7,7 +7,7 @@
 //
 // Depends on:  comms.h
 // Author:      Gordon Anderson, GAA Custom Electronics, LLC
-// Revised:     March 2026 — Phase 1+2 refactoring
+// Revised:     March 2026 — Phase 3 refactoring
 //
 // Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
 // =============================================================================
@@ -22,6 +22,7 @@
  * Connects all signals required for incoming data and connection-state events.
  */
 Comms::Comms(SettingsDialog *settings, QString Host, QStatusBar *statusbar)
+    : QObject(nullptr)
 {
     p = settings->settings();
     sb = statusbar;
@@ -39,6 +40,51 @@ Comms::Comms(SettingsDialog *settings, QString Host, QStatusBar *statusbar)
     connect(keepAliveTimer, &QTimer::timeout, this, &Comms::slotKeepAlive);
     connect(reconnectTimer, &QTimer::timeout, this, &Comms::slotReconnect);
     connect(&pollTimer, &QTimer::timeout, this, &Comms::pollLoop);
+}
+
+/*! \brief Comms::serialPort
+ * Returns the underlying QSerialPort pointer. Used by program.cpp for bootloader
+ * operations that require direct port manipulation (baud rate, DTR, open/close).
+ */
+QSerialPort* Comms::serialPort() const
+{
+    return serial;
+}
+
+/*! \brief Comms::version
+ * Returns the connected MIPS firmware version as major/minor integers.
+ * Call after GetMIPSnameAndVersion() has been executed.
+ */
+void Comms::version(int &maj, int &min) const
+{
+    maj = major;
+    min = minor;
+}
+
+/*! \brief Comms::setProperties
+ * Sets the Properties logger used for diagnostics. Call before ConnectToMIPS().
+ */
+void Comms::setProperties(Properties *prop)
+{
+    properties = prop;
+}
+
+/*! \brief Comms::setHost
+ * Sets the TCP hostname or IP address used when connecting over the network.
+ * Call before ConnectToMIPS().
+ */
+void Comms::setHost(const QString &h)
+{
+    host = h;
+}
+
+/*! \brief Comms::setSettings
+ * Updates the port/connection settings (port name, baud rate, etc.).
+ * Call before ConnectToMIPS() when settings may have changed.
+ */
+void Comms::setSettings(const SettingsDialog::Settings &s)
+{
+    p = s;
 }
 
 /*! \brief Comms::pollLoop
@@ -598,10 +644,9 @@ bool Comms::SendString(QString message)
     return true;
 }
 
-/*! \brief enableAsyncMessages enables or disables asynchronous message processing.
- * This function sets up a ring buffer for asynchronous messages if enabled.
- * If disabled, it deletes the existing ring buffer to free up resources.
- * @param enable If true, enables asynchronous message processing; otherwise, disables it.
+/*! \brief Comms::enableAsyncMessages
+ * Enables or disables asynchronous (unsolicited) message buffering. When enabled,
+ * allocates a secondary ring buffer; when disabled, releases it.
  */
 void Comms::enableAsyncMessages(bool enable)
 {

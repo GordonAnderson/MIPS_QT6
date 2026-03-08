@@ -51,7 +51,7 @@ void Program::executeProgrammerCommand(QString cmd)
 {
     console->clear();
 
-    if(!comms->serial->isOpen())
+    if(!comms->serialPort()->isOpen())
     {
         console->putData("This application is not connected to MIPS!\n");
         return;
@@ -75,14 +75,14 @@ void Program::executeProgrammerCommand(QString cmd)
     console->putData("MIPS bootloader enabled!\n");
     comms->closeSerialPort();
     QThread::sleep(1);
-    while(comms->serial->isOpen()) QApplication::processEvents();
+    while(comms->serialPort()->isOpen()) QApplication::processEvents();
     QThread::sleep(1);
-    comms->serial->setBaudRate(QSerialPort::Baud1200);
+    comms->serialPort()->setBaudRate(QSerialPort::Baud1200);
     QApplication::processEvents();
-    comms->serial->open(QIODevice::ReadWrite);
-    comms->serial->setDataTerminalReady(false);
+    comms->serialPort()->open(QIODevice::ReadWrite);
+    comms->serialPort()->setDataTerminalReady(false);
     QThread::sleep(1);
-    comms->serial->close();
+    comms->serialPort()->close();
     QApplication::processEvents();
     QThread::sleep(5);
 
@@ -130,7 +130,7 @@ void Program::setBootloaderBootBit(void)
     msgBox.setStandardButtons(QMessageBox::Ok);
     msgBox.exec();
 
-    QString cmd = appPath + "/bossac -b --port=" + comms->serial->portName() + " -R";
+    QString cmd = appPath + "/bossac -b --port=" + comms->serialPort()->portName() + " -R";
     executeProgrammerCommand(cmd);
 }
 
@@ -162,7 +162,7 @@ void Program::saveMIPSfirmware(void)
     msgBox.setStandardButtons(QMessageBox::Ok);
     msgBox.exec();
 
-    QString cmd = appPath + "/bossac -r -b --port=" + comms->serial->portName() + " " + fileName + " -R";
+    QString cmd = appPath + "/bossac -r -b --port=" + comms->serialPort()->portName() + " " + fileName + " -R";
     executeProgrammerCommand(cmd);
 }
 
@@ -221,7 +221,7 @@ void Program::programRFmega(void)
     if(fileName.isEmpty()) return;
 
     QString cmd = appPath + "/bossac -e -w -v -b --offset=0x4000 --port="
-                + comms->serial->portName() + " " + fileName + " -R";
+                + comms->serialPort()->portName() + " " + fileName + " -R";
     executeProgrammerCommand(cmd);
 }
 

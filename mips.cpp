@@ -1161,7 +1161,7 @@ void MIPS::MIPSsetup(void)
     AddTab("FAIMS");
     AddTab("Filament");
     AddTab("Pulse Sequence Generation");
-    res = "Serial port: " + comms->serial->portName() + "\n\n";
+    res = "Serial port: " + comms->serialPort()->portName() + "\n\n";
     ui->lblMIPSconfig->setFixedHeight(471);
     ui->lblMIPSconfig->clear();
     ui->lblMIPSconfig->setText(ui->lblMIPSconfig->text() + res);
@@ -1238,9 +1238,9 @@ void MIPS::MIPSsetup(void)
 // If the serial port of socket is connected then this function exits.
 void MIPS::MIPSconnect(void)
 {
-    comms->p = settings->settings();
-    comms->properties = properties;
-    comms->host = ui->comboMIPSnetNames->currentText();
+    comms->setSettings(settings->settings());
+    comms->setProperties(properties);
+    comms->setHost(ui->comboMIPSnetNames->currentText());
     if(comms->ConnectToMIPS())
     {
        Systems.clear();
@@ -1368,7 +1368,7 @@ void MIPS::FindMIPSandConnect(void)
     if(comms->isMIPS(settings->getPortName(j)))
     {
       delay();
-      comms->host = ui->comboSystems->currentText();
+      comms->setHost(ui->comboSystems->currentText());
       if(comms->ConnectToMIPS())
       {
         console->setEnabled(true);

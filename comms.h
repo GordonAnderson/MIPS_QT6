@@ -7,7 +7,7 @@
 //
 // Depends on:  settingsdialog.h, ringbuffer.h, properties.h
 // Author:      Gordon Anderson, GAA Custom Electronics, LLC
-// Revised:     March 2026 — Phase 1+2 refactoring
+// Revised:     March 2026 — Phase 3 refactoring
 //
 // Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
 // =============================================================================
@@ -49,7 +49,7 @@ enum ADCreadStates
  * Manages connection, command send/receive (with ACK/NAK and timeout retry),
  * ADC vector streaming, async message buffering, and binary file transfer.
  */
-class Comms : public QDialog
+class Comms : public QObject
 {
      Q_OBJECT
 
@@ -97,18 +97,20 @@ public:
     void    GetMIPSnameAndVersion(void);
     QString MIPSname;
     QByteArray readall(void);
-    int major, minor;               // MIPS version major.minor
     bool isMIPS(QString port);
     bool isAMPS(QString port, QString baud);
     QTimer *reconnectTimer;
-    Properties *properties;
 
-    QSerialPort *serial;
+    // Accessors for members used by program.cpp, faims.cpp, and mips.cpp
+    QSerialPort*             serialPort() const;
+    void                     version(int &maj, int &min) const;
+    void                     setProperties(Properties *prop);
+    void                     setHost(const QString &h);
+    void                     setSettings(const SettingsDialog::Settings &s);
+
     QStatusBar *sb;
-    SettingsDialog::Settings p;
     QTcpSocket client;
     bool client_connected;
-    QString host;
     RingBuffer rb;
     RingBuffer *mrb = nullptr;      //!< Optional secondary ring buffer for async (unsolicited) messages.
     QTimer pollTimer;
@@ -121,7 +123,12 @@ public:
 
 private:
     void    msDelay(int ms);
-    bool   serialBusy = false;
+    bool    serialBusy = false;
+    QSerialPort             *serial;
+    SettingsDialog::Settings p;
+    Properties              *properties;
+    QString                  host;
+    int                      major, minor;  //!< MIPS firmware version major.minor
 
 public slots:
     void readData2RingBuffer(void);

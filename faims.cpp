@@ -96,8 +96,10 @@ void FAIMS::SetVersionOptions(void)
     bool state = false;
     QString res;
 
-    if(comms == NULL) return;
-    if((comms->major > 1) || (comms->minor >= 201)) state = true;
+    if(comms == nullptr) return;
+    int maj, min;
+    comms->version(maj, min);
+    if((maj > 1) || (min >= 201)) state = true;
 
     fui->pbFAIMSautoTune->setEnabled(state);
     fui->pbFAIMSautoTuneAbort->setEnabled(state);
