@@ -42,6 +42,8 @@ qt_add_executable(MIPS WIN32 MACOSX_BUNDLE
     help.cpp help.h help.ui
     main.cpp
     mips.cpp mips.h mips.ui
+    connection.cpp
+    fileops.cpp
     mipscomms.cpp mipscomms.h mipscomms.ui
     modbus.cpp modbus.h
     plot.cpp plot.h plot.ui

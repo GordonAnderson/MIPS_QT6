@@ -1,13 +1,24 @@
+// =============================================================================
+// mips.h
+//
+// MIPS — top-level Qt main window for the MIPS instrument control application.
+// Owns all subsystem objects (Comms, DCbias, RFdriver, ARB, FAIMS, etc.) and
+// the main tab widget. Provides a scripting API via Q_INVOKABLE methods.
+//
+// Depends on:  comms.h, controlpanel.h, and all subsystem headers
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — Phase 1+2+3 refactoring
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
 #ifndef MIPS_H
 #define MIPS_H
 
 #include <QMainWindow>
-#include <QtSerialPort/QSerialPort>
 #include <QtCore/QtGlobal>
 #include <QLineEdit>
 #include <QTimer>
 #include <QProcess>
-#include <QtNetwork/QTcpSocket>
 #include <QStatusBar>
 
 namespace Ui {
@@ -36,6 +47,7 @@ class ScriptingConsole;
 class Properties;
 class Plot;
 
+/*! \brief Event filter that removes the highlighted combo-box item when Shift+Backspace is pressed. */
 class DeleteHighlightedItemWhenShiftDelPressedEventFilter : public QObject
 {
      Q_OBJECT
@@ -43,12 +55,20 @@ protected:
     bool eventFilter(QObject *obj, QEvent *event);
 };
 
+/*! \class MIPS
+ * \brief Top-level main window for the MIPS instrument control application.
+ *
+ * Owns all subsystem objects and the main tab widget. Manages serial/TCP
+ * connection lifecycle, file transfer, control-panel loading, and exposes
+ * a scripting API via Q_INVOKABLE and public-slot methods callable from
+ * QJSEngine scripts in ControlPanel.
+ */
 class MIPS : public QMainWindow
 {
     Q_OBJECT
 
 public:
-    explicit MIPS(QWidget *parent = 0, QString CPfilename = "");
+    explicit MIPS(QWidget *parent = nullptr, QString CPfilename = "");
     ~MIPS();
     virtual void closeEvent(QCloseEvent *event);
     virtual void resizeEvent(QResizeEvent* event);
@@ -94,42 +114,41 @@ public slots:
     void slotLogStatusBarMessage(QString);
     void slotPlotDialogClosed(Plot *thisPlot);
 
-    // The following functions are for the scripting system
-    bool SendCommand(QString message);
+    // Scripting API — callable from QJSEngine scripts in ControlPanel
+    bool    SendCommand(QString message);
     QString SendMess(QString message);
-    bool SendCommand(QString MIPSname, QString message);
+    bool    SendCommand(QString MIPSname, QString message);
     QString SendMess(QString MIPSname, QString message);
-    //void msDelay(int ms);
-    void statusMessage(QString message);
-    void popupMessage(QString message);
-    bool popupYesNoMessage(QString message);
+    void    statusMessage(QString message);
+    void    popupMessage(QString message);
+    bool    popupYesNoMessage(QString message);
     QString popupUserInput(QString title, QString message);
 
 private:
-    Properties *properties;
-    Comms *comms;
-    Twave *twave;
-    DCbias *dcbias;
-    DIO *dio;
-    RFdriver *rfdriver;
-    PSG *SeqGen;
-    Program *pgm;
-    Console *console;
-    SettingsDialog *settings;
-    Help *help;
-    ARB *arb;
-    FAIMS *faims;
-    Filament *filament;
-    ControlPanel *cp;
-    bool cp_deleteRequest;
-    ADC *adc;
-    QTimer *pollTimer;
-    QString  appPath;
-    QString RepeatMessage;
-    QList<Comms*> Systems;
+    Properties      *properties;
+    Comms           *comms;
+    Twave           *twave;
+    DCbias          *dcbias;
+    DIO             *dio;
+    RFdriver        *rfdriver;
+    PSG             *SeqGen;
+    Program         *pgm;
+    Console         *console;
+    SettingsDialog  *settings;
+    Help            *help;
+    ARB             *arb;
+    FAIMS           *faims;
+    Filament        *filament;
+    ControlPanel    *cp;
+    bool             cp_deleteRequest;
+    ADC             *adc;
+    QTimer          *pollTimer;
+    QString          appPath;
+    QString          RepeatMessage;
+    QList<Comms*>    Systems;
     ScriptingConsole *scriptconsole;
-    QString NextCP;
-    QList<Plot *>  plots;
+    QString          NextCP;
+    QList<Plot *>    plots;
 };
 
 #endif // MIPS_H
