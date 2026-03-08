@@ -19,6 +19,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QCheckBox>
+#include <QDoubleValidator>
 
 #include "comms.h"
 

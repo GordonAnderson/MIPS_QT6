@@ -17,7 +17,7 @@
 #include <QFrame>
 #include <QLabel>
 #include <QLineEdit>
-
+#include <QDoubleValidator>
 #include "comms.h"
 
 // -----------------------------------------------------------------------------
