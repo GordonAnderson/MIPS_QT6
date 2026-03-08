@@ -60,28 +60,7 @@ class ScriptingConsole;
 
 #include "dacchannel.h"
 
-class DCBiasGroups : public QWidget
-{
-    Q_OBJECT
-signals:
-    void disable(void);
-    void enable(void);
-public:
-    DCBiasGroups(QWidget *parent, int x, int y);
-    void Show(void);
-    QWidget *p;
-    int     X,Y;
-    QComboBox   *comboGroups;
-    bool SetValues(QString strVals);
-    QString Report(void);
-    QGroupBox   *gbDCBgroups;
-private:
-    QCheckBox   *DCBenaGroups;
-private slots:
-    void slotEnableChange(void);
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
+#include "dcbgroups.h"
 
 class ESI : public QWidget
 {

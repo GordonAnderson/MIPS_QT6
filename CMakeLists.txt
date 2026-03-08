@@ -26,6 +26,7 @@ qt_add_executable(MIPS WIN32 MACOSX_BUNDLE
     saveload.cpp saveload.h
     cpbutton.cpp cpbutton.h
     dacchannel.cpp dacchannel.h
+    dcbgroups.cpp dcbgroups.h
     dcbias.cpp dcbias.h
     device.cpp device.h
     dio.cpp dio.h
