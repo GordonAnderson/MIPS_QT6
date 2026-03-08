@@ -13,8 +13,13 @@
 #include "mips.h"
 #include "ui_mips.h"
 #include "comms.h"
+#include "console.h"
 #include "settingsdialog.h"
 #include "properties.h"
+#include "program.h"
+#include "arb.h"
+#include "rfdriver.h"
+#include "dcbias.h"
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QMessageBox>
