@@ -3351,55 +3351,6 @@ QString  ControlPanel::ZMQ(QString command)
 
 
 
-// *************************************************************************************************
-// Load Control Panel button  **********************************************************************
-// *************************************************************************************************
-
-CPbutton::CPbutton(QWidget *parent, QString name, QString CPfilename, int x, int y) : QWidget(parent)
-{
-    p          = parent;
-    Title      = name;
-    FileName   = CPfilename;
-    X          = x;
-    Y          = y;
-}
-
-void CPbutton::Show(void)
-{
-    pbCPselect = new QPushButton(Title,p);
-    pbCPselect->setGeometry(X,Y,150,32);
-    pbCPselect->setAutoDefault(false);
-    connect(pbCPselect,SIGNAL(pressed()),this,SLOT(pbCPselectPressed()));
-    pbCPselect->installEventFilter(this);
-    pbCPselect->setMouseTracking(true);
-}
-
-bool CPbutton::eventFilter(QObject *obj, QEvent *event)
-{
-    if(moveWidget(obj, pbCPselect, pbCPselect , event)) return true;
-    return false;
-}
-
-QString CPbutton::ProcessCommand(QString cmd)
-{
-    QString res;
-
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    if(cmd == res)
-    {
-        pbCPselectPressed();
-        return "";
-    }
-    return "?";
-}
-
-void CPbutton::pbCPselectPressed(void)
-{
-    pbCPselect->setDown(true);
-    emit CPselected(FileName);
-}
 
 // *************************************************************************************************
 // DAC channels    *********************************************************************************

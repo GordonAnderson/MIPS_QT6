@@ -24,6 +24,7 @@ qt_add_executable(MIPS WIN32 MACOSX_BUNDLE
     textlabel.cpp textlabel.h
     shutdown.cpp shutdown.h
     saveload.cpp saveload.h
+    cpbutton.cpp cpbutton.h
     dcbias.cpp dcbias.h
     device.cpp device.h
     dio.cpp dio.h

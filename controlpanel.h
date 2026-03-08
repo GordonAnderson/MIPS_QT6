@@ -224,25 +224,7 @@ protected:
     bool eventFilter(QObject *obj, QEvent *event);
 };
 
-class CPbutton : public QWidget
-{
-    Q_OBJECT
-signals:
-    void CPselected(QString);
-public:
-    CPbutton(QWidget *parent, QString name, QString CPfilename, int x, int y);
-    void Show(void);
-    QString ProcessCommand(QString cmd);
-    QWidget *p;
-    QString Title;
-    QString FileName;
-    int     X,Y;
-    QPushButton *pbCPselect;
-private slots:
-    void pbCPselectPressed(void);
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
+#include "cpbutton.h"
 
 class LightWidget : public QWidget
 {
