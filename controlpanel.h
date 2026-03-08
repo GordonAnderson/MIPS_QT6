@@ -62,38 +62,7 @@ class ScriptingConsole;
 
 #include "dcbgroups.h"
 
-class ESI : public QWidget
-{
-    Q_OBJECT
-public:
-    ESI(QWidget *parent, QString name, QString MIPSname, int x, int y);
-    void Show(void);
-    void Update(void);
-    QString Report(void);
-    QString ProcessCommand(QString cmd);
-    bool SetValues(QString strVals);
-    void Shutdown(void);
-    void Restore(void);
-    QWidget *p;
-    QString Title;
-    int     X,Y;
-    QString MIPSnm;
-    int     Channel;
-    Comms   *comms;
-    bool    isShutdown;
-    QFrame      *frmESI;
-private:
-    QLineEdit   *ESIsp;
-    QLineEdit   *ESIrb;
-    QCheckBox   *ESIena;
-    QLabel      *labels[2];
-    bool        activeEnableState;
-private slots:
-    void ESIChange(void);
-    void ESIenaChange(void);
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
+#include "esi.h"
 
 class Ccontrol : public QWidget
 {
