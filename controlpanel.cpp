@@ -1133,11 +1133,11 @@ void ControlPanel::controlChange(QString scriptName)
  * Locates a file by checking the given path, a possible base path, and the
  * application directory. Returns the full path or empty string if not found.
  */
-QString ControlPanel::findFile(QString filename, QString posiblePath)
+QString ControlPanel::findFile(QString filename, QString possiblePath)
 {
     QString fn = QFileInfo(filename).fileName();
     if(QFileInfo::exists(filename)) return filename;
-    if(QFileInfo::exists(posiblePath + QDir::separator() + fn)) return posiblePath + QDir::separator() + fn;
+    if(QFileInfo::exists(possiblePath + QDir::separator() + fn)) return possiblePath + QDir::separator() + fn;
 #ifdef Q_OS_MAC
     QString ext = ".app";
 #else

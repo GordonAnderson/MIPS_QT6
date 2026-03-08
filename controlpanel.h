@@ -1,6 +1,21 @@
+// =============================================================================
+// controlpanel.h
+//
+// ControlPanel — user-defined custom control panel for MIPS hardware.
+// Reads a .cfg configuration file and dynamically creates widgets (RF channels,
+// DC bias channels, timing generators, scripting, etc.) at positions specified
+// in the file. Supports multiple simultaneous MIPS systems identified by name.
+//
+// Depends on:  comms.h, Utilities.h, and the extracted widget headers
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — Phase 3 refactoring
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
 #ifndef CONTROLPANEL_H
 #define CONTROLPANEL_H
 
+// Project includes
 #include "comms.h"
 #include "mipscomms.h"
 #include "help.h"
@@ -20,9 +35,22 @@
 #include "modbus.h"
 #include "cmdlineapp.h"
 #include "zmqworker.h"
+#include "textlabel.h"
+#include "shutdown.h"
+#include "saveload.h"
+#include "dacchannel.h"
+#include "dcbgroups.h"
+#include "esi.h"
+#include "ccontrol.h"
+#include "cpanel.h"
+#include "cpbutton.h"
+#include "statuslight.h"
+#include "textmessage.h"
+#include "table.h"
+#include "slider.h"
 
+// Qt includes
 #include <QDialog>
-#include <QDebug>
 #include <QLineEdit>
 #include <QGroupBox>
 #include <QLabel>
@@ -30,7 +58,6 @@
 #include <QCheckBox>
 #include <QRadioButton>
 #include <QComboBox>
-#include <QPushButton>
 #include <QProcess>
 #include <QKeyEvent>
 #include <QBoxLayout>
@@ -44,69 +71,47 @@ extern QString Version;
 extern QString MakePathUnique(QString path);  // Source is located in TimingGenerator.cpp
 extern QSemaphore UpdateSemaphore;
 
-#define SKIPCOUNT   1
-
 namespace Ui {
 class ControlPanel;
 }
 
-class ScriptingConsole;
-
-#include "textlabel.h"
-
-#include "shutdown.h"
-
-#include "saveload.h"
-
-#include "dacchannel.h"
-
-#include "dcbgroups.h"
-
-#include "esi.h"
-
-#include "ccontrol.h"
-
-#include "cpanel.h"
-
-#include "cpbutton.h"
-
-#include "statuslight.h"
-
-#include "textmessage.h"
-
-#include "table.h"
-
-#include "slider.h"
-
+/*! \brief Name/value pair used for cfg-file DEFINE substitutions. */
 typedef struct
 {
    QString  Name;
    QString  Value;
 } Define;
 
+/*! \brief Named script text block read from the cfg file. */
 typedef struct
 {
    QString  Name;
    QString  ScriptText;
 } ScriptString;
 
+/*! \class ControlPanel
+ * \brief User-defined custom control panel dialog for MIPS hardware.
+ *
+ * Reads a .cfg configuration file and dynamically creates widgets (RF channels,
+ * DC bias, timing generators, scripting, etc.). Supports multiple simultaneous
+ * MIPS systems. Provides a rich scripting API callable from QJSEngine scripts.
+ */
 class ControlPanel : public QDialog
 {
     Q_OBJECT
 
-//    Q_PROPERTY(bool UpdateHalted WRITE UpdateHalted NOTIFY UpdateHalted)
 signals:
     void DialogClosed(QString NextCP);
 
 public:
-    explicit ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S, Properties *prop, ControlPanel *pcp = NULL);
+    explicit ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S, Properties *prop, ControlPanel *pcp = nullptr);
     ~ControlPanel();
     virtual void reject();
     void Update(void);
     void UpdateStateMachine(void);
     void InitMIPSsystems(QString initFilename);
     void LogDataFile(void);
-    QString findFile(QString filename, QString posiblePath);
+    QString findFile(QString filename, QString possiblePath);
     QList<Comms*> Systems;
     QStatusBar  *statusBar;
     DCBchannel  *FindDCBchannel(QString name);
@@ -115,8 +120,7 @@ public:
     QList<QWidget *> Containers;
     QList<QVariant> cpObjects;
     ControlPanel *parentCP;
-    //QWidget *Container;
-    Q_INVOKABLE bool SystemIsShutdown;  // Cannot access this from a javascript
+    Q_INVOKABLE bool SystemIsShutdown;  //!< Accessible from QJSEngine scripts.
 
 private:
     Comms   *FindCommPort(QString name, QList<Comms*> Systems);
@@ -163,7 +167,7 @@ private:
     QList<Ccontrol *>       Ccontrols;
     QList<QStringList *>    CSVdata;
     QList<Plot *>           plots;
-    Plot                    *activePlot = NULL;
+    Plot                    *activePlot = nullptr;
     QList<Device *>         devices;
     QList<CPbutton *>       CPbuttons;
     QList<ScriptString *>   scriptStr;
@@ -180,7 +184,7 @@ private:
     QList<extProcess *>     extProcs;
     ZmqReqRep               zmq;
     uint                    LogStartTime;
-    int                     skipCount = SKIPCOUNT;
+    int                     skipCount = 1;
     int                     LogPeriod;
     int                     UpdateHoldOff;
     int                     SerialWatchDog;
@@ -203,6 +207,7 @@ private:
     Help                    *help;
     Help                    *comments;
     QMap<QString, QVariant> m_storage;
+
 public slots:
     void pbSD(void);
     void pbSE(void);
