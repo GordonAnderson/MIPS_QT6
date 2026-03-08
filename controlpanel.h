@@ -58,36 +58,7 @@ class ScriptingConsole;
 
 #include "saveload.h"
 
-class DACchannel : public QWidget
-{
-    Q_OBJECT
-public:
-    DACchannel(QWidget *parent, QString name, QString MIPSname, int x, int y);
-    void Show(void);
-    void Update(void);
-    QString Report(void);
-    bool SetValues(QString strVals);
-    QString ProcessCommand(QString cmd);
-    QWidget *p;
-    QString Title;
-    int     X,Y;
-    QString MIPSnm;
-    int     Channel;
-    Comms   *comms;
-    float   b,m;
-    QString Units;
-    QString Format;
-    QFrame      *frmDAC;
-private:
-    QLineEdit   *Vdac;
-    QLabel      *labels[2];
-    bool         Updating;
-    bool         UpdateOff;
-private slots:
-    void VdacChange(void);
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
+#include "dacchannel.h"
 
 class DCBiasGroups : public QWidget
 {
