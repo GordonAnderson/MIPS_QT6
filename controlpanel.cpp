@@ -3358,64 +3358,6 @@ QString  ControlPanel::ZMQ(QString command)
 
 
 
-// *************************************************************************************************
-// Text message  ***********************************************************************************
-// *************************************************************************************************
-
-TextMessage::TextMessage(QWidget *parent, QString name, int x, int y)
-{
-    p      = parent;
-    Title  = name;
-    X      = x;
-    Y      = y;
-    MessageText.clear();
-}
-
-void TextMessage::Show(void)
-{
-    Message = new QLabel(p); Message->setGeometry(X,Y,1,1);
-    label = new QLabel(Title,p); label->setGeometry(X,Y,1,1);
-    label->adjustSize();
-    TL = new QLabel(p);
-    TL->setGeometry(X,Y,1,1);
-    label->installEventFilter(this);
-    label->setMouseTracking(true);
-}
-
-bool TextMessage::eventFilter(QObject *obj, QEvent *event)
-{
-    if(moveWidget(obj, label, label , event)) return true;
-    return false;
-}
-
-void TextMessage::ShowMessage(void)
-{
-    Message->setText(MessageText);
-    Message->adjustSize();
-    Message->setGeometry(X + label->width(),Y,Message->width(),Message->height());
-}
-
-QString TextMessage::ProcessCommand(QString cmd)
-{
-    QString res;
-
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    if(!cmd.startsWith(res)) return "?";
-    if(cmd.trimmed() == res) return MessageText;
-    QStringList resList = cmd.split("=");
-    if(resList.count()==2)
-    {
-       if((res) == resList[0].trimmed())
-       {
-          MessageText = resList[1];
-          ShowMessage();
-          return "";
-       }
-    }
-    return "?";
-}
 
 // *************************************************************************************************
 // Table class implementation  *********************************************************************

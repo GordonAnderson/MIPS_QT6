@@ -31,6 +31,7 @@ qt_add_executable(MIPS WIN32 MACOSX_BUNDLE
     ccontrol.cpp ccontrol.h
     cpanel.cpp cpanel.h
     statuslight.cpp statuslight.h
+    textmessage.cpp textmessage.h
     dcbias.cpp dcbias.h
     device.cpp device.h
     dio.cpp dio.h

@@ -72,26 +72,7 @@ class ScriptingConsole;
 
 #include "statuslight.h"
 
-class TextMessage : public QWidget
-{
-    Q_OBJECT
-public:
-    TextMessage(QWidget *parent, QString name, int x, int y);
-    void Show(void);
-    void ShowMessage(void);
-    QString ProcessCommand(QString cmd);
-    QWidget *p;
-    QString Title;
-    QString MessageText;
-    int     X,Y;
-
-    QLabel *label;
-private:
-    QLabel *TL;
-    QLabel *Message;
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
+#include "textmessage.h"
 
 class Table : public QWidget
 {
