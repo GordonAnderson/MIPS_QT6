@@ -74,31 +74,7 @@ class ScriptingConsole;
 
 #include "textmessage.h"
 
-class Table : public QWidget
-{
-    Q_OBJECT
-public:
-    Table(QWidget *parent, QString name, int rows, int columns, int width, int height, int x, int y);
-    void Show(void);
-    QString Report(void);
-    bool SetValues(QString strVals);
-    QString ProcessCommand(QString cmd);
-    QWidget *p;
-    QString Title;
-    int     Width,Height;
-    int     X,Y;
-    int     Rows,Columns;
-    QString          scriptName = "";
-    QString          scriptCall = "";
-signals:
-    void change(QString scriptName);
-private:
-    QTableWidget *QTable;
-public slots:
-    void tableChange(int row, int column);
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
+#include "table.h"
 
 class Slider : public QWidget
 {
