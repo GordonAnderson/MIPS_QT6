@@ -31,20 +31,21 @@ Function-level doc comments added to all Phase 1 files.
   - Only merge to main after hardware testing confirms nothing broken
 
 ### controlpanel.cpp restructuring plan
-Extract 13 widget classes into separate `cpwidget_*.cpp/.h` files:
-- cpwidget_textlabel
-- cpwidget_shutdown
-- cpwidget_saveload
-- cpwidget_cpbutton
-- cpwidget_dacchannel
-- cpwidget_dcbgroups
-- cpwidget_esi
-- cpwidget_ccontrol
-- cpwidget_cpanel
-- cpwidget_statuslight
-- cpwidget_textmessage
-- cpwidget_table
-- cpwidget_slider
+Extract 13 widget classes into separate `.cpp/.h` files named after
+the class they contain:
+- textlabel.cpp/.h
+- shutdown.cpp/.h
+- saveload.cpp/.h
+- cpbutton.cpp/.h
+- dacchannel.cpp/.h
+- dcbgroups.cpp/.h
+- esi.cpp/.h
+- ccontrol.cpp/.h
+- cpanel.cpp/.h
+- statuslight.cpp/.h
+- textmessage.cpp/.h
+- table.cpp/.h
+- slider.cpp/.h
 
 Extract `loadConfig()` from the 970-line constructor.
 
@@ -61,7 +62,7 @@ Optionally split ControlPanel implementation across:
 - `controlpanel.h` remains the single external include — new widget headers
   are included from it, no other files need updating
 - `Cpanel` has circular dependency with `ControlPanel` — resolve with forward
-  declaration in cpwidget_cpanel.h; cpwidget_cpanel.cpp includes controlpanel.h
+  declaration in cpanel.h; cpanel.cpp includes controlpanel.h
 - `SKIPCOUNT` macro only lives in controlpanel.h — replace with instance
   variable `skipCount` in Ccontrol::Update()
 
