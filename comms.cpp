@@ -294,7 +294,7 @@ void Comms::GetMIPSfile(QString MIPSfile, QString LocalFile)
         if(FileData.length() != 2 * FileSize.toInt())
         {
             // Here if file data block is not the proper size
-            QMessageBox::critical(this, tr("File Error"), "Data block size not correct!");
+            QMessageBox::critical(nullptr, tr("File Error"), "Data block size not correct!");
             return;
         }
         // Read the CRC
@@ -314,12 +314,12 @@ void Comms::GetMIPSfile(QString MIPSfile, QString LocalFile)
             file.open(QIODevice::WriteOnly);
             file.write(fdata);
             file.close();
-            QMessageBox::information(this, tr("File saved"), "File from MIPS read and saved successfully!");
+            QMessageBox::information(nullptr, tr("File saved"), "File from MIPS read and saved successfully!");
         }
         else
         {
             // Here with file CRC error, raise error message
-            QMessageBox::critical(this, tr("File Error"), "CRC error!");
+            QMessageBox::critical(nullptr, tr("File Error"), "CRC error!");
         }
     }
 }
@@ -368,7 +368,7 @@ void Comms::PutMIPSfile(QString MIPSfile, QString LocalFile)
                if((res = getline()) == "")
                 {
                     // Here if we timed out, display error and exit
-                    QMessageBox::critical(this, tr("Data read error"), "Timedout waiting for data from MIPS!");
+                    QMessageBox::critical(nullptr, tr("Data read error"), "Timedout waiting for data from MIPS!");
                     return;
                 }
             }
@@ -376,7 +376,7 @@ void Comms::PutMIPSfile(QString MIPSfile, QString LocalFile)
         }
         SendString("\n");
         SendString(QString().number(CalculateCRC(fdata)) + "\n");
-        QMessageBox::information(this, tr("File saved"), "File sent to MIPS!");
+        QMessageBox::information(nullptr, tr("File saved"), "File sent to MIPS!");
     }
 }
 
@@ -401,7 +401,7 @@ void Comms::GetEEPROM(QString FileName, QString Board, int Addr)
         if(FileData.length() != 2 * FileSize.toInt())
         {
             // Here if file data block is not the proper size
-            QMessageBox::critical(this, tr("File Error"), "Data block size not correct!");
+            QMessageBox::critical(nullptr, tr("File Error"), "Data block size not correct!");
             return;
         }
         // Read the CRC
@@ -421,12 +421,12 @@ void Comms::GetEEPROM(QString FileName, QString Board, int Addr)
             file.open(QIODevice::WriteOnly);
             file.write(fdata);
             file.close();
-            QMessageBox::information(this, tr("File saved"), "EEPROM from MIPS read and saved successfully!");
+            QMessageBox::information(nullptr, tr("File saved"), "EEPROM from MIPS read and saved successfully!");
         }
         else
         {
             // Here with file CRC error, raise error message
-            QMessageBox::critical(this, tr("File Error"), "CRC error!");
+            QMessageBox::critical(nullptr, tr("File Error"), "CRC error!");
         }
     }
 }
@@ -451,7 +451,7 @@ void Comms::GetARBFLASH(QString FileName)
         if(FileData.length() != 2 * FileSize.toInt())
         {
             // Here if file data block is not the proper size
-            QMessageBox::critical(this, tr("File Error"), "Data block size not correct!");
+            QMessageBox::critical(nullptr, tr("File Error"), "Data block size not correct!");
             return;
         }
         // Read the CRC
@@ -471,12 +471,12 @@ void Comms::GetARBFLASH(QString FileName)
             file.open(QIODevice::WriteOnly);
             file.write(fdata);
             file.close();
-            QMessageBox::information(this, tr("File saved"), "FLASH from ARB read and saved successfully!");
+            QMessageBox::information(nullptr, tr("File saved"), "FLASH from ARB read and saved successfully!");
         }
         else
         {
             // Here with file CRC error, raise error message
-            QMessageBox::critical(this, tr("File Error"), "CRC error!");
+            QMessageBox::critical(nullptr, tr("File Error"), "CRC error!");
         }
     }
 }
@@ -506,7 +506,7 @@ void Comms::PutARBFLASH(QString FileName)
         // Send the data to ARB
         SendString(dblock + "\n");
         SendString(QString().number(CalculateCRC(fdata)) + "\n");
-        QMessageBox::information(this, tr("FLASH write"), "ARB module FLASH Written!");
+        QMessageBox::information(nullptr, tr("FLASH write"), "ARB module FLASH Written!");
     }
 }
 
@@ -536,7 +536,7 @@ void Comms::PutEEPROM(QString FileName, QString Board, int Addr)
         // Send the data to MIPS
         SendString(dblock + "\n");
         SendString(QString().number(CalculateCRC(fdata)) + "\n");
-        QMessageBox::information(this, tr("EEPROM write"), "MIPS module's EEPROM Written!");
+        QMessageBox::information(nullptr, tr("EEPROM write"), "MIPS module's EEPROM Written!");
     }
 }
 
@@ -582,7 +582,7 @@ void Comms::ARBupload(QString Faddress, QString FileName)
                 if((res = getline()) == "")
                 {
                     // Here if we timed out, display error and exit
-                    QMessageBox::critical(this, tr("Data read error"), "Timedout waiting for data from ARB!");
+                    QMessageBox::critical(nullptr, tr("Data read error"), "Timedout waiting for data from ARB!");
                     return;
                 }
             }
@@ -590,7 +590,7 @@ void Comms::ARBupload(QString Faddress, QString FileName)
         }
         SendString("\n");
         SendString(QString().number(CalculateCRC(fdata)) + "\n");
-        QMessageBox::information(this, tr("File saved"), "File uploaded to ARB FLASH!");
+        QMessageBox::information(nullptr, tr("File saved"), "File uploaded to ARB FLASH!");
     }
 }
 
@@ -1208,7 +1208,7 @@ bool Comms::openSerialPort()
     }
     else
     {
-        QMessageBox::critical(this, QString("Error"), serial->errorString());
+        QMessageBox::critical(nullptr, QString("Error"), serial->errorString());
         sb->showMessage(tr("Open error: ") + serial->errorString());
     }
     return false;
