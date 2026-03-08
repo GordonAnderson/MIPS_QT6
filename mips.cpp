@@ -1280,7 +1280,7 @@ void MIPS::FindAllMIPSsystems(void)
         {
             QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
             cp = new Comms(settings,"",ui->statusBar);
-            cp->host = ui->comboMIPSnetNames->itemText(j);
+            cp->setHost(ui->comboMIPSnetNames->itemText(j));
             // if(cp->isMIPS(settings->getPortName(j)))    //Not sure why this was here?
             if(cp->ConnectToMIPS())
             {
@@ -1299,12 +1299,12 @@ void MIPS::FindAllMIPSsystems(void)
           ui->statusBar->showMessage("Trying: " + settings->getPortName(j));
           QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
           cp = new Comms(settings,"",ui->statusBar);
-          cp->properties = properties;
+          cp->setProperties(properties);
           if(cp->isMIPS(settings->getPortName(j)))
           {
             delay();
             QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
-            cp->host = "";
+            cp->setHost("");
             cp->SendString("ECHO,FALSE\n");
             if(cp->ConnectToMIPS())
             {
@@ -1320,7 +1320,7 @@ void MIPS::FindAllMIPSsystems(void)
                   {
                     delay();
                     QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
-                    cp->host = "";
+                    cp->setHost("");
                     //cp->SendString("RTM,ON\n");  // Port is closed here
                     if(cp->ConnectToMIPS())
                     {
