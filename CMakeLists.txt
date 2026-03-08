@@ -21,6 +21,7 @@ qt_add_executable(MIPS WIN32 MACOSX_BUNDLE
     compressor.cpp compressor.h compressor.ui
     console.cpp console.h
     controlpanel.cpp controlpanel.h controlpanel.ui
+    textlabel.cpp textlabel.h
     dcbias.cpp dcbias.h
     device.cpp device.h
     dio.cpp dio.h

@@ -3351,36 +3351,6 @@ QString  ControlPanel::ZMQ(QString command)
 
 
 // *************************************************************************************************
-// Text box  ***************************************************************************************
-// *************************************************************************************************
-
-TextLabel::TextLabel(QWidget *parent, QString name, int s, int x, int y) : QWidget(parent)
-{
-    p      = parent;
-    Title  = name;
-    Size   = s;
-    X      = x;
-    Y      = y;
-}
-
-void TextLabel::Show(void)
-{
-    label = new QLabel(Title,p); label->setGeometry(X,Y,1,1);
-    QFont font = label->font();
-    font.setPointSize(Size);
-    label->setFont(font);
-    label->adjustSize();
-    label->installEventFilter(this);
-    label->setMouseTracking(true);
-}
-
-bool TextLabel::eventFilter(QObject *obj, QEvent *event)
-{
-    if(moveWidget(obj, label, label , event)) return true;
-    return false;
-}
-
-// *************************************************************************************************
 // System shutdown and restore button  *************************************************************
 // *************************************************************************************************
 

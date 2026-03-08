@@ -52,20 +52,7 @@ class ControlPanel;
 
 class ScriptingConsole;
 
-class TextLabel : public QWidget
-{
-    Q_OBJECT
-public:
-    TextLabel(QWidget *parent, QString name, int size, int x, int y);
-    void Show(void);
-    QWidget *p;
-    QString Title;
-    int     X,Y;
-    int     Size;
-    QLabel  *label;
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
+#include "textlabel.h"
 
 class Shutdown : public QWidget
 {
