@@ -3351,54 +3351,6 @@ QString  ControlPanel::ZMQ(QString command)
 
 
 // *************************************************************************************************
-// System shutdown and restore button  *************************************************************
-// *************************************************************************************************
-
-Shutdown::Shutdown(QWidget *parent, QString name, int x, int y) : QWidget(parent)
-{
-    p      = parent;
-    Title  = name;
-    X      = x;
-    Y      = y;
-}
-
-void Shutdown::Show(void)
-{
-    pbShutdown = new QPushButton("System shutdown",p);
-    pbShutdown->setGeometry(X,Y,150,32);
-    pbShutdown->setAutoDefault(false);
-    connect(pbShutdown,SIGNAL(pressed()),this,SLOT(pbPressed()));
-    pbShutdown->installEventFilter(this);
-    pbShutdown->setMouseTracking(true);
-}
-
-bool Shutdown::eventFilter(QObject *obj, QEvent *event)
-{
-    if(moveWidget(obj, pbShutdown, pbShutdown , event)) return false;
-    return false;
-}
-
-void Shutdown::SetState(bool ShutDown)
-{
-    if(ShutDown) pbShutdown->setText("System enable");
-    else pbShutdown->setText("System shutdown");
-}
-
-void Shutdown::pbPressed(void)
-{
-    if(pbShutdown->text() == "System shutdown")
-    {
-        pbShutdown->setText("System enable");
-        emit ShutdownSystem();
-    }
-    else
-    {
-        pbShutdown->setText("System shutdown");
-        emit EnableSystem();
-    }
-}
-
-// *************************************************************************************************
 // Save and load buttons  **************************************************************************
 // *************************************************************************************************
 

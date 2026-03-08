@@ -54,25 +54,7 @@ class ScriptingConsole;
 
 #include "textlabel.h"
 
-class Shutdown : public QWidget
-{
-    Q_OBJECT
-signals:
-    void ShutdownSystem(void);
-    void EnableSystem(void);
-public:
-    Shutdown(QWidget *parent, QString name, int x, int y);
-    void Show(void);
-    void SetState(bool ShutDown);
-    QWidget *p;
-    QString Title;
-    int     X,Y;
-    QPushButton *pbShutdown;
-private slots:
-    void pbPressed(void);
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
+#include "shutdown.h"
 
 class SaveLoad : public QWidget
 {
