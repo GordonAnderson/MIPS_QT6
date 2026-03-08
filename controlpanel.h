@@ -125,6 +125,7 @@ private:
     Ui::ControlPanel *ui;
     TCPserver *tcp;
     void    msDelay(int ms);
+    void    loadConfig(QString fileName);
     QMenu   *contextMenu2Dplot;
     QAction *Comments;
     QAction *SaveCP;

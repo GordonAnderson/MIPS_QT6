@@ -1,96 +1,17 @@
+// =============================================================================
+// controlpanel.cpp
 //
-// Controlpanel.cpp
+// ControlPanel — user-defined custom control panel for MIPS hardware.
+// Reads a .cfg configuration file and dynamically creates widgets (RF channels,
+// DC bias channels, timing generators, scripting, etc.) at positions specified
+// in the file. Supports multiple simultaneous MIPS systems identified by name.
 //
-// This file contains the classes used to create a user defined control panel. The control panels
-// display MIPS controls for most features supported by MIPS. The user can define a background
-// image and then place controls such as RF channels and DC bias channels at the locations the user
-// defines on the background image.
+// Depends on:  controlpanel.h, Utilities.h
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — Phase 3 refactoring (loadConfig extraction)
 //
-// This feature also supports multiple MIPS systems connected to your PC at the same time. Use the
-// "Find MIPS and Connect" button to find all connected MIPS system. The control panel configuration
-// file uses the MIPS name to determine where the channels are located. Its important that you
-// define a unique name for each MIPS system.
-//
-// The control panel also support the IFT (Ion Funnel Trap). This includes generation of an IFT
-// trapping pulse sequence as well as calling an external application to acquire data from you
-// detection system. Additionally a more generic timing generator control has been added.
-//
-// Feb 26, 2019, new control idea(s)
-//  Implement a generic control with the following features:
-//      - TYPE, defines the control type
-//              - LineEdit, CheckBox, Button
-//      - Set command, to set the MIPS value from LineEdit box
-//      - Get command, to read the MIPS value to update the LineEdit box
-//      - Readback command, if set add a readback box and this command will read the value
-//  Syntax example:
-//      Ccontrol,name,mips name,type,get command,set command,readback command,units,X,Y
-//  This idea can be expanded to check boxes, radio buttons, etc.
-//  This would allow a MIPS status page with control of system parameters.
-//  The cool thing is this is not hard to implement and will support the FAIMSFB system.
-//  For FAIMSFB I need to figureout how to do the plotting and heat maps. Generic plotting
-//  is an idea I have thought about and need to mature this concept.
-//  How can I support tabs or multiple control panel pages?
-//      - Could have a control panel call another control panel basically a
-//        child control panel. Somehow I would need to pass control, to the child.
-//      - Could allow multiple control panels, this whould be pretty easy to do.
-//      - Could have a master control panel and buttons to start other control panels,
-//        how would methode save and load work in this case? (leading idea)
-//      - Have a button that is tied to a control panel config file. load all the
-//        control panels on start. when the button is pressed show the panel.
-//
-//  Add groupbox
-//      GroupBox,name,width,hieght,X,Y  // Command to start group
-//      GroupBoxEnd                     // Signals end of group box
-//      Commands after group box is defined and before the end will be
-//      placed in the group boc and there names will have the groupbox
-//      name prepended delineated by a ".".
-//
-//  Add plotting capability
-//      Could tie to scripting and popup a plot that is populated by a script. The script
-//      could issue all the MIPS commands to scan and plot.
-//
-//  Buttons tied to scripts
-//      This could allow plotting / scanning. You press the button and the script loads
-//      and plays, the button name changes to abort. (leading idea)
-//      Light up the button and if pressed again ask if the user would like to abort.
-//      Add script commands for:
-//          - Open file for save and load
-//          - Write string to file
-//          - Read string from file
-//          - File CSV IO
-//      Need to add script commands to allow generation of a plot and live feed of data.
-//      Performance could be an issue here.
-//      How to tie a script to a static plot on the control panel, via its name?
-//
-//  FAIMSFB specific notes:
-//      A scan command could cause FAIMSFB to start scanning and send back the scan data
-//      records. The scan data could be the scan point number followed by the specific
-//      values, these would all be monitor or readback values. Plot(s) would be crreated
-//      live. This could be a speed issues, maybe just send the electrometer data. The scan
-//      data would not use a handshake, it would just be sent from MIPS.
-//
-//  Add script command for file selection dialog pop up. Return the selected
-//  file name or empty string on cancel.
-//      SelectFile(type,message,ext)
-//
-//  Add csv file support for scripting. Call a function with file name that will
-//  read the full file and make a list of lists. The first first list is of each
-//  line in the file. The second list is of the entries in each line. This will
-//  be a list of QStringLists. Need the following functions:
-//      ReadCSVfile(filename)
-//      ReadCSVentry(int line, int entry)
-//
-//  Add Define capability, Define,Name,Value. This will define Name to Value and every
-//  place Name is used in the control panel it will be replaced with Value. Case sensative.
-//  Defines so into a list and can be over written. Defines are always strings. You can not
-//  perform any opearations on Defined values. Create a type that is a Name,Value set of QStrings.
-//  Create a function to perform the subsitution, do this at or after string split.
-//
-//  Add Subroutine capability, Subroutine,Name,args... This will define a subroutine
-//  named Name with a variable number of arguments. To call; Call,Name,args....
-//
-// Gordon Anderson
-//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
 #include "controlpanel.h"
 #include "ui_controlpanel.h"
 #include "cdirselectiondlg.h"
@@ -122,24 +43,18 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
     ui(new Ui::ControlPanel)
 {
     m_storage.clear();
-    QString readOption;
-    QStringList resList;
-    qint64 filePos = -1,optionsFilePos = -1;
-    int NextRecord;
-    QList<Define *> savedDefines;
     ui->setupUi(this);
     ControlPanel::setWindowTitle("Custom control panel, right click for options");
     Systems = S;
     // Init a number of variables
-    float StepSize = 1.0;
     parentCP = pcp;
     SerialWatchDog = 0;
     HelpFile.clear();
     LoadedConfig = false;
-    mc        = NULL;
-    DCBgroups = NULL;
-    statusBar = NULL;
-    modbus = NULL;
+    mc        = nullptr;
+    DCBgroups = nullptr;
+    statusBar = nullptr;
+    modbus = nullptr;
     Defines.clear();
     ARBcompressorButton.clear();
     comp.clear();
@@ -181,8 +96,8 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
     StartMIPScomms = false;
     SystemIsShutdown = false;
     isUpdating = false;
-    scriptconsole = NULL;
-    tcp = NULL;
+    scriptconsole = nullptr;
+    tcp = nullptr;
     sl.clear();
     tm.clear();
     properties = prop;
@@ -195,15 +110,34 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
     if(CPfileName == "") fileName = QFileDialog::getOpenFileName(this, tr("Load Configuration from File"),"",tr("cfg (*.cfg);;All files (*.*)"));
     else fileName = CPfileName;
     if((fileName == "") || (fileName.isEmpty())) return;
+    loadConfig(fileName);
+}
+
+// -----------------------------------------------------------------------------
+// loadConfig — reads the .cfg file and creates all widgets and connections.
+// -----------------------------------------------------------------------------
+/*! \brief ControlPanel::loadConfig
+ * Reads the .cfg configuration file and creates all widgets defined in it.
+ * Also handles post-load setup (timing signals, script injection, QAction
+ * creation, and serial watchdog enable).
+ */
+void ControlPanel::loadConfig(QString fileName)
+{
+    QString readOption;
+    QStringList resList;
+    qint64 filePos = -1, optionsFilePos = -1;
+    int NextRecord;
+    QList<Define *> savedDefines;
+    float StepSize = 1.0;
     QFile file(fileName);
     ControlPanelFile = fileName;
-    if(properties != NULL) properties->Log("Control panel loaded: " + ControlPanelFile);
+    if(properties != nullptr) properties->Log("Control panel loaded: " + ControlPanelFile);
     MIPSnames.clear();
     for(int i=0;i<Systems.count();i++)
     {
        QString res = Systems[i]->MIPSname + ": " + Systems[i]->SendMess("GVER\n");
        // Add MIPS firmware version to log file
-       if(properties != NULL) properties->Log(Systems[i]->MIPSname + ": " + Systems[i]->SendMess("GVER\n"));
+       if(properties != nullptr) properties->Log(Systems[i]->MIPSname + ": " + Systems[i]->SendMess("GVER\n"));
        MIPSnames += "# " + res + "\n";
     }
     // Open UDP socket to send commands to reader app
@@ -214,7 +148,6 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
     // Read the configuration file and create the form as
     // well as all the controls.
     ui->lblBackground->setObjectName("");
-    //Container = ui->lblBackground;
     Containers.append(ui->lblBackground);
     if(file.open(QIODevice::ReadOnly|QIODevice::Text))
     {
@@ -343,7 +276,6 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 if(filePos >= 0)
                 {
                     stream.seek(filePos);
-                    //line = stream.readLine();   // This was causing the system to miss the next line after a Call
                     Defines.clear();
                     Defines = savedDefines;
                     savedDefines.clear();
@@ -373,7 +305,7 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 statusBar->setGeometry(0,resList[2].toInt()-18,resList[1].toInt(),18);
                 statusBar->showMessage("Control panel loaded: " + QDateTime().currentDateTime().toString());
                 statusBar->raise();
-                connect(statusBar,SIGNAL(messageChanged(QString)),this,SLOT(slotLogStatusBarMessage(QString)));
+                connect(statusBar, &QStatusBar::messageChanged, this, &ControlPanel::slotLogStatusBarMessage);
             }
             if((resList[0].toUpper() == "IMAGE") && (resList.length()==2))
             {
@@ -456,7 +388,7 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 cpObjects.append(stream.pos());
                 cpObjects.append("Table");
                 cpObjects.append(QVariant::fromValue(Tables.last()));
-                connect(Tables.last(),SIGNAL(change(QString)),this,SLOT(controlChange(QString)));
+                connect(Tables.last(), &Table::change, this, &ControlPanel::controlChange);
             }
             if((resList[0].toUpper() == "SLIDER") && (resList.length()==8))
             {
@@ -465,7 +397,7 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 cpObjects.append(stream.pos());
                 cpObjects.append("Slider");
                 cpObjects.append(QVariant::fromValue(Sliders.last()));
-                connect(Sliders.last(),SIGNAL(change(QString)),this,SLOT(controlChange(QString)));
+                connect(Sliders.last(), &Slider::change, this, &ControlPanel::controlChange);
             }
             if((resList[0].toUpper() == "RFCHANNEL") && (resList.length()==6))
             {
@@ -540,7 +472,7 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 cpObjects.append(stream.pos());
                 cpObjects.append("Ccontrol");
                 cpObjects.append(QVariant::fromValue(Ccontrols.last()));
-                connect(Ccontrols.last(),SIGNAL(change(QString)),this,SLOT(controlChange(QString)));
+                connect(Ccontrols.last(), &Ccontrol::change, this, &ControlPanel::controlChange);
             }
             if(resList[0].toUpper() == "COMBOBOXLIST")
             {
@@ -632,7 +564,6 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 cpObjects.append(stream.pos());
                 cpObjects.append("RFamp");
                 cpObjects.append(QVariant::fromValue(widget));
-                //Containers.push_back(rfa.last()); // Add RFamp to Containers
             }
             if((resList[0].toUpper() == "MODBUS") && (resList.length()==4))
             {
@@ -697,7 +628,7 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
             {
                 CPbuttons.append(new CPbutton(Containers.last(), resList[1], findFile(resList[2],QFileInfo(ControlPanelFile).canonicalPath()), resList[3].toInt(), resList[4].toInt()));
                 CPbuttons.last()->Show();
-                connect(CPbuttons.last(),SIGNAL(CPselected(QString)),this,SLOT(slotCPselected(QString)));
+                connect(CPbuttons.last(), &CPbutton::CPselected, this, &ControlPanel::slotCPselected);
                 cpObjects.append(stream.pos());
                 cpObjects.append("CPbutton");
                 cpObjects.append(QVariant::fromValue(CPbuttons.last()));
@@ -746,22 +677,17 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 QTabWidget *tab;
                 foreach(tab, Tabs)
                 {
-                    //qDebug() << tab->objectName();
                     if(tab->objectName().endsWith(resList[1]))
                     {
                         // Now find the proper tab
                         for(int i = 0; i<tab->count(); i++)
                         {
-                            //qDebug() << tab->tabText(i);
-                            //qDebug() << resList[2];
-                            //if(tab->tabText(i) == resList[2]) Containers.last() = tab->widget(i);
 
                             if(Containers.last()->objectName() != "") tab->widget(i)->setObjectName(Containers.last()->objectName() + "." + tab->tabText(i));
                             else tab->widget(i)->setObjectName(tab->tabText(i));
 
                             if(tab->tabText(i) == resList[2])
                             {
-                                //qDebug() << "Tab widget name: " << tab->widget(i)->objectName();
                                 Containers.append(tab->widget(i));
                             }
                         }
@@ -828,9 +754,9 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 TC.last()->statusBar = statusBar;
                 TC.last()->properties = properties;
                 TC.last()->Show();
-                connect(TC.last(),SIGNAL(dataAcquired(QString)),this,SLOT(slotDataAcquired(QString)));
-                connect(TC.last(),SIGNAL(dataFileDefined(QString)),this,SLOT(slotDataFileDefined(QString)));
-                connect(TC.last()->TG,SIGNAL(change(QString)),this,SLOT(controlChange(QString)));
+                connect(TC.last(), &TimingControl::dataAcquired, this, &ControlPanel::slotDataAcquired);
+                connect(TC.last(), &TimingControl::dataFileDefined, this, &ControlPanel::slotDataFileDefined);
+                connect(TC.last()->TG, &TimingGenerator::change, this, &ControlPanel::controlChange);
                 cpObjects.append(stream.pos());
                 cpObjects.append("Timing");
                 cpObjects.append(QVariant::fromValue(TC.last()));
@@ -854,15 +780,15 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
             {
                 TC.last()->TG->EC.append(new EventControl(Containers.last(),resList[1],resList[2],resList[3].toInt(),resList[4].toInt()));
                 TC.last()->TG->EC.last()->Show();
-                connect(TC.last()->TG->EC.last(),SIGNAL(EventChanged(QString,QString)),TC.last(),SLOT(slotEventChanged(QString,QString)));
+                connect(TC.last()->TG->EC.last(), &EventControl::EventChanged, TC.last(), &TimingControl::slotEventChanged);
             }
             if((resList[0].toUpper() == "FILENAME") && (resList.length()==2)) if(TC.count() > 0) TC.last()->fileName = resList[1];
             if((resList[0].toUpper() == "SHUTDOWN") && (resList.length()==4))
             {
                 SD = new Shutdown(Containers.last(),resList[1],resList[2].toInt(),resList[3].toInt());
                 SD->Show();
-                connect(SD,SIGNAL(ShutdownSystem()),this,SLOT(pbSD()));
-                connect(SD,SIGNAL(EnableSystem()),this,SLOT(pbSE()));
+                connect(SD, &Shutdown::ShutdownSystem, this, &ControlPanel::pbSD);
+                connect(SD, &Shutdown::EnableSystem, this, &ControlPanel::pbSE);
                 SD->setFocus();
                 cpObjects.append(stream.pos());
                 cpObjects.append("Shutdown");
@@ -872,8 +798,8 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
             {
                 SL = new SaveLoad(Containers.last(),resList[1],resList[2],resList[3].toInt(),resList[4].toInt());
                 SL->Show();
-                connect(SL,SIGNAL(Save()),this,SLOT(pbSave()));
-                connect(SL,SIGNAL(Load()),this,SLOT(pbLoad()));
+                connect(SL, &SaveLoad::Save, this, &ControlPanel::pbSave);
+                connect(SL, &SaveLoad::Load, this, &ControlPanel::pbLoad);
                 cpObjects.append(stream.pos());
                 cpObjects.append("SaveLoad");
                 cpObjects.append(QVariant::fromValue(SL));
@@ -888,7 +814,7 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 ARBcompressorButton.last()->setToolTip("Press this button to edit the compression options");
                 comp.append(new Compressor(Containers.last(),resList[1],resList[2]));
                 comp.last()->comms = FindCommPort(resList[2],Systems);
-                connect(ARBcompressorButton.last(),SIGNAL(pressed()),this,SLOT(pbARBcompressor()));
+                connect(ARBcompressorButton.last(), &QPushButton::pressed, this, &ControlPanel::pbARBcompressor);
                 ARBcompressorButton.last()->installEventFilter(this);
                 ARBcompressorButton.last()->setMouseTracking(true);
                 cpObjects.append(stream.pos());
@@ -897,14 +823,14 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
             }
             if((resList[0].toUpper() == "MIPSCOMMS") && (resList.length()==3))
             {
-                if(parentCP == NULL)
+                if(parentCP == nullptr)
                 {
                     // Enable the MIPS communication button
                     MIPScommsButton = new QPushButton("MIPS comms",Containers.last());
                     MIPScommsButton->setGeometry(resList[1].toInt(),resList[2].toInt(),150,32);
                     MIPScommsButton->setAutoDefault(false);
                     MIPScommsButton->setToolTip("Press this button to manually send commands to MIPS");
-                    connect(MIPScommsButton,SIGNAL(pressed()),this,SLOT(pbMIPScomms()));
+                    connect(MIPScommsButton, &QPushButton::pressed, this, &ControlPanel::pbMIPScomms);
                     MIPScommsButton->installEventFilter(this);
                     MIPScommsButton->setMouseTracking(true);
                     cpObjects.append(stream.pos());
@@ -929,7 +855,7 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 scriptButton->setGeometry(resList[1].toInt(),resList[2].toInt(),150,32);
                 scriptButton->setAutoDefault(false);
                 scriptButton->setToolTip("Press this button load or define a script");
-                connect(scriptButton,SIGNAL(pressed()),this,SLOT(pbScript()));
+                connect(scriptButton, &QPushButton::pressed, this, &ControlPanel::pbScript);
                 scriptconsole = new ScriptingConsole(this,properties);
                 scriptButton->installEventFilter(this);
                 scriptButton->setMouseTracking(true);
@@ -941,8 +867,8 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
             {
                 DCBgroups = new DCBiasGroups(Containers.last(),resList[1].toInt(),resList[2].toInt());
                 DCBgroups->Show();
-                connect(DCBgroups,SIGNAL(disable()),this,SLOT(DCBgroupDisable()));
-                connect(DCBgroups,SIGNAL(enable()),this,SLOT(DCBgroupEnable()));
+                connect(DCBgroups, &DCBiasGroups::disable, this, &ControlPanel::DCBgroupDisable);
+                connect(DCBgroups, &DCBiasGroups::enable, this, &ControlPanel::DCBgroupEnable);
                 cpObjects.append(stream.pos());
                 cpObjects.append("DCBgroups");
                 cpObjects.append(QVariant::fromValue(DCBgroups));
@@ -973,7 +899,7 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 tcp->port = resList[1].toInt();
                 tcp->statusbar = statusBar;
                 tcp->listen();
-                connect(tcp,SIGNAL(lineReady()),this,SLOT(tcpCommand()));
+                connect(tcp, &TCPserver::lineReady, this, &ControlPanel::tcpCommand);
             }
         } while(!line.isNull());
     }
@@ -997,7 +923,7 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
             }
         }
         ControlPanel *cp = this;
-        while(cp != NULL)
+        while(cp != nullptr)
         {
             // Add DC bias channels
             foreach(DCBchannel *dcb, cp->DCBchans) if(dcb->MIPSnm == tc->MIPSnm) tc->TG->AddSignal(dcb->Title, QString::number(dcb->Channel));
@@ -1054,32 +980,31 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
         }
     }
     LoadedConfig = true;
-    //connect(ui->lblBackground, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(popupHelp(QPoint)));
     ui->lblBackground->installEventFilter(this);
 
     // Popup options menu actions
     Comments = new QAction("Comments", this);
-    connect(Comments, SIGNAL(triggered()), this, SLOT(slotComments()));
+    connect(Comments, &QAction::triggered, this, &ControlPanel::slotComments);
     SaveCP = new QAction("Save this Control Panel", this);
-    connect(SaveCP, SIGNAL(triggered()), this, SLOT(slotSaveCP()));
+    connect(SaveCP, &QAction::triggered, this, &ControlPanel::slotSaveCP);
     GeneralHelp = new QAction("General help", this);
-    connect(GeneralHelp, SIGNAL(triggered()), this, SLOT(slotGeneralHelp()));
+    connect(GeneralHelp, &QAction::triggered, this, &ControlPanel::slotGeneralHelp);
     MIPScommands = new QAction("MIPS commands", this);
-    connect(MIPScommands, SIGNAL(triggered()), this, SLOT(slotMIPScommands()));
+    connect(MIPScommands, &QAction::triggered, this, &ControlPanel::slotMIPScommands);
     ScriptHelp  = new QAction("Script help", this);
-    connect(ScriptHelp, SIGNAL(triggered()), this, SLOT(slotScriptHelp()));
+    connect(ScriptHelp, &QAction::triggered, this, &ControlPanel::slotScriptHelp);
     if(!HelpFile.isEmpty())
     {
         ThisHelp = new QAction("This control panel help", this);
-        connect(ThisHelp, SIGNAL(triggered()), this, SLOT(slotThisControlPanelHelp()));
+        connect(ThisHelp, &QAction::triggered, this, &ControlPanel::slotThisControlPanelHelp);
     }
     OpenLogFile = new QAction("Open data log", this);
-    connect(OpenLogFile, SIGNAL(triggered()), this, SLOT(slotOpenLogFile()));
+    connect(OpenLogFile, &QAction::triggered, this, &ControlPanel::slotOpenLogFile);
     CloseLogFile = new QAction("Close data log", this);
-    connect(CloseLogFile, SIGNAL(triggered()), this, SLOT(slotCloseLogFile()));
+    connect(CloseLogFile, &QAction::triggered, this, &ControlPanel::slotCloseLogFile);
     if(SerialWatchDog > 0)
     {
-        if(properties != NULL) properties->Log("Enabling serial watch dog on MIPS system(s)");
+        if(properties != nullptr) properties->Log("Enabling serial watch dog on MIPS system(s)");
         for(int i=0;i<Systems.count();i++)
         {
            Systems[i]->SendCommand("SSERWD," + QString::number(SerialWatchDog) + "\n");
@@ -1139,19 +1064,19 @@ ControlPanel::~ControlPanel()
     //
     if(SerialWatchDog > 0)
     {
-        if(properties != NULL) properties->Log("Disabling serial watch dog on MIPS system(s)");
+        if(properties != nullptr) properties->Log("Disabling serial watch dog on MIPS system(s)");
         for(int i=0;i<Systems.count();i++)
         {
            Systems[i]->SendCommand("SSERWD,0\n");
         }
     }
-    if(properties != NULL) properties->Log("Control panel unloading");
+    if(properties != nullptr) properties->Log("Control panel unloading");
     for(int i=0;i<devices.count();i++) delete devices[i];
     for(int i=0;i<Cpanels.count();i++) delete Cpanels[i]->cp;
     for(int i=0;i<ScripButtons.count();i++) delete ScripButtons[i];
     for(int i=0;i<scriptObj.count();i++) delete scriptObj[i];
     for(int i=0;i<ModChans.count();i++) delete ModChans[i];
-    if(modbus != NULL) delete(modbus);
+    if(modbus != nullptr) delete(modbus);
     for(int i=0;i<plots.count();i++) delete plots[i];
     delete tcp;
     delete ui;
@@ -1183,10 +1108,10 @@ void ControlPanel::reject()
     emit DialogClosed("");
 }
 
-// This slot is called when a control issues a change event with the
-// name of a script to execute as a result of the change. This allows
-// a control panel object to create an event when the user changes a
-// value.
+/*! \brief ControlPanel::controlChange
+ * Slot called when a control emits a change event with a script name.
+ * Finds the matching scriptObj and runs it.
+ */
 void ControlPanel::controlChange(QString scriptName)
 {
     foreach(Script *scrpt, scriptObj)
@@ -1196,20 +1121,18 @@ void ControlPanel::controlChange(QString scriptName)
             scrpt->scriptCall = "";
             QObject* callingObject = sender();
             Ccontrol *cc = qobject_cast<Ccontrol*>(callingObject);
-            if(cc != NULL) scrpt->scriptCall = cc->scriptCall;
+            if(cc != nullptr) scrpt->scriptCall = cc->scriptCall;
             Table *tbl = qobject_cast<Table*>(callingObject);
-            if(tbl != NULL) scrpt->scriptCall = tbl->scriptCall;
+            if(tbl != nullptr) scrpt->scriptCall = tbl->scriptCall;
             scrpt->run();
         }
     }
 }
 
-// This function will try to locate the filename. The full path and file name
-// will be returned if found or an empty string is the file can't be located.
-// The following steps are performed:
-// 1.) The file is tested as given in filename
-// 2.) The file is tested at the posiblePath is not empty
-// 3.) The app path is tested.
+/*! \brief ControlPanel::findFile
+ * Locates a file by checking the given path, a possible base path, and the
+ * application directory. Returns the full path or empty string if not found.
+ */
 QString ControlPanel::findFile(QString filename, QString posiblePath)
 {
     QString fn = QFileInfo(filename).fileName();
@@ -1276,25 +1199,27 @@ void ControlPanel::slotComments(void)
     comments->SetTitle("Comments");
     comments->setText(CommentText);
     comments->show();
-    connect(comments, SIGNAL(finished(int)), this, SLOT(slotCommentsFinished()));
+    connect(comments, &Help::finished, this, &ControlPanel::slotCommentsFinished);
 
 }
 
+/*! \brief ControlPanel::slotCommentsFinished
+ * Saves the comment text when the comments dialog closes.
+ */
 void ControlPanel::slotCommentsFinished(void)
 {
     CommentText = comments->getText();
 }
 
-/*! \brief ControlPanel::slotGeneralHelp
- * This function is called when the user selects the General help option
- * from the popup menu. It will display the general help file.
+/*! \brief ControlPanel::slotSaveCP
+ * Saves the current control panel layout to a user-selected .cfg file.
  */
 void ControlPanel::slotSaveCP(void)
 {
     QStringList resList;
     QFileDialog fileDialog;
 
-    if(properties != NULL) fileDialog.setDirectory(properties->MethodesPath);
+    if(properties != nullptr) fileDialog.setDirectory(properties->MethodesPath);
     QString fileName = fileDialog.getSaveFileName(this, tr("Save to Config File"),"",tr("Config (*.cfg);;All files (*.*)"));
     if(fileName == "") return;
     QFile fileOut(fileName);
@@ -1674,6 +1599,9 @@ void ControlPanel::slotSaveCP(void)
     }
 }
 
+/*! \brief ControlPanel::slotGeneralHelp
+ * Displays the general MIPS help text.
+ */
 void ControlPanel::slotGeneralHelp(void)
 {
     help->SetTitle("MIPS Help");
@@ -1681,6 +1609,9 @@ void ControlPanel::slotGeneralHelp(void)
     help->show();
 }
 
+/*! \brief ControlPanel::slotMIPScommands
+ * Displays the MIPS commands reference.
+ */
 void ControlPanel::slotMIPScommands(void)
 {
     help->SetTitle("MIPS Commands");
@@ -1688,6 +1619,9 @@ void ControlPanel::slotMIPScommands(void)
     help->show();
 }
 
+/*! \brief ControlPanel::slotScriptHelp
+ * Displays the script help text.
+ */
 void ControlPanel::slotScriptHelp(void)
 {
     help->SetTitle("Script help");
@@ -1695,6 +1629,9 @@ void ControlPanel::slotScriptHelp(void)
     help->show();
 }
 
+/*! \brief ControlPanel::slotThisControlPanelHelp
+ * Displays the help file specific to this control panel.
+ */
 void ControlPanel::slotThisControlPanelHelp(void)
 {
     help->SetTitle("This Control panel help");
@@ -1702,18 +1639,19 @@ void ControlPanel::slotThisControlPanelHelp(void)
     help->show();
 }
 
+/*! \brief ControlPanel::slotLogStatusBarMessage
+ * Logs non-empty status bar messages to the properties log.
+ */
 void ControlPanel::slotLogStatusBarMessage(QString statusMess)
 {
     if(statusMess == "") return;
     if(statusMess.isEmpty()) return;
-    if(properties != NULL) properties->Log("CP StatusBar: " + statusMess);
+    if(properties != nullptr) properties->Log("CP StatusBar: " + statusMess);
 }
 
-// This menu option allows the user to define a data log file name and
-// define the minimum time between samples. After the file is opened a header
-// is written with the variable names and the time the logging started.
-// The data file is CSV with wach record having a time stamp in seconds from
-// the time the file was opened.
+/*! \brief ControlPanel::slotOpenLogFile
+ * Prompts for a log file name and sample period, then opens data logging.
+ */
 void ControlPanel::slotOpenLogFile(void)
 {
     QFileDialog fileDialog;
@@ -1743,6 +1681,9 @@ void ControlPanel::slotOpenLogFile(void)
     ControlPanel::setWindowTitle("Custom control panel, right click for options, data log file open: " + dataFile);
 }
 
+/*! \brief ControlPanel::slotCloseLogFile
+ * Closes the currently open data log file.
+ */
 void ControlPanel::slotCloseLogFile(void)
 {
     LogFile.clear();
@@ -1750,6 +1691,9 @@ void ControlPanel::slotCloseLogFile(void)
     ControlPanel::setWindowTitle("Custom control panel, right click for options");
 }
 
+/*! \brief ControlPanel::LogDataFile
+ * Appends a CSV data record to the open log file at the configured sample interval.
+ */
 void ControlPanel::LogDataFile(void)
 {
    QStringList vals;
@@ -1823,6 +1767,9 @@ void ControlPanel::LogDataFile(void)
    }
 }
 
+/*! \brief ControlPanel::InitMIPSsystems
+ * Sends initialization commands from a file to the named MIPS systems.
+ */
 void ControlPanel::InitMIPSsystems(QString initFilename)
 {
     // Open the file and send commands to MIPS systems.
@@ -1837,22 +1784,24 @@ void ControlPanel::InitMIPSsystems(QString initFilename)
             if(line.trimmed().startsWith("#")) continue;
             QStringList resList = line.split(",");
             Comms *cp =  FindCommPort(resList[0],Systems);
-            if(cp!=NULL) cp->SendString(line.mid(line.indexOf(resList[0]) + resList[0].length() + 1) + "\n");
+            if(cp!=nullptr) cp->SendString(line.mid(line.indexOf(resList[0]) + resList[0].length() + 1) + "\n");
         } while(!line.isNull());
         file.close();
     }
 }
 
-// Returns a pointer to the comm port for the MIPS system defined my its name.
-// Returns null if the MIPS system can't be found.
+/*! \brief ControlPanel::FindCommPort
+ * Returns the Comms pointer for the named MIPS system, or nullptr if not found.
+ */
 Comms* ControlPanel::FindCommPort(QString name, QList<Comms*> Systems)
 {
    for(int i = 0; i < Systems.length(); i++) if(Systems.at(i)->MIPSname == name) return(Systems.at(i));
-   return NULL;
+   return nullptr;
 }
 
-// This Update function is called by the MIPS class. This function will read all the controls
-// from the attached MIPS system and update the control panel with the values.
+/*! \brief ControlPanel::Update
+ * Called by the MIPS class each update cycle; delegates to UpdateStateMachine.
+ */
 void ControlPanel::Update(void)
 {
     if(updateState == 0) UpdateStateMachine();
@@ -1872,8 +1821,6 @@ void ControlPanel::UpdateStateMachine(void)
     int i,j,k;
 
     // Make sure the UpdateSemaphore is avaliable, if not exit
-    //if(UpdateSemaphore.available()==0) return;
-    //MySemaphoreLocker locker(&UpdateSemaphore, 1);
 
     switch (updateState)
     {
@@ -1896,8 +1843,8 @@ void ControlPanel::UpdateStateMachine(void)
                 Systems[i]->SendString("\n");
             }
         }
-        if(tcp != NULL) if(tcp->bytesAvailable() > 0) tcp->readData();
-        if(scriptconsole!=NULL) scriptconsole->UpdateStatus();
+        if(tcp != nullptr) if(tcp->bytesAvailable() > 0) tcp->readData();
+        if(scriptconsole!=nullptr) scriptconsole->UpdateStatus();
         if(UpdateStop) return;
         // loop so it can be called from the MIPScomms dialog
         for(i=0;i<TC.count();i++) if(TC[i]->Downloading) return;
@@ -1908,7 +1855,7 @@ void ControlPanel::UpdateStateMachine(void)
             mc = new MIPScomms(0,Systems);
             mc->show();
             UpdateStop = true;
-            connect(mc, SIGNAL(DialogClosed()), this, SLOT(CloseMIPScomms()));
+            connect(mc, &MIPScomms::DialogClosed, this, &ControlPanel::CloseMIPScomms);
             StartMIPScomms = false;
             UpdateStop = true;
             return;
@@ -1942,8 +1889,8 @@ void ControlPanel::UpdateStateMachine(void)
             }
             for(i=0;i<rfa.count();i++)        rfa[i]->Shutdown();
             for(i=0;i<ARBchans.count();i++)   ARBchans[i]->Shutdown();
-            if(statusBar != NULL) statusBar->showMessage("System shutdown, " + QDateTime().currentDateTime().toString());
-            if(properties != NULL) properties->Log("System Shutdown");
+            if(statusBar != nullptr) statusBar->showMessage("System shutdown, " + QDateTime().currentDateTime().toString());
+            if(properties != nullptr) properties->Log("System Shutdown");
             UpdateHoldOff = 1;
             return;
         }
@@ -1960,8 +1907,8 @@ void ControlPanel::UpdateStateMachine(void)
             for(i=0;i<Ccontrols.count();i++)  Ccontrols[i]->Restore();
             for(i=0;i<rfa.count();i++)        rfa[i]->Restore();
             for(i=0;i<ARBchans.count();i++)   ARBchans[i]->Restore();
-            if(statusBar != NULL) statusBar->showMessage("System enabled, " + QDateTime().currentDateTime().toString());
-            if(properties != NULL) properties->Log("System Restored");
+            if(statusBar != nullptr) statusBar->showMessage("System enabled, " + QDateTime().currentDateTime().toString());
+            if(properties != nullptr) properties->Log("System Restored");
             UpdateHoldOff = 1;
             return;
         }
@@ -1980,7 +1927,7 @@ void ControlPanel::UpdateStateMachine(void)
         {
             int ret;
             bool AutoR = false;
-            if(properties != NULL) if(properties->AutoRestore) AutoR = true;
+            if(properties != nullptr) if(properties->AutoRestore) AutoR = true;
             if(!AutoR)
             {
                 QString msg = "Connection(s) have been lost to " + res;
@@ -1994,7 +1941,7 @@ void ControlPanel::UpdateStateMachine(void)
             }
             else
             {
-                if(statusBar != NULL) statusBar->showMessage("Attempting to reestablish connection(s).",2000);
+                if(statusBar != nullptr) statusBar->showMessage("Attempting to reestablish connection(s).",2000);
                 msDelay(2000);
                 ret = QMessageBox::Yes;
             }
@@ -2169,7 +2116,6 @@ void ControlPanel::UpdateStateMachine(void)
  */
 QString ControlPanel::Save(QString Filename)
 {
-    //QString res;
     ControlPanel *cp;
 
     #ifdef Q_OS_MAC
@@ -2177,7 +2123,7 @@ QString ControlPanel::Save(QString Filename)
     #endif
     if(Filename == "") return "No file defined!";
     UpdateHoldOff = 1000;
-    if(properties != NULL) properties->Log("Save method file: " + Filename);
+    if(properties != nullptr) properties->Log("Save method file: " + Filename);
     QFile file(Filename);
     if(file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
@@ -2213,9 +2159,9 @@ QString ControlPanel::Save(QString Filename)
             if(cp->DCBoffsets.count() > 0)
             {
                 stream << "DCB offsets," + QString::number(cp->DCBoffsets.count()) + "\n";
-                for(int i=0; i<cp->DCBoffsets.count(); i++) if(cp->DCBoffsets[i] != NULL) stream << cp->DCBoffsets[i]->Report() + "\n";
+                for(int i=0; i<cp->DCBoffsets.count(); i++) if(cp->DCBoffsets[i] != nullptr) stream << cp->DCBoffsets[i]->Report() + "\n";
             }
-            if(cp->DCBgroups != NULL)
+            if(cp->DCBgroups != nullptr)
             {
                 stream << "DC bias groups\n";
                 stream << cp->DCBgroups->Report() + "\n";
@@ -2274,19 +2220,19 @@ QString ControlPanel::Save(QString Filename)
             if(cp->rfa.count() > 0)
             {
                 stream << "RFamp channels," + QString::number(cp->rfa.count()) + "\n";
-                for(int i=0; i<cp->rfa.count(); i++) if(cp->rfa[i] != NULL) stream << cp->rfa[i]->Report() + "\n";
+                for(int i=0; i<cp->rfa.count(); i++) if(cp->rfa[i] != nullptr) stream << cp->rfa[i]->Report() + "\n";
                 stream << "RFampEnd\n";
             }
             if(cp->devices.count() > 0)
             {
                 stream << "External devices," + QString::number(cp->devices.count()) + "\n";
-                for(int i=0; i<cp->devices.count(); i++) if(cp->devices[i] != NULL) stream << cp->devices[i]->Report() + "\n";
+                for(int i=0; i<cp->devices.count(); i++) if(cp->devices[i] != nullptr) stream << cp->devices[i]->Report() + "\n";
                 stream << "ExternalDevicesEnd\n";
             }
             if(cp->ModChans.count() > 0)
             {
                 stream << "ModBus channels," + QString::number(cp->ModChans.count()) + "\n";
-                for(int i=0; i<cp->ModChans.count(); i++) if(cp->ModChans[i] != NULL) stream << cp->ModChans[i]->Report() + "\n";
+                for(int i=0; i<cp->ModChans.count(); i++) if(cp->ModChans[i] != nullptr) stream << cp->ModChans[i]->Report() + "\n";
                 stream << "ModBusChannelsEnd\n";
             }
             if(cp->plotData.count() > 0)
@@ -2340,14 +2286,14 @@ QString ControlPanel::Load(QString Filename)
     cp = this;
     // Test is Filename ends in .settings, if not add .settings
     if(!Filename.endsWith(".SETTINGS",Qt::CaseInsensitive)) Filename += ".settings";
-    if(properties != NULL) QDir().setCurrent(properties->MethodesPath);
+    if(properties != nullptr) QDir().setCurrent(properties->MethodesPath);
     #ifdef Q_OS_MAC
     if(Filename.startsWith("~")) Filename = QDir::homePath() + "/" + Filename.mid(2);
     #endif
     if(Filename == "") return "No file defined!";
     UpdateHoldOff = 1000;
     QFile file(Filename);
-    if(properties != NULL) properties->Log("Load method file: " + Filename);
+    if(properties != nullptr) properties->Log("Load method file: " + Filename);
     if(file.open(QIODevice::ReadOnly|QIODevice::Text))
     {
         CommentText.clear();
@@ -2376,12 +2322,12 @@ QString ControlPanel::Load(QString Filename)
                 {
                     // See if we can find this control panel name and then point to it,
                     // quit is we can't find it...
-                    cp = NULL;
+                    cp = nullptr;
                     for(int j=0;j<Cpanels.count();j++)
                     {
                         if(Cpanels[j]->Title == resList[1]) cp = Cpanels[j]->cp;
                     }
-                    if(cp == NULL) break;
+                    if(cp == nullptr) break;
                 }
                 if(resList[0] == "RF channels") for(int i=0;i<resList[1].toInt();i++)
                 {
@@ -2399,8 +2345,6 @@ QString ControlPanel::Load(QString Filename)
                 {
                      line = stream.readLine();
                      if(line.isNull()) break;
-                     //if(i >= DCBchans.count()) break;
-                     //if(DCBchans[i]->SetValues(line)) continue;
                      for(int j=0;j<cp->DCBchans.count();j++) if(cp->DCBchans[j]->SetValues(line)) break;
                 }
                 if(resList[0] == "DAC channels") for(int i=0;i<resList[1].toInt();i++)
@@ -2480,7 +2424,7 @@ QString ControlPanel::Load(QString Filename)
                 {
                     line = stream.readLine();
                     if(line.isNull()) break;
-                    if(cp->DCBgroups != NULL) cp->DCBgroups->SetValues(line);
+                    if(cp->DCBgroups != nullptr) cp->DCBgroups->SetValues(line);
                 }
                 if(resList[0] == "Plot parameters") while(true)
                 {
@@ -2524,12 +2468,14 @@ QString ControlPanel::Load(QString Filename)
     UpdateHoldOff = 1;
 }
 
-// Called after data collection, save method to the filepath passed
+/*! \brief ControlPanel::slotDataAcquired
+ * Slot: saves method settings and notifies the reader app after data collection.
+ */
 void ControlPanel::slotDataAcquired(QString filepath)
 {
     if(filepath != "")
     {
-        if(properties != NULL) properties->Log("Data acquired: " + filepath);
+        if(properties != nullptr) properties->Log("Data acquired: " + filepath);
         Save(filepath + "/Method.settings");
         // Send UDP message to allow reader to open the data file
         QString mess = "Load,"+filepath+"/U1084A.data";
@@ -2537,19 +2483,26 @@ void ControlPanel::slotDataAcquired(QString filepath)
     }
 }
 
+/*! \brief ControlPanel::slotDataFileDefined
+ * Slot: sends a UDP notification that the data file path has been defined.
+ */
 void ControlPanel::slotDataFileDefined(QString filepath)
 {
     QString mess = "Data file defined,"+filepath;
     udpSocket->writeDatagram(mess.toLocal8Bit(),QHostAddress("127.0.0.1"), 7755);
 }
 
-// System shutdown
+/*! \brief ControlPanel::pbSD
+ * Slot: sets ShutdownFlag to trigger a system shutdown on the next update.
+ */
 void ControlPanel::pbSD(void)
 {
     ShutdownFlag = true;
 }
 
-// System enable
+/*! \brief ControlPanel::pbSE
+ * Slot: sets RestoreFlag to trigger a system enable on the next update.
+ */
 void ControlPanel::pbSE(void)
 {
     RestoreFlag = true;
@@ -2565,7 +2518,7 @@ void ControlPanel::pbSave(void)
 {
     QFileDialog fileDialog;
 
-    if(properties != NULL) fileDialog.setDirectory(properties->MethodesPath);
+    if(properties != nullptr) fileDialog.setDirectory(properties->MethodesPath);
     QString fileName = fileDialog.getSaveFileName(this, tr("Save to Settings File"),"",tr("Settings (*.settings);;All files (*.*)"));
     if(fileName == "") return;
     statusBar->showMessage(Save(fileName), 5000);
@@ -2581,7 +2534,7 @@ void ControlPanel::pbLoad(void)
 {
     QFileDialog fileDialog;
 
-    if(properties != NULL) fileDialog.setDirectory(properties->MethodesPath);
+    if(properties != nullptr) fileDialog.setDirectory(properties->MethodesPath);
     QString fileName = fileDialog.getOpenFileName(this, tr("Load Settings from File"),"",tr("Settings (*.settings);;All files (*.*)"));
     if(fileName == "") return;
     statusBar->showMessage(Load(fileName), 5000);
@@ -2596,16 +2549,25 @@ void ControlPanel::pbLoad(void)
     }
 }
 
+/*! \brief ControlPanel::CloseMIPScomms
+ * Slot: re-enables the update loop after the MIPScomms dialog closes.
+ */
 void ControlPanel::CloseMIPScomms(void)
 {
     UpdateStop = false;
 }
 
+/*! \brief ControlPanel::pbMIPScomms
+ * Slot: requests the MIPScomms dialog to be opened on the next update cycle.
+ */
 void ControlPanel::pbMIPScomms(void)
 {
    StartMIPScomms = true;
 }
 
+/*! \brief ControlPanel::pbARBcompressor
+ * Slot: shows the compressor dialog matching the pressed button.
+ */
 void ControlPanel::pbARBcompressor(void)
 {
     QObject*    obj = sender();
@@ -2621,25 +2583,37 @@ void ControlPanel::pbARBcompressor(void)
     }
 }
 
+/*! \brief ControlPanel::scriptShutdown
+ * Slot: triggers system shutdown from a script.
+ */
 void ControlPanel::scriptShutdown(void)
 {
     ShutdownFlag = true;
 }
 
+/*! \brief ControlPanel::DCBgroupDisable
+ * Disables link-grouping on all DC bias channels.
+ */
 void ControlPanel::DCBgroupDisable(void)
 {
     for(int i=0;i<DCBchans.count();i++) DCBchans[i]->LinkEnable = false;
 }
 
+/*! \brief ControlPanel::FindDCBchannel
+ * Returns a pointer to the named DC bias channel, or nullptr if not found.
+ */
 DCBchannel * ControlPanel::FindDCBchannel(QString name)
 {
     for(int i=0;i<DCBchans.count();i++)
     {
         if(DCBchans[i]->Title.toUpper() == name.toUpper()) return DCBchans[i];
     }
-    return NULL;
+    return nullptr;
 }
 
+/*! \brief ControlPanel::DCBgroupEnable
+ * Rebuilds DC bias channel link groups from the DCBgroups combo selection.
+ */
 void ControlPanel::DCBgroupEnable(void)
 {
     DCBchannel            *dcb;
@@ -2651,7 +2625,7 @@ void ControlPanel::DCBgroupEnable(void)
         DCBs.clear();
         for(int j=0;j<resList.count();j++)
         {
-            if((dcb=FindDCBchannel(resList[j])) != NULL)
+            if((dcb=FindDCBchannel(resList[j])) != nullptr)
             {
                 DCBs.append(dcb);
             }
@@ -2667,22 +2641,28 @@ void ControlPanel::DCBgroupEnable(void)
     }
 }
 
+/*! \brief ControlPanel::pbScript
+ * Slot: shows and raises the scripting console.
+ */
 void ControlPanel::pbScript(void)
 {
-    if(scriptconsole == NULL) return;
+    if(scriptconsole == nullptr) return;
     scriptconsole->show();
     scriptconsole->raise();
     scriptconsole->repaint();
 }
 
+/*! \brief ControlPanel::MakePathNameUnique
+ * Returns a unique path by delegating to the global MakePathUnique utility.
+ */
 QString ControlPanel::MakePathNameUnique(QString path)
 {
     return MakePathUnique(path);
 }
 
-// Generate a unique file name using the properties path
-// and base filename. Return empty string if we cannot generate a
-// unique name.
+/*! \brief ControlPanel::GenerateUniqueFileName
+ * Generates a unique filename under properties->DataFilePath with a sequential suffix.
+ */
 QString ControlPanel::GenerateUniqueFileName(void)
 {
     QString snum;
@@ -2711,6 +2691,9 @@ QString ControlPanel::GenerateUniqueFileName(void)
     return fname;
 }
 
+/*! \brief ControlPanel::MakeFileNameUnique
+ * Returns a unique filename by incrementing the four-digit numeric extension.
+ */
 QString ControlPanel::MakeFileNameUnique(QString fileName)
 {
     QFileInfo fileInfo(fileName);
@@ -2748,7 +2731,9 @@ QString ControlPanel::MakeFileNameUnique(QString fileName)
     return uniqueFileName;
 }
 
-// Used by scripting system, the record should be \n terminated, this is not checked!
+/*! \brief ControlPanel::AppendToFile
+ * Appends a record to the named file. Returns empty string on success, error message on failure.
+ */
 QString ControlPanel::AppendToFile(QString fileName, QString record)
 {
     QFile file(fileName);
@@ -2763,6 +2748,9 @@ QString ControlPanel::AppendToFile(QString fileName, QString record)
     else return "Error opening file for appending:" + file.errorString();
 }
 
+/*! \brief ControlPanel::ReadFile
+ * Reads and returns the entire contents of the named file.
+ */
 QString ControlPanel::ReadFile(QString fileName)
 {
     QFile file(fileName);
@@ -2776,6 +2764,9 @@ QString ControlPanel::ReadFile(QString fileName)
     return "";
 }
 
+/*! \brief ControlPanel::ReadFileLine
+ * Returns the specified line (1-based) from the named file.
+ */
 QString ControlPanel::ReadFileLine(QString fileName, int line)
 {
     QFile file(fileName);
@@ -2798,51 +2789,74 @@ QString ControlPanel::ReadFileLine(QString fileName, int line)
     else return "Error opening file.";
 }
 
-// The following functions are for the scripting system
+/*! \brief ControlPanel::GetLine
+ * Reads and returns the next available line from the named MIPS system's buffer.
+ */
 QString ControlPanel::GetLine(QString MIPSname)
 {
    Comms *cp =  FindCommPort(MIPSname,Systems);
-   if(cp==NULL) return "";
+   if(cp==nullptr) return "";
    cp->waitforline(500);
    return cp->getline();
 }
 
+/*! \brief ControlPanel::SendCommand
+ * Sends a command string to the named MIPS system.
+ */
 bool ControlPanel::SendCommand(QString MIPSname, QString message)
 {
    Comms *cp =  FindCommPort(MIPSname,Systems);
-   if(cp==NULL) return false;
+   if(cp==nullptr) return false;
    return cp->SendCommand(message);
 }
 
+/*! \brief ControlPanel::SendString
+ * Sends a raw string to the named MIPS system.
+ */
 bool ControlPanel::SendString(QString MIPSname, QString message)
 {
    Comms *cp =  FindCommPort(MIPSname,Systems);
-   if(cp==NULL) return false;
+   if(cp==nullptr) return false;
    return cp->SendString(message);
 }
 
+/*! \brief ControlPanel::SendMess
+ * Sends a message to the named MIPS system and returns the response.
+ */
 QString ControlPanel::SendMess(QString MIPSname, QString message)
 {
     Comms *cp =  FindCommPort(MIPSname,Systems);
-    if(cp==NULL) return "MIPS not found!";
+    if(cp==nullptr) return "MIPS not found!";
     return cp->SendMess(message);
 }
 
+/*! \brief ControlPanel::SystemEnable
+ * Sets RestoreFlag to re-enable the system.
+ */
 void ControlPanel::SystemEnable(void)
 {
     RestoreFlag = true;
 }
 
+/*! \brief ControlPanel::SystemShutdown
+ * Sets ShutdownFlag to shut down the system.
+ */
 void ControlPanel::SystemShutdown(void)
 {
     ShutdownFlag = true;
 }
 
+/*! \brief ControlPanel::isShutDown
+ * Returns true if the system is currently in shutdown state.
+ */
 bool ControlPanel::isShutDown(void)
 {
     return(SystemIsShutdown);
 }
 
+/*! \brief ControlPanel::Acquire
+ * Triggers data acquisition to the given file path via the last TimingControl.
+ */
 void ControlPanel::Acquire(QString filePath)
 {
    filePath.replace("\\","/");
@@ -2858,27 +2872,42 @@ void ControlPanel::Acquire(QString filePath)
    if(TC.count() > 0) TC.last()->AcquireData(filePath);
 }
 
+/*! \brief ControlPanel::isAcquiring
+ * Returns true if the last TimingControl is actively acquiring data.
+ */
 bool ControlPanel::isAcquiring(void)
 {
   if(TC.count() > 0) return(TC.last()->AD->Acquiring);
   return(false);
 }
 
+/*! \brief ControlPanel::DismissAcquire
+ * Dismisses the active acquisition dialog.
+ */
 void ControlPanel::DismissAcquire(void)
 {
   if(TC.count() > 0)  TC.last()->AD->Dismiss();
 }
 
+/*! \brief ControlPanel::msDelay
+ * Blocking delay of the specified number of milliseconds.
+ */
 void ControlPanel::msDelay(int ms)
 {
     QThread::msleep(ms);
 }
 
+/*! \brief ControlPanel::statusMessage
+ * Displays a message in the status bar.
+ */
 void ControlPanel::statusMessage(QString message)
 {
     statusBar->showMessage(message);
 }
 
+/*! \brief ControlPanel::popupMessage
+ * Shows a modal message box with the given text.
+ */
 void ControlPanel::popupMessage(QString message)
 {
     QMessageBox msgBox;
@@ -2889,6 +2918,9 @@ void ControlPanel::popupMessage(QString message)
     msgBox.exec();
 }
 
+/*! \brief ControlPanel::popupYesNoMessage
+ * Shows a Yes/No message box; returns true if Yes was selected.
+ */
 bool ControlPanel::popupYesNoMessage(QString message)
 {
     QMessageBox msgBox;
@@ -2902,6 +2934,9 @@ bool ControlPanel::popupYesNoMessage(QString message)
     return true;
 }
 
+/*! \brief ControlPanel::popupUserInput
+ * Shows an input dialog; returns entered text, or empty string on cancel.
+ */
 QString ControlPanel::popupUserInput(QString title, QString message)
 {
     bool ok;
@@ -2921,7 +2956,7 @@ bool ControlPanel::sysUpdating(void)
 {
     ControlPanel *cp=this;
 
-    while(cp->parentCP != NULL) cp = cp->parentCP;
+    while(cp->parentCP != nullptr) cp = cp->parentCP;
     return cp->isUpdating;
 }
 
@@ -2929,12 +2964,14 @@ bool ControlPanel::UpdateHalted(bool stop)
 {
     ControlPanel *cp=this;
 
-    while(cp->parentCP != NULL) cp = cp->parentCP;
+    while(cp->parentCP != nullptr) cp = cp->parentCP;
     cp->UpdateStop = stop;
-    //cp->ProcessEvents = !stop;
     return cp->UpdateStop;
 }
 
+/*! \brief ControlPanel::tcpSocket
+ * Manages a persistent TCP socket. Supports Connect, Write, Read, and Close commands.
+ */
 QString ControlPanel::tcpSocket(QString cmd, QString arg1, QString arg2)
 {
     static QTcpSocket *socket = new QTcpSocket(this);
@@ -2980,8 +3017,9 @@ QString ControlPanel::tcpSocket(QString cmd, QString arg1, QString arg2)
     return "";
 }
 
-// This function is called with a command in the TCP server buffer.
-// This function will process this command.
+/*! \brief ControlPanel::tcpCommand
+ * Reads a command from the TCP server buffer, processes it, and sends the response.
+ */
 void ControlPanel::tcpCommand(void)
 {
     QString cmd = tcp->readLine();
@@ -3007,13 +3045,13 @@ QString ControlPanel::Command(QString cmd)
    if(cmd.toUpper() == "SHUTDOWN")
    {
        ShutdownFlag = true;
-       if(SD != NULL) SD->SetState(true);
+       if(SD != nullptr) SD->SetState(true);
        return res;
    }
    if(cmd.toUpper() == "RESTORE")
    {
        RestoreFlag  = true;
-       if(SD != NULL) SD->SetState(false);
+       if(SD != nullptr) SD->SetState(false);
        return res;
    }
    if(cmd.startsWith("LOAD",Qt::CaseInsensitive))
@@ -3157,8 +3195,9 @@ QString ControlPanel::Command(QString cmd)
    return("?\n");
 }
 
-// This function allows the script system to popup a file selection dalog for file open
-// or save.
+/*! \brief ControlPanel::SelectFile
+ * Shows an open or save file dialog and returns the selected filename.
+ */
 QString ControlPanel::SelectFile(QString fType, QString Title, QString Ext)
 {
     QString fileName = "";
@@ -3169,13 +3208,14 @@ QString ControlPanel::SelectFile(QString fType, QString Title, QString Ext)
     }
     if(fType.toUpper() == "SAVE")
     {
-        //fileName = QFileDialog::getSaveFileName(nullptr, Title,"",Ext + " (*." + Ext + ");;All files (*.*)");
         fileName = QFileDialog::getSaveFileName(this, Title,"", Ext);
     }
     return fileName;
 }
 
-// Reads a CSV file into the CSVdata list and divides it into lines and elements.
+/*! \brief ControlPanel::ReadCSVfile
+ * Reads a delimited file into CSVdata. Returns line count or -1 on error.
+ */
 int ControlPanel::ReadCSVfile(QString fileName, QString delimiter)
 {
     CSVdata.clear();
@@ -3199,7 +3239,9 @@ int ControlPanel::ReadCSVfile(QString fileName, QString delimiter)
     return -1;
 }
 
-// Returns the selected CSV line and entry in the selected line
+/*! \brief ControlPanel::ReadCSVentry
+ * Returns the specified entry from the specified line of the last-read CSV file.
+ */
 QString ControlPanel::ReadCSVentry(int line, int entry)
 {
     if(CSVdata.count() <= line) return("");
@@ -3207,6 +3249,9 @@ QString ControlPanel::ReadCSVentry(int line, int entry)
     return (*CSVdata[line])[entry];
 }
 
+/*! \brief ControlPanel::slotPlotDialogClosed
+ * Slot: removes and deletes the closed Plot from the plots list.
+ */
 void ControlPanel::slotPlotDialogClosed(Plot *thisPlot)
 {
     // Find this plot object in the list and then
@@ -3221,16 +3266,22 @@ void ControlPanel::slotPlotDialogClosed(Plot *thisPlot)
     }
 }
 
+/*! \brief ControlPanel::CreatePlot
+ * Creates a new plot window with the given title, axis labels, and trace count.
+ */
 void ControlPanel::CreatePlot(QString Title, QString Yaxis, QString Xaxis, int NumPlots)
 {
     plots.append(new Plot(0, Title, Yaxis, Xaxis, NumPlots));
     plots.last()->show();
     plots.last()->activateWindow();
     plots.last()->raise();
-    connect(plots.last(),SIGNAL(DialogClosed(Plot *)),this,SLOT(slotPlotDialogClosed(Plot *)));
+    connect(plots.last(), &Plot::DialogClosed, this, &ControlPanel::slotPlotDialogClosed);
     activePlot = plots.last();
 }
 
+/*! \brief ControlPanel::PlotCommand
+ * Forwards a command to the active plot, or deletes it if cmd is "DELETE".
+ */
 void ControlPanel::PlotCommand(QString cmd)
 {
     if(plots.count() < 1) return;
@@ -3243,55 +3294,60 @@ void ControlPanel::PlotCommand(QString cmd)
     else plots.last()->PlotCommand(cmd);
 }
 
+/*! \brief ControlPanel::slotCPselected
+ * Slot: emits DialogClosed with the selected control panel filename.
+ */
 void ControlPanel::slotCPselected(QString CPfilename)
 {
     emit DialogClosed(CPfilename);
 }
 
+/*! \brief ControlPanel::elapsedTime
+ * Returns elapsed milliseconds since the last init call (init=true resets the timer).
+ */
 int ControlPanel::elapsedTime(bool init)
 {
-    //static QTime time = QTime::currentTime();
 
-    //if(init) time = QTime::currentTime();
-    //return time.elapsed();
     static QElapsedTimer time;
 
     if(init) time.start();
     return time.elapsed();
 }
 
+/*! \brief ControlPanel::setValue
+ * Stores a key/value pair in the top-level control panel's persistent storage map.
+ */
 void ControlPanel::setValue(const QString &key, const QVariant &value)
 {
     ControlPanel *cp=this;
 
     // Find the top level control panel
-    while(cp->parentCP != NULL) cp = cp->parentCP;
+    while(cp->parentCP != nullptr) cp = cp->parentCP;
 
     if (key.isEmpty()) {
-        //qWarning() << "Cannot save key-value pair: Key is empty.";
         return;
     }
 
     // Insert or update the value in the QMap
     cp->m_storage.insert(key, value);
-    //qDebug() << "Saved key to QMap:" << key << "with value:" << value;
 }
 
+/*! \brief ControlPanel::getValue
+ * Retrieves a value by key from the top-level control panel's storage map.
+ */
 QVariant ControlPanel::getValue(const QString &key)
 {
     ControlPanel *cp=this;
 
     // Find the top level control panel
-    while(cp->parentCP != NULL) cp = cp->parentCP;
+    while(cp->parentCP != nullptr) cp = cp->parentCP;
 
     if (key.isEmpty()) {
-        //qWarning() << "Cannot retrieve key-value pair: Key is empty.";
         return "no key";
     }
 
     // QMap::value() returns the value associated with the key, or defaultValue if the key is not found.
     QVariant value = cp->m_storage.value(key, "no key");
-    //qDebug() << "Retrieved key from QMap:" << key << "with value:" << value;
     return value;
 }
 
@@ -3309,11 +3365,14 @@ bool ControlPanel::CreateProcess(QString name, QString program)
         if(extProcs[i]->name == name) return false;
     }
     extProcs.append(new extProcess(this,name,program));
-    connect(extProcs.last(),SIGNAL(DialogClosed(QString)),this,SLOT(slotExtProcessClosed(QString)));
-    connect(extProcs.last(),SIGNAL(change(QString)),this,SLOT(slotExternalProcessChange(QString)));
+    connect(extProcs.last(), &extProcess::DialogClosed, this, &ControlPanel::slotExtProcessClosed);
+    connect(extProcs.last(), &extProcess::change, this, &ControlPanel::slotExternalProcessChange);
     return true;
 }
 
+/*! \brief ControlPanel::slotExtProcessClosed
+ * Slot: removes and deletes the named external process from extProcs.
+ */
 void ControlPanel::slotExtProcessClosed(QString name)
 {
     // It is safer to iterate backward when removing items by index.
@@ -3326,37 +3385,27 @@ void ControlPanel::slotExtProcessClosed(QString name)
         // Check if the name matches the process we are looking for
         if(extProcs[i]->name == name)
         {
-            // CRITICAL STEP 1: Delete the object pointed to by the pointer (prevent memory leak)
             delete extProcs[i];
 
-            // CRITICAL STEP 2: Remove the pointer from the QList (shrink the list)
             extProcs.removeAt(i);
 
-            // DO NOT return here if you want to remove all potential duplicates.
-            // Continue the loop to check the rest of the list.
         }
     }
 }
 
+/*! \brief ControlPanel::slotExternalProcessChange
+ * Slot: forwards an external process change event to the script system.
+ */
 void ControlPanel::slotExternalProcessChange(QString script)
 {
     // Call the scripting system to process this script
     controlChange(script);
 }
 
+/*! \brief ControlPanel::ZMQ
+ * Sends a command to the ZMQ worker and returns the response.
+ */
 QString  ControlPanel::ZMQ(QString command)
 {
     return(zmq.command(command));
 }
-
-
-
-
-
-
-
-
-
-
-
-
