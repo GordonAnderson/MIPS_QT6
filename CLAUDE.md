@@ -21,7 +21,7 @@ comms.cpp/.h, timinggenerator.cpp/.h, mips.cpp/.h
 ## Phase 2 — COMPLETE
 Function-level doc comments added to all Phase 1 files.
 
-## Phase 3 — IN PROGRESS
+## Phase 3 — COMPLETE
 
 ### Branch strategy
 - Current branch: `refactor/phase3-cleanup`
@@ -56,21 +56,45 @@ Each file received full Phase 1 + Phase 2 treatment during extraction.
 - Dead commented code removed
 - Doc comments on every function (complete coverage)
 
+### Completed deferred structural files
+
+**`comms.cpp/.h`** — Phase 1+2+3 complete:
+- `QDialog` → `QObject` base class (Comms is never shown as a dialog)
+- `serial`, `p`, `properties`, `host`, `major`, `minor` moved to private
+- Five public accessors added: `serialPort()`, `version()`, `setProperties()`, `setHost()`, `setSettings()`
+- All `QMessageBox::critical/information(this,` → `nullptr` (after QDialog removal)
+- All SIGNAL/SLOT macros → modern connect syntax
+- NULL → nullptr throughout; doc comments on all functions
+
+**`mips.cpp/.h`** — Phase 1+2+3 complete:
+- 636-line revision history replaced with GAA banner
+- 636-line mips.cpp split into three files:
+  - `mips.cpp` — constructor, destructor, events, UI/tab, scripting, utility
+  - `connection.cpp` — `delay`, `MIPSsetup`, `MIPSconnect`, `MIPSsearch`, `FindAllMIPSsystems`, `FindMIPSandConnect`, `MIPSdisconnect`, `UpdateSystem`
+  - `fileops.cpp` — `GetFileFromMIPS`, `PutFiletoMIPS`, `ReadEEPROM`, `WriteEEPROM`, `ReadARBFLASH`, `WriteARBFLASH`, `ARBupload`
+- All SIGNAL/SLOT macros → modern connect syntax (with lambda wrappers where needed)
+- `delay()` forward-declared in `mips.h` (defined in `connection.cpp`)
+- CMakeLists.txt updated to include `connection.cpp`, `fileops.cpp`
+
+**`timinggenerator.cpp/.h`** — Phase 1+2+3 complete:
+- 1556-line file split into four files:
+  - `timinggenerator.cpp` — free functions (`isTblMode`, `DownloadTable`, `MakePathUnique`) + `TimingGenerator` class
+  - `acquiredata.cpp` — `AcquireData` class
+  - `eventcontrol.cpp` — `EventControl` class
+  - `timingcontrol.cpp` — `TimingControl` class
+- `isTblMode`, `DownloadTable`, `MakePathUnique` declared in `timinggenerator.h` (visible to all split files)
+- All SIGNAL/SLOT macros → modern connect syntax
+- NULL → nullptr; editingFinished → returnPressed (5 sites); doc comments on all functions
+- CMakeLists.txt updated to include `acquiredata.cpp`, `eventcontrol.cpp`, `timingcontrol.cpp`
+
 ### Remaining in Phase 3
-- `comms.cpp/.h` — Phase 1+2 (deferred structural file)
-- `timinggenerator.cpp/.h` — Phase 1+2 (deferred structural file)
-- `mips.cpp/.h` — Phase 1+2 (deferred structural file)
+Nothing remaining — all deferred structural files complete.
 
 Optional (lower priority):
 - Split ControlPanel implementation across multiple files:
   - `controlpanel_update.cpp` — UpdateStateMachine, shutdown/restore
   - `controlpanel_save.cpp` — Save, Load, slotSaveCP
   - `controlpanel_command.cpp` — Command, tcpCommand
-
-### Complications to watch for in remaining Phase 3 files
-- `comms.cpp/.h`: likely has toStdString().c_str() patterns, SIGNAL/SLOT macros
-- `timinggenerator.cpp/.h`: large file, likely many SIGNAL/SLOT macros
-- `mips.cpp/.h`: top-level app class, touches most other classes
 
 ## Established conventions
 - File header: GAA-style border (see any completed file for example)
