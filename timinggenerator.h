@@ -29,6 +29,7 @@
 #include <QProcess>
 #include <QGroupBox>
 
+bool isTblMode(Comms *comms, QString TriggerSource);
 bool DownloadTable(Comms *comms, QString Table, QString ClockSource, QString TriggerSource);
 QString MakePathUnique(QString path);
 
