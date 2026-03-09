@@ -60,6 +60,9 @@ qt_add_executable(MIPS WIN32 MACOSX_BUNDLE
     settingsdialog.cpp settingsdialog.h settingsdialog.ui
     tcpserver.cpp tcpserver.h
     timinggenerator.cpp timinggenerator.h timinggenerator.ui
+    acquiredata.cpp
+    eventcontrol.cpp
+    timingcontrol.cpp
     twave.cpp twave.h
 )
 target_link_libraries(MIPS PRIVATE
