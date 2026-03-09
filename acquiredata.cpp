@@ -2,7 +2,7 @@
 // acquiredata.cpp
 //
 // AcquireData — drives an external command-line data-acquisition application.
-Extracted from timinggenerator.cpp during Phase 3 refactoring.
+// Extracted from timinggenerator.cpp during Phase 3 refactoring.
 //
 // Depends on:  timinggenerator.h, cmdlineapp.h
 // Author:      Gordon Anderson, GAA Custom Electronics, LLC

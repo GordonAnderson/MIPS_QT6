@@ -2,7 +2,7 @@
 // timingcontrol.cpp
 //
 // TimingControl — top-level timing control widget wrapping TimingGenerator
-with Edit/Trigger/Abort buttons and AcquireData. Extracted from timinggenerator.cpp.
+// with Edit/Trigger/Abort buttons and AcquireData. Extracted from timinggenerator.cpp.
 //
 // Depends on:  timinggenerator.h
 // Author:      Gordon Anderson, GAA Custom Electronics, LLC

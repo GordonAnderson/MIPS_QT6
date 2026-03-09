@@ -2,7 +2,7 @@
 // eventcontrol.cpp
 //
 // EventControl — single-event editor widget (label + QLineEdit).
-Extracted from timinggenerator.cpp during Phase 3 refactoring.
+// Extracted from timinggenerator.cpp during Phase 3 refactoring.
 //
 // Depends on:  timinggenerator.h
 // Author:      Gordon Anderson, GAA Custom Electronics, LLC
