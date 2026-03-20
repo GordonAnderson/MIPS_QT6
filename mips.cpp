@@ -47,7 +47,7 @@
 #include <QInputDialog>
 #include <QElapsedTimer>
 
-QString Version = "MIPS, Version 2.22 March 4,2026";
+QString Version = "MIPS, Version 2.23 March 20,2026";
 
 /*! \brief MIPS::MIPS
  * Constructor. Creates and wires all subsystem objects, connects all UI signals,

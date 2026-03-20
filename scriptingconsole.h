@@ -93,14 +93,14 @@ public:
 
 private:
     QWidget *p;
-    QJSEngine engine;
+    QJSEngine *engine;
     void doMsDelay(int ms);
     void doWaitForUpdate(void);
     QMap<QString, QVariant> m_storage;
     QMutex m_mutex;
 
 public slots:
-    QJSValue runEngine(void);
+    QVariant runEngine(void);
     void     setInterrupted(bool);
 
 signals:

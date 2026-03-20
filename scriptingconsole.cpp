@@ -97,8 +97,8 @@ JSengine::JSengine(QWidget *parent)
     connect(this, SIGNAL(CreateProcessSig(QString,QString)),         cp, SLOT(CreateProcess(QString,QString)),         Qt::BlockingQueuedConnection);
     connect(this, SIGNAL(ZMQsig(QString)),                           cp, SLOT(ZMQ(QString)),                           Qt::BlockingQueuedConnection);
 
-    QJSValue mips = engine.newQObject(this);
-    engine.globalObject().setProperty("mips", mips);
+    //QJSValue mips = engine.newQObject(this);
+    //engine.globalObject().setProperty("mips", mips);
 }
 
 // doMsDelay — sleeps the engine thread for ms milliseconds. Called from
@@ -121,7 +121,7 @@ void JSengine::doWaitForUpdate(void)
 // the running script to throw a JS exception on the next statement boundary.
 void JSengine::setInterrupted(bool state)
 {
-    engine.setInterrupted(state);
+    if (engine) engine->setInterrupted(state);
 }
 
 /*! \brief runEngine
@@ -130,15 +130,24 @@ void JSengine::setInterrupted(bool state)
  * script text is evaluated. If scriptCall is non-empty it is parsed as a
  * function call with arguments: "functionName(arg1,arg2)".
  */
-QJSValue JSengine::runEngine(void)
+QVariant JSengine::runEngine(void)
 {
+    // CRITICAL FIX: Ensure engine exists in the CURRENT thread
+    if (!engine) {
+        engine = new QJSEngine();
+
+        // Re-bind the "mips" object to the new local engine
+        QJSValue mips = engine->newQObject(this);
+        engine->globalObject().setProperty("mips", mips);
+    }
+
     if(scriptCall.isEmpty())
     {
         isRunning = true;
-        result    = engine.evaluate(script);
+        result    = engine->evaluate(script);
         emit resultReady(result);
         isRunning = false;
-        return result;
+        return result.toVariant();
     }
     // Parse call string and invoke the named function with arguments
     static QRegularExpression re("[()]");
@@ -149,15 +158,15 @@ QJSValue JSengine::runEngine(void)
         QStringList argsList = callList[1].split(",");
         QJSValueList args;
         for(int i = 0; i < argsList.count(); i++) args.append(argsList[i]);
-        QJSValue fun = engine.evaluate(script);
+        QJSValue fun = engine->evaluate(script);
         result = fun.call(args);
         emit resultReady(result);
         isRunning = false;
-        return result;
+        return result.toVariant();
     }
     result = "Invalid call!";
     emit resultReady(result);
-    return result;
+    return result.toVariant();
 }
 
 // ---------------------------------------------------------------------------

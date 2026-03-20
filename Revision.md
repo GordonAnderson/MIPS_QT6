@@ -481,5 +481,8 @@
 //      1.) Fixed the slow down bug in the plot function when acquiring lots of scans.
 //  2.22, March 4, 2026
 //      1.) Added ZMQ interface to scripting system.
+//  2.23, March 20, 2026
+//      2.) Fixed a crash in the scripting system cuased by where the 
+//          engine was created.
 
 
