@@ -24,16 +24,17 @@ TEMPLATE = app
 
 CONFIG += static
 
-SOURCES += main.cpp\
+SOURCES += main.cpp connection.cpp fileops.cpp\
     Utilities.cpp \
-        mips.cpp \
-        console.cpp \
+    dcbgroups.cpp \
+    mips.cpp \
+    console.cpp \
     modbus.cpp \
-        settingsdialog.cpp \
-        ringbuffer.cpp \
-        pse.cpp \
-        comms.cpp \
-        twave.cpp \
+    settingsdialog.cpp \
+    ringbuffer.cpp \
+    pse.cpp \
+    comms.cpp \
+    twave.cpp \
     dcbias.cpp \
     dio.cpp \
     rfdriver.cpp \
@@ -54,16 +55,20 @@ SOURCES += main.cpp\
     scriptingconsole.cpp \
     rfamp.cpp \
     tcpserver.cpp \
-    timinggenerator.cpp \
+    timinggenerator.cpp acquiredata.cpp timingcontrol.cpp eventcontrol.cpp \
     compressor.cpp \
     properties.cpp \
     plot.cpp \
     device.cpp \
-    zmqworker.cpp
+    zmqworker.cpp \
+    TextLabel.cpp Shutdown.cpp SaveLoad.cpp CPbutton.cpp DACchannel.cpp ESI.cpp \
+    Ccontrol.cpp Cpanel.cpp StatusLight.cpp TextMessage.cpp Table.cpp Slider.cpp
 
-HEADERS  += mips.h \
+
+HEADERS  += mips.h connection.h fileops.h\
     Utilities.h \
     console.h \
+    dcbgroups.h \
     modbus.h \
     settingsdialog.h \
     ringbuffer.h \
@@ -90,12 +95,14 @@ HEADERS  += mips.h \
     scriptingconsole.h \
     rfamp.h \
     tcpserver.h \
-    timinggenerator.h \
+    timinggenerator.h acquiredata.h timingcontrol.h eventcontrol.h \
     compressor.h \
     properties.h \
     plot.h \
     device.h \
-    zmqworker.h
+    zmqworker.h \
+    TextLabel.h Shutdown.h SaveLoad.h CPbutton.h DACchannel.h ESI.h \
+    Ccontrol.h Cpanel.h StatusLight.h TextMessage.h Table.h Slider.h
 
 FORMS    += mips.ui \
     settingsdialog.ui \
@@ -140,6 +147,14 @@ CONFIG+=sdk_no_version_check
 
 #QMAKE_MAC_SDK = macosx15.2
 
+DISTFILES += \
+    Revision.md
+
+macx {
+    # This command runs after the main executable is linked
+    # It packages the frameworks and signs them for local use
+    QMAKE_POST_LINK += macdeployqt $$OUT_PWD/$${TARGET}.app -qmldir=$$PWD -codesign=-
+}
 
 
 
