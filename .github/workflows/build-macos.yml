@@ -24,7 +24,7 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.7.1'
-          modules: ''
+          modules: 'qtserialport qtserialbus'
 
       - name: Fix ZMQ paths in .pro file
         run: |
