@@ -22,9 +22,19 @@ This application was developed using the Qt Creator version 13.0.2 and is writte
 This project is licensed under the GNU General Public License v3.0 
 - see the LICENSE file for details.
 
-You can find documentation files on MIPS and install files on our google drive here:
-https://drive.google.com/drive/folders/0B3IchPRNYqYIcjZhdGFVMVR1VzQ?resourcekey=0-qTdIhau9LysBytglIla-yg&usp=drive_link
+## Documentation & Examples
 
+User documentation, example configuration files, scripts, and data files 
+are available in the MIPS Resources repository:
+
+**[MIPS Resources →](https://github.com/GordonAnderson/MIPS-Resources)**
+
+This includes:
+- User manual (PDF)
+- Example configuration files
+- Example scripts
+- Example data files
+  
 Gordon Anderson
 
 GAA Custom Electronics, LLC
