@@ -1,57 +1,86 @@
+// =============================================================================
+// rfamp.cpp
+//
+// RF amplifier control panel widget for the MIPS host application.
+//
+// Depends on:  rfamp.h, comms.h, Utilities.h, ui_rfamp.h
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
+
 #include "rfamp.h"
 #include "ui_rfamp.h"
 #include "Utilities.h"
 
+// -----------------------------------------------------------------------------
+// Constructor — connects dynamically-named widgets and installs event filters
+// on the line edits that support arrow-key value adjustment.
+// -----------------------------------------------------------------------------
 RFamp::RFamp(QWidget *parent, QString name, QString MIPSname, int Module) :
     QDialog(parent),
     ui(new Ui::RFamp)
 {
-    p = parent;
+    p         = parent;
     ui->setupUi(this);
-    Updating = false;
-    UpdateOff = false;
+    Updating   = false;
+    UpdateOff  = false;
     isShutdown = false;
-    comms = NULL;
-    Title  = name;
-    MIPSnm = MIPSname;
-    Channel = Module;
+    comms      = NULL;
+    Title      = name;
+    MIPSnm     = MIPSname;
+    Channel    = Module;
 
     ui->gbRFamp->setTitle(Title);
     ui->gbRFamp->setToolTip(MIPSnm + " Module: " + QString::number(Module));
+
     QObjectList widgetList = ui->tabRFsettings->children();
     widgetList += ui->tabMassFilter->children();
     foreach(QObject *w, widgetList)
     {
-       if(w->objectName().contains("leS")) connect(((QLineEdit *)w),SIGNAL(editingFinished()),this,SLOT(Updated()));
-       else if(w->objectName().contains("chk")) connect(((QCheckBox *)w),SIGNAL(toggled(bool)),this,SLOT(Updated()));
-       else if(w->objectName().contains("rb")) connect(((QRadioButton *)w),SIGNAL(clicked(bool)),this,SLOT(Updated()));
+        if(w->objectName().contains("leS"))
+        {
+            if(QLineEdit *le = qobject_cast<QLineEdit *>(w))
+                connect(le, &QLineEdit::returnPressed, this, &RFamp::Updated);
+        }
+        else if(w->objectName().contains("chk"))
+            connect(((QCheckBox *)w), &QCheckBox::toggled, this, &RFamp::Updated);
+        else if(w->objectName().contains("rb"))
+            connect(((QRadioButton *)w), &QRadioButton::clicked, this, &RFamp::Updated);
     }
-    connect(ui->pbRFAupdate,SIGNAL(pressed()),this,SLOT(slotUpdate()));
-    ui->leSRFAFREQ->installEventFilter(this);
-    ui->leSRFAFREQ->setMouseTracking(true);
-    ui->leSRFARES->installEventFilter(this);
-    ui->leSRFARES->setMouseTracking(true);
-    ui->leSRFAR0->installEventFilter(this);
-    ui->leSRFAR0->setMouseTracking(true);
-    ui->leSRFAK->installEventFilter(this);
-    ui->leSRFAK->setMouseTracking(true);
+    connect(ui->pbRFAupdate, &QPushButton::pressed, this, &RFamp::slotUpdate);
+
+    // Install event filters for arrow-key value nudging
+    ui->leSRFAFREQ->installEventFilter(this); ui->leSRFAFREQ->setMouseTracking(true);
+    ui->leSRFARES->installEventFilter(this);  ui->leSRFARES->setMouseTracking(true);
+    ui->leSRFAR0->installEventFilter(this);   ui->leSRFAR0->setMouseTracking(true);
+    ui->leSRFAK->installEventFilter(this);    ui->leSRFAK->setMouseTracking(true);
     ui->gbRFamp->setMouseTracking(true);
 }
 
+// ~RFamp — destructor. Releases the UI form.
 RFamp::~RFamp()
 {
     delete ui;
 }
 
+// -----------------------------------------------------------------------------
+// eventFilter — handles arrow-key value nudging on FREQ, RES, R0, and K fields.
+// R0 and K use a finer multiplier (mult / 1000) than FREQ and RES.
+// -----------------------------------------------------------------------------
 bool RFamp::eventFilter(QObject *obj, QEvent *event)
 {
-    if (((obj != ui->leSRFAFREQ) && (obj != ui->leSRFARES) && (obj != ui->leSRFAR0) && (obj != ui->leSRFAK))) return QObject::eventFilter(obj, event);
+    if((obj != ui->leSRFAFREQ) && (obj != ui->leSRFARES) &&
+        (obj != ui->leSRFAR0)   && (obj != ui->leSRFAK))
+        return QObject::eventFilter(obj, event);
+
     if(Updating) return true;
     UpdateOff = true;
     float mult = 10;
-    if (obj == ui->leSRFAR0) mult /= 1000;
-    if (obj == ui->leSRFAK) mult /= 1000;
-    if(adjustValue(obj,(QLineEdit *)obj,event,mult))
+    if(obj == ui->leSRFAR0) mult /= 1000;
+    if(obj == ui->leSRFAK)  mult /= 1000;
+    if(adjustValue(obj, (QLineEdit *)obj, event, mult))
     {
         UpdateOff = false;
         return true;
@@ -60,6 +89,10 @@ bool RFamp::eventFilter(QObject *obj, QEvent *event)
     return QObject::eventFilter(obj, event);
 }
 
+// -----------------------------------------------------------------------------
+// Update — polls all RF amp parameters from MIPS and refreshes the UI.
+// On first call reads all tabs; thereafter reads only the active tab.
+// -----------------------------------------------------------------------------
 void RFamp::Update(void)
 {
     QStringList resList;
@@ -69,16 +102,17 @@ void RFamp::Update(void)
     static bool inited = false;
     QObjectList widgetList;
 
-    if(comms==NULL) return;
+    if(comms == NULL) return;
     if(UpdateOff) return;
     Updating = true;
-    // Update all input boxes for the selected tab
+
     if(inited) widgetList = ui->tabRFquad->currentWidget()->children();
     else
     {
-        widgetList = ui->tabRFsettings->children();
+        widgetList  = ui->tabRFsettings->children();
         widgetList += ui->tabMassFilter->children();
     }
+
     foreach(QObject *w, widgetList)
     {
         comms->rb.clear();
@@ -92,8 +126,8 @@ void RFamp::Update(void)
         }
         else if(w->objectName().contains("chk"))
         {
-            // Checkbox names encode the command and response for check and uncheck
-            // This has a bug in the PWR command, March 4, 2021
+            // Checkbox names encode command and on/off response values: chk<CMD>_<ON>_<OFF>
+            // DCPWR is a global command (no channel number); all others include channel.
             resList = w->objectName().split("_");
             if(resList.count() == 3)
             {
@@ -117,11 +151,11 @@ void RFamp::Update(void)
         }
         else if(w->objectName().contains("lel"))
         {
-            // This is a list of parameters from a command common to several line edit boxes
+            // Multi-value list line edits: lel<CMD>_<INDEX>
             resList = w->objectName().split("_");
             if(resList.count() == 2)
             {
-                i = resList[1].toInt();
+                i   = resList[1].toInt();
                 res = resList[0].mid(3);
                 if(!CurrentList.startsWith(res)) CurrentList = res + "," + comms->SendMess(res + "," + QString::number(Channel) + "\n");
                 resList = CurrentList.split(",");
@@ -130,9 +164,13 @@ void RFamp::Update(void)
         }
     }
     Updating = false;
-    inited = true;
+    inited   = true;
 }
 
+// -----------------------------------------------------------------------------
+// ProcessCommand — scripting interface for reading and writing RF amp parameters
+// by human-readable name.
+// -----------------------------------------------------------------------------
 QString RFamp::ProcessCommand(QString cmd)
 {
     QString      title;
@@ -144,21 +182,14 @@ QString RFamp::ProcessCommand(QString cmd)
     if(p->objectName() != "") title = p->objectName() + ".";
     title += Title;
     if(!cmd.startsWith(title)) return "?";
+
+    // Read-only readback fields
     if(cmd == title + ".RF settings.Enable")
-    {
-        if(ui->chkSRFAENA_ON_OFF->checkState()) return "TRUE";
-        else return "FALSE";
-    }
+        return ui->chkSRFAENA_ON_OFF->checkState() ? "TRUE" : "FALSE";
     if(cmd == title + ".RF settings.Open loop")
-    {
-        if(ui->rbSRFAMOD_OPEN->isChecked()) return "TRUE";
-        else return "FALSE";
-    }
+        return ui->rbSRFAMOD_OPEN->isChecked() ? "TRUE" : "FALSE";
     if(cmd == title + ".RF settings.Closed loop")
-    {
-        if(ui->rbSRFAMOD_CLOSED->isChecked()) return "TRUE";
-        else return "FALSE";
-    }
+        return ui->rbSRFAMOD_CLOSED->isChecked() ? "TRUE" : "FALSE";
     if(cmd == title + ".RF settings.Frequency") return ui->leSRFAFREQ->text();
     if(cmd == title + ".RF settings.Drive")     return ui->leSRFADRV->text();
     if(cmd == title + ".RF settings.Setpoint")  return ui->leSRFALEV->text();
@@ -167,34 +198,28 @@ QString RFamp::ProcessCommand(QString cmd)
     if(cmd == title + ".RF settings.RF pwr")    return ui->leGRFAPWR->text();
 
     if(cmd == title + ".Mass filter.DC power supply enable")
-    {
-        if(ui->chkSDCPWR_ON_OFF->checkState()) return "TRUE";
-        else return "FALSE";
-    }
+        return ui->chkSDCPWR_ON_OFF->checkState() ? "TRUE" : "FALSE";
     if(cmd == title + ".Mass filter.Ro")           return ui->leSRFAR0->text();
     if(cmd == title + ".Mass filter.k")            return ui->leSRFAK->text();
     if(cmd == title + ".Mass filter.Resolving DC") return ui->leSRFARDC->text();
     if(cmd == title + ".Mass filter.Pole Bias")    return ui->leSRFAPB->text();
     if(cmd == title + ".Mass filter.Resolution")   return ui->leSRFARES->text();
     if(cmd == title + ".Mass filter.m/z")          return ui->leSRFAMZ->text();
-    if(cmd == title + ".Mass filter.Update")
-    {
-        ui->pbRFAupdate->click();
-        return "";
-    }
+    if(cmd == title + ".Mass filter.Update")       { ui->pbRFAupdate->click(); return ""; }
 
-    if(cmd == title + ".RF amp.DC V")           return ui->lelRRFAAMP_1->text();
-    if(cmd == title + ".RF amp.DC I in")        return ui->lelRRFAAMP_2->text();
-    if(cmd == title + ".RF amp.DC pwr")         return ui->lelRRFAAMP_3->text();
-    if(cmd == title + ".RF amp.Temp")           return ui->lelRRFAAMP_4->text();
-    if(cmd == title + ".RF amp.RF Vrms")        return ui->lelRRFAAMP_5->text();
-    if(cmd == title + ".RF amp.RF Irms")        return ui->lelRRFAAMP_6->text();
-    if(cmd == title + ".RF amp.RF fwd pwr")     return ui->lelRRFAAMP_7->text();
-    if(cmd == title + ".RF amp.RF rev pwr")     return ui->lelRRFAAMP_8->text();
-    if(cmd == title + ".RF amp.SWR")            return ui->lelRRFAAMP_9->text();
-    // Work in progress
+    if(cmd == title + ".RF amp.DC V")       return ui->lelRRFAAMP_1->text();
+    if(cmd == title + ".RF amp.DC I in")    return ui->lelRRFAAMP_2->text();
+    if(cmd == title + ".RF amp.DC pwr")     return ui->lelRRFAAMP_3->text();
+    if(cmd == title + ".RF amp.Temp")       return ui->lelRRFAAMP_4->text();
+    if(cmd == title + ".RF amp.RF Vrms")    return ui->lelRRFAAMP_5->text();
+    if(cmd == title + ".RF amp.RF Irms")    return ui->lelRRFAAMP_6->text();
+    if(cmd == title + ".RF amp.RF fwd pwr") return ui->lelRRFAAMP_7->text();
+    if(cmd == title + ".RF amp.RF rev pwr") return ui->lelRRFAAMP_8->text();
+    if(cmd == title + ".RF amp.SWR")        return ui->lelRRFAAMP_9->text();
+
+    // Write path: cmd=value
     QStringList resList = cmd.split("=");
-    if(resList.count()==2)
+    if(resList.count() == 2)
     {
         if(cmd.startsWith(title + ".RF settings.Enable"))       cb = ui->chkSRFAENA_ON_OFF;
         if(cmd.startsWith(title + ".RF settings.Open loop"))    rb = ui->rbSRFAMOD_OPEN;
@@ -202,7 +227,6 @@ QString RFamp::ProcessCommand(QString cmd)
         if(cmd.startsWith(title + ".RF settings.Frequency"))    le = ui->leSRFAFREQ;
         if(cmd.startsWith(title + ".RF settings.Drive"))        le = ui->leSRFADRV;
         if(cmd.startsWith(title + ".RF settings.Setpoint"))     le = ui->leSRFALEV;
-
         if(cmd.startsWith(title + ".Mass filter.Ro"))           le = ui->leSRFAR0;
         if(cmd.startsWith(title + ".Mass filter.k"))            le = ui->leSRFAK;
         if(cmd.startsWith(title + ".Mass filter.Resolving DC")) le = ui->leSRFARDC;
@@ -219,31 +243,35 @@ QString RFamp::ProcessCommand(QString cmd)
         }
         if(cb != NULL)
         {
-            if(resList[1].trimmed() == "TRUE") cb->setChecked(true);
+            if(resList[1].trimmed() == "TRUE")  cb->setChecked(true);
             if(resList[1].trimmed() == "FALSE") cb->setChecked(false);
             emit cb->clicked();
             return "";
         }
         if(rb != NULL)
         {
-            if(resList[1].trimmed() == "TRUE") rb->setChecked(true);
+            if(resList[1].trimmed() == "TRUE")  rb->setChecked(true);
             if(resList[1].trimmed() == "FALSE") rb->setChecked(false);
             emit rb->clicked();
             return "";
         }
-
     }
-    return("?");
+    return "?";
 }
 
+// -----------------------------------------------------------------------------
+// Updated — slot called when any setpoint widget changes. Sends the new value
+// to MIPS using the command encoded in the widget's object name.
+// -----------------------------------------------------------------------------
 void RFamp::Updated(void)
 {
-    QObject*    obj = sender();
-    QString     res;
-    QStringList resList;
+    QObject     *obj = sender();
+    QString      res;
+    QStringList  resList;
 
-    if(comms==NULL) return;
+    if(comms == NULL) return;
     if(Updating) return;
+
     if(obj->objectName().startsWith("leS"))
     {
         if(!((QLineEdit *)obj)->isModified()) return;
@@ -256,6 +284,7 @@ void RFamp::Updated(void)
         resList = obj->objectName().mid(3).split("_");
         if(resList.count() == 3)
         {
+            // DCPWR is a global command; all others include channel number
             if(resList[0] == "SDCPWR")
             {
                 if(((QCheckBox *)obj)->isChecked()) comms->SendCommand(resList[0] + "," + resList[1] + "\n");
@@ -263,8 +292,8 @@ void RFamp::Updated(void)
             }
             else
             {
-               if(((QCheckBox *)obj)->isChecked()) comms->SendCommand(resList[0] + "," + QString::number(Channel) + "," + resList[1] + "\n");
-               else comms->SendCommand(resList[0] + "," + QString::number(Channel) + "," + resList[2] + "\n");
+                if(((QCheckBox *)obj)->isChecked()) comms->SendCommand(resList[0] + "," + QString::number(Channel) + "," + resList[1] + "\n");
+                else comms->SendCommand(resList[0] + "," + QString::number(Channel) + "," + resList[2] + "\n");
             }
         }
     }
@@ -273,50 +302,59 @@ void RFamp::Updated(void)
         resList = obj->objectName().mid(2).split("_");
         if(resList.count() == 2)
         {
-            if(((QRadioButton *)obj)->isChecked()) comms->SendCommand(resList[0] + "," + QString::number(Channel) + "," + resList[1] + "\n");
+            if(((QRadioButton *)obj)->isChecked())
+                comms->SendCommand(resList[0] + "," + QString::number(Channel) + "," + resList[1] + "\n");
         }
     }
 }
 
+// -----------------------------------------------------------------------------
+// Report — serialises all widget values for method file save.
+// -----------------------------------------------------------------------------
 QString RFamp::Report(void)
 {
-   QString res;
-   QStringList resList;
-   QString title;
+    QString res;
+    QStringList resList;
+    QString title;
 
-   title.clear();
-   if(p->objectName() != "") title = p->objectName() + ".";
-   title += Title;
-   res.clear();
-   QObjectList widgetList = ui->tabRFsettings->children();
-   widgetList += ui->tabMassFilter->children();
-   foreach(QObject *w, widgetList)
-   {
-       if(w->objectName().startsWith("leS"))
-       {
-           res += title + "," + w->objectName() + "," + ((QLineEdit *)w)->text() + "\n";
-       }
-       if(w->objectName().startsWith("chkS"))
-       {
-           resList = w->objectName().split("_");
-           if(resList.count() == 3)
-           {
-               if(((QCheckBox *)w)->isChecked()) res += title + "," + resList[0] + "," + resList[1] + "\n";
-               else res += title + "," + resList[0] + "," + resList[2] + "\n";
-           }
-       }
-       if(w->objectName().startsWith("rbS"))
-       {
-           resList = w->objectName().split("_");
-           if(resList.count() == 2) if(((QRadioButton *)w)->isChecked()) res += title + "," + resList[0] + "," + resList[1] + "\n";
-       }
-   }
-   return res;
+    title.clear();
+    if(p->objectName() != "") title = p->objectName() + ".";
+    title += Title;
+    res.clear();
+
+    QObjectList widgetList = ui->tabRFsettings->children();
+    widgetList += ui->tabMassFilter->children();
+    foreach(QObject *w, widgetList)
+    {
+        if(w->objectName().startsWith("leS"))
+        {
+            res += title + "," + w->objectName() + "," + ((QLineEdit *)w)->text() + "\n";
+        }
+        if(w->objectName().startsWith("chkS"))
+        {
+            resList = w->objectName().split("_");
+            if(resList.count() == 3)
+            {
+                if(((QCheckBox *)w)->isChecked()) res += title + "," + resList[0] + "," + resList[1] + "\n";
+                else res += title + "," + resList[0] + "," + resList[2] + "\n";
+            }
+        }
+        if(w->objectName().startsWith("rbS"))
+        {
+            resList = w->objectName().split("_");
+            if(resList.count() == 2)
+                if(((QRadioButton *)w)->isChecked()) res += title + "," + resList[0] + "," + resList[1] + "\n";
+        }
+    }
+    return res;
 }
 
+// -----------------------------------------------------------------------------
+// SetValues — restores a single widget value from a method file line.
+// -----------------------------------------------------------------------------
 bool RFamp::SetValues(QString strVals)
 {
-    QStringList resList,ctrlList;
+    QStringList resList, ctrlList;
     QString title;
 
     title.clear();
@@ -325,6 +363,7 @@ bool RFamp::SetValues(QString strVals)
     if(!strVals.startsWith(title)) return false;
     resList = strVals.split(",");
     if(resList.count() < 3) return false;
+
     QObjectList widgetList = ui->tabRFsettings->children();
     widgetList += ui->tabMassFilter->children();
     foreach(QObject *w, widgetList)
@@ -343,8 +382,8 @@ bool RFamp::SetValues(QString strVals)
                 ctrlList = w->objectName().split("_");
                 if(ctrlList.count() >= 3)
                 {
-                    if((ctrlList[0] == resList[1]) && (ctrlList[1] == resList[2])) {((QCheckBox *)w)->setChecked(true); return(true);}
-                    if((ctrlList[0] == resList[1]) && (ctrlList[2] == resList[2])) {((QCheckBox *)w)->setChecked(false); return(true);}
+                    if((ctrlList[0] == resList[1]) && (ctrlList[1] == resList[2])) { ((QCheckBox *)w)->setChecked(true);  return true; }
+                    if((ctrlList[0] == resList[1]) && (ctrlList[2] == resList[2])) { ((QCheckBox *)w)->setChecked(false); return true; }
                     emit ((QCheckBox *)w)->clicked();
                 }
             }
@@ -362,32 +401,38 @@ bool RFamp::SetValues(QString strVals)
     return false;
 }
 
+// -----------------------------------------------------------------------------
+// slotUpdate — sends the RF amp quad update command to MIPS.
+// -----------------------------------------------------------------------------
 void RFamp::slotUpdate(void)
 {
     if(comms == NULL) return;
     comms->SendCommand("RFAQUPDATE," + QString::number(Channel) + "\n");
 }
 
+// -----------------------------------------------------------------------------
+// Shutdown — disables RF and DC power, saving the current enable state for Restore.
+// -----------------------------------------------------------------------------
 void RFamp::Shutdown(void)
 {
     if(isShutdown) return;
-    isShutdown = true;
+    isShutdown        = true;
     activeEnableState = ui->chkSRFAENA_ON_OFF->checkState();
     ui->chkSRFAENA_ON_OFF->setChecked(false);
     emit ui->chkSRFAENA_ON_OFF->checkStateChanged(Qt::Unchecked);
-    // Disable the DC supply
     ui->chkSDCPWR_ON_OFF->setChecked(false);
     emit ui->chkSDCPWR_ON_OFF->checkStateChanged(Qt::Unchecked);
 }
 
+// -----------------------------------------------------------------------------
+// Restore — re-enables RF and DC power, restoring the saved enable state.
+// -----------------------------------------------------------------------------
 void RFamp::Restore(void)
 {
     if(!isShutdown) return;
     isShutdown = false;
     ui->chkSRFAENA_ON_OFF->setChecked(activeEnableState);
-    if(activeEnableState) emit ui->chkSRFAENA_ON_OFF->checkStateChanged(Qt::Checked);
-    else emit ui->chkSRFAENA_ON_OFF->checkStateChanged(Qt::Unchecked);
-    // Enable the DC supply
+    emit ui->chkSRFAENA_ON_OFF->checkStateChanged(activeEnableState ? Qt::Checked : Qt::Unchecked);
     ui->chkSDCPWR_ON_OFF->setChecked(true);
     emit ui->chkSDCPWR_ON_OFF->checkStateChanged(Qt::Checked);
 }

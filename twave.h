@@ -1,5 +1,24 @@
-#ifndef TWAVE
-#define TWAVE
+// =============================================================================
+// twave.h
+//
+// Twave tab controller for the MIPS host application.
+//
+// Controls the travelling wave (Twave) ion guide tab. Supports single and
+// dual channel operation, optional ARB compressor mode, frequency sweep,
+// and external trigger configuration. Uses object name conventions (leSTW*,
+// rbSTW*) for dynamic widget-to-command mapping.
+//
+// Hardware:    MIPS Twave module (commands: STWF, STWPV, STWDIR, STWCMODE,
+//              STWCSW, STWSGO, STWSHLT, TWCTRG, SDTRIG*, etc.)
+// Depends on:  comms.h, ui_mips.h
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
+
+#ifndef TWAVE_H
+#define TWAVE_H
 
 #include "ui_mips.h"
 #include "mips.h"
@@ -15,7 +34,7 @@
 
 class Twave : public QDialog
 {
-     Q_OBJECT
+    Q_OBJECT
 
 public:
     Twave(Ui::MIPS *w, Comms *c);
@@ -25,9 +44,9 @@ public:
     bool myEventFilter(QObject *obj, QEvent *event);
 
     Ui::MIPS *tui;
-    Comms *comms;
-    int NumChannels;
-    bool Compressor;
+    Comms    *comms;
+    int      NumChannels;
+    bool     Compressor;
 
 private:
     bool Updating;
@@ -50,5 +69,4 @@ private slots:
     void SweepExtTrigger(void);
 };
 
-#endif // TWAVE
-
+#endif // TWAVE_H

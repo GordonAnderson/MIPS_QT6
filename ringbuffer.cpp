@@ -1,76 +1,59 @@
-/*! \file ringbuffer.cpp
- * \brief Implementation of the RingBuffer class.
- *
- * This file contains the implementation of the RingBuffer class, which is used to manage a
- * ring buffer for storing characters received from MIPS. It provides methods for adding,
- * retrieving, and managing characters and lines within the buffer.
- *
- * \author Gordon Anderson
- * \date   2015-2025
- */
+// =============================================================================
+// ringbuffer.cpp
+//
+// Fixed-size circular character buffer used by the Comms and TCPserver classes
+// to receive and buffer incoming serial/TCP data from MIPS.
+//
+// Buffer capacity is rbSIZE (10 000) characters. Lines are counted by tracking
+// newline characters so callers can poll numLines() before calling getline().
+// ACK (0x06), NAK (0x15), and CR ('\r') characters can be stripped on read.
+//
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Created:     2015
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
 #include "ringbuffer.h"
 #include <QElapsedTimer>
-#include <QDebug>
 
-
-/*! \brief RingBuffer is a simple ring buffer implementation.
- * This class is used to store characters received from MIPS.
- * It can hold up to rbSIZE characters and supports basic operations like
- * adding characters, retrieving characters, and managing lines.
- */
+// RingBuffer — constructor. Initialises the buffer to the empty state.
 RingBuffer::RingBuffer(void)
 {
     clear();
 }
 
-/*! \brief clear resets the ring buffer to its initial state.
- * This function clears the buffer, resets the head and tail pointers,
- * and sets the count of characters and lines to zero.
- */
+// clear — resets head, tail, count, and line counter to zero.
 void RingBuffer::clear(void)
 {
-    head = 0;
-    tail = 0;
+    head  = 0;
+    tail  = 0;
     count = 0;
     lines = 0;
 }
 
-/*! \brief size returns the current number of characters in the ring buffer.
- * This function returns the count of characters currently stored in the buffer.
- * @return The number of characters in the buffer.
- */
+// size — returns the number of characters currently in the buffer.
 int RingBuffer::size(void)
 {
     return count;
 }
 
-/*! \brief available returns the number of free slots in the ring buffer.
- * This function calculates how many more characters can be added to the buffer
- * without exceeding its maximum size.
- * @return The number of available slots in the buffer.
- */
-int  RingBuffer::available(void)
+// available — returns the number of free slots remaining in the buffer.
+int RingBuffer::available(void)
 {
-    return (rbSIZE-count);
+    return (rbSIZE - count);
 }
 
-/*! \brief numLines returns the number of lines in the ring buffer.
- * This function returns the count of lines (terminated by newline characters)
- * currently stored in the buffer.
- * @return The number of lines in the buffer.
- */
+// numLines — returns the number of newline-terminated lines in the buffer.
 int RingBuffer::numLines(void)
 {
     return lines;
 }
 
-/*! \brief getch retrieves a character from the ring buffer.
- * This function removes a character from the buffer and returns it.
- * If the character is a newline, it decrements the line count.
- * It can optionally strip special characters (0x06, 0x15, and '\r').
- * @param strip If true, special characters are ignored.
- * @return The character retrieved from the buffer, or 0 if the buffer is empty.
- */
+// getch — removes and returns one character from the tail of the buffer.
+// If strip is true, ACK (0x06), NAK (0x15), and CR ('\r') are silently
+// discarded and the next character is returned instead.
+// Returns 0 if the buffer is empty.
 char RingBuffer::getch(bool strip)
 {
     char c;
@@ -82,53 +65,43 @@ char RingBuffer::getch(bool strip)
         if(tail >= rbSIZE) tail = 0;
         count--;
         if(c == '\n') lines--;
-        if(strip && (c == 0x06 || c == 0x15 || c == '\r')) continue; // ignore special characters
-        break; // exit the loop if a valid character is found
+        if(strip && (c == 0x06 || c == 0x15 || c == '\r')) continue;
+        break;
     }
     return c;
 }
 
-/*! \brief putch adds a character to the ring buffer.
- * This function adds a character to the buffer and increments the count.
- * If the character is a newline, it increments the line count.
- * It returns the new count of characters in the buffer, or -1 if the buffer is full.
- * @param c The character to add to the buffer.
- * @return The new count of characters in the buffer, or -1 if full.
- */
+// putch — appends one character to the head of the buffer.
+// CR ('\r') is silently ignored. Returns -1 if the buffer is full,
+// otherwise returns the new character count.
 int RingBuffer::putch(char c)
 {
-    if(c == '\r') return(count);        // ignore \r
+    if(c == '\r') return(count);
     if(count >= rbSIZE) return(-1);
-    if(c == '\n')
-    {
-        lines++;
-    }
+    if(c == '\n') lines++;
     buffer[head++] = c;
     if(head >= rbSIZE) head = 0;
     count++;
     return(count);
 }
 
-/*! \brief getline retrieves a line from the ring buffer.
- * This function reads characters from the buffer until a newline character is encountered.
- * It returns the line as a QString. If an ACK (0x06) or NAK (0x15) character is received,
- * it can set the acknak parameter to true.
- * @param acknak Pointer to a boolean that will be set to true if an ACK or NAK is received.
- * @return The line read from the buffer as a QString.
- */
+// getline — reads characters from the buffer until a newline is encountered
+// and returns the line as a QString (without the newline). ACK/NAK characters
+// are discarded. If acknak is non-null it is set true when ACK/NAK is seen.
+// Returns an empty string if no complete line is available.
 QString RingBuffer::getline(bool *acknak)
 {
-    QString str="";
+    QString str = "";
     char c;
 
     if(lines <= 0) return str;
     while(1)
     {
-        c = getch(false); // Get a character without stripping special characters
+        c = getch(false);
         if((c == 0x06) || (c == 0x15))
         {
-            if(acknak != NULL)  *acknak = true; // Set acknak to true if an ACK or NAK is received
-            continue; // Ignore ACK/NAK characters
+            if(acknak != NULL) *acknak = true;
+            continue;
         }
         if(c == '\n') break;
         if(count <= 0) break;
@@ -137,14 +110,10 @@ QString RingBuffer::getline(bool *acknak)
     return str;
 }
 
-/*! \brief putString adds a string to the ring buffer.
- * This function takes a QString, converts each character to its Latin-1 representation,
- * and adds it to the buffer using putch.
- * @param str The QString to add to the buffer.
- */
+// putString — appends every character of a QString to the buffer via putch.
 void RingBuffer::putString(QString str)
 {
-    for(int i=0; i<str.length(); i++)
+    for(int i = 0; i < str.length(); i++)
     {
         char c = str.at(i).toLatin1();
         putch(c);

@@ -1,27 +1,28 @@
-// Plot.c
+// =============================================================================
+// plot.cpp
 //
-// Generic plot function called by the control panel script system.
-// When the plot is created the following should be defined:
-//  - Title
-//  - Yaxis title
-//  - Xaxis title
-//  - Number of plot, 1 or 2 for now
-// A generic PlotCommand function accepts plot command string to enable
-// ploting data. All commands sent to the plot command function are
-// appended to the comments.
+// Generic plot dialog used by the MIPS host scripting system. Hosts one or
+// two line graphs plus optional heatmap views of multi-scan data.
 //
-// Includes the following capability:
-//  - Comment system, view and edit comments
-//  - Popup menu system that will have the following functions
-//      - Save
-//      - Load
-//      - trace
-//      - X axis zoom
-//      - Y axis zoom
-//      - Edit comments
-//      - Display heatmap of scans
-//  - Strip chart option
+// Key capabilities:
+//   - PlotCommand() — string-driven API; all commands are also appended to the
+//     comment block so a saved .plot file can fully recreate the session
+//   - Multi-scan accumulation via NewGraph / AddPoint / AddPoints commands
+//   - Savitzky-Golay smoothing (5, 7, 9, or 11-point)
+//   - Heatmap view (QCPColorMap) for two-channel ion mobility data
+//   - Zoom history stack with one-level and full undo
+//   - Binary (.plot) and CSV save/load, clipboard image capture
+//   - PlotData — draggable embedded widget wrapper around Plot
 //
+// PlotCommand string API is documented inline above the function body.
+//
+// Depends on:  ui_plot.h, qcustomplot.h
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Created:     2021
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
 #include "plot.h"
 #include "ui_plot.h"
 #include <QScreen>
@@ -31,6 +32,8 @@
 #include <QTextStream>
 #include <QList>
 
+// Define LassoMode to use rubber-band selection rect for zoom (recommended).
+// Comment this out to revert to the legacy scroll-wheel zoom interaction.
 #define LassoMode
 
 // --- Binary Save/Load Functions for a single PlotGraph ---
@@ -361,13 +364,9 @@ Plot::Plot(QWidget *parent, QString Title, QString Yaxis, QString Xaxis, int Num
 {
     p = parent;
     ui->setupUi(this);
-    //Qt::WindowFlags flags = this->windowFlags();
-    //    this->setWindowFlags(flags | Qt::CustomizeWindowHint | Qt::WindowStaysOnTopHint);
-    //    this->setWindowFlags(flags | Qt::WindowStaysOnTopHint);
     m=1;
     b=0;
     Filter = -1;
-    // --- ZOOM HISTORY INIT (Assumed members) ---
     m_xAxisRangeHistory.clear();
     m_yAxisRangeHistory.clear();
     m_isUndoingZoom = false;
@@ -397,7 +396,6 @@ Plot::Plot(QWidget *parent, QString Title, QString Yaxis, QString Xaxis, int Num
     for(int i=0; i<NumPlots; i++)
     {
         ui->Graph->addGraph();
-        //if(i == 0) ui->Graph->graph(0)->setPen(QPen(Qt::blue));
         if(i == 1) ui->Graph->graph(1)->setPen(QPen(Qt::red));
     }
     ui->Graph->plotLayout()->insertRow(0);
@@ -411,7 +409,6 @@ Plot::Plot(QWidget *parent, QString Title, QString Yaxis, QString Xaxis, int Num
     connect(ui->HeatMap1, SIGNAL(mousePress(QMouseEvent*)), this, SLOT(mousePressedHM(QMouseEvent*)));
     connect(ui->HeatMap2, SIGNAL(mousePress(QMouseEvent*)), this, SLOT(mousePressedHM(QMouseEvent*)));
     connect(ui->pbCloseComments, SIGNAL(pressed()), this, SLOT(slotCloseComments()));
-    // NEW: Connect range changes to save history (crucial for zoom undo)
 #ifdef LassoMode
     connect(ui->Graph->xAxis, SIGNAL(rangeChanged(QCPRange)), this, SLOT(slotSaveRangeHistory(QCPRange)));
     connect(ui->Graph->yAxis, SIGNAL(rangeChanged(QCPRange)), this, SLOT(slotSaveRangeHistory(QCPRange)));
@@ -435,8 +432,8 @@ Plot::Plot(QWidget *parent, QString Title, QString Yaxis, QString Xaxis, int Num
 #ifdef LassoMode
     ZoomOutFullOption = new QAction("Zoom Out (Full View)", this); // Renamed for clarity
     connect(ZoomOutFullOption, SIGNAL(triggered()), this, SLOT(slotZoomOut()));
-    ZoomOutOneLevelOption = new QAction("Zoom Out (One Level)", this); // <-- NEW: Action for single-level undo
-    connect(ZoomOutOneLevelOption, SIGNAL(triggered()), this, SLOT(slotZoomOutOneLevel())); // <-- Connected to new slot
+    ZoomOutOneLevelOption = new QAction("Zoom Out (One Level)", this);
+    connect(ZoomOutOneLevelOption, SIGNAL(triggered()), this, SLOT(slotZoomOutOneLevel()));
     XaxisZoomOption->setChecked(true);
     ZoomSelect();
 #endif
@@ -469,7 +466,6 @@ void Plot::FreeAllData(void)
             }
             delete plotGraphs[i]->Vec[j]; // Delete DataPoint
         }
-        //plotGraphs[i]->Vec.clear();
         delete plotGraphs[i]; // Delete PlotGraph
     }
     plotGraphs.clear();
@@ -485,8 +481,7 @@ Plot::~Plot()
     delete ui;
 }
 
-// This event needs to emit a signal informing the owner then the plot
-// is closing. The owner needs to delete the plot object.
+// closeEvent — emits DialogClosed(this) so the owner can delete the Plot object.
 void Plot::closeEvent (QCloseEvent *)
 {
     emit DialogClosed(this);
@@ -513,6 +508,8 @@ void Plot::resizeEvent(QResizeEvent *event)
     QWidget::resizeEvent(event);
 }
 
+// eventFilter — handles keyboard navigation through stored scans (arrow keys,
+// Shift+J to jump by number). Passes all other events to the base class.
 bool Plot::eventFilter(QObject *obj, QEvent *event)
 {
 
@@ -544,16 +541,19 @@ bool Plot::eventFilter(QObject *obj, QEvent *event)
     return QObject::eventFilter(obj, event);
 }
 
+// mousePressedHM — right-click handler for heat map widgets. Shows the
+// heatmap context menu with the Heatmap toggle action.
 void Plot::mousePressedHM(QMouseEvent* event)
 {
     if (event->button() == Qt::RightButton)
     {
-       popupMenu = new QMenu(tr("Plot options"), this);
-       popupMenu->addAction(HeatOption);
-       popupMenu->exec(event->globalPosition().toPoint());
+        popupMenu = new QMenu(tr("Plot options"), this);
+        popupMenu->addAction(HeatOption);
+        popupMenu->exec(event->globalPosition().toPoint());
     }
 }
 
+// mouseMove — updates the status bar with X/Y coordinates when Track mode is active.
 void Plot::mouseMove(QMouseEvent*event)
 {
     if(TrackOption->isChecked())
@@ -564,36 +564,37 @@ void Plot::mouseMove(QMouseEvent*event)
     }
 }
 
+// mousePressed — right-click handler for the main graph. Shows the full
+// context menu with save, export, load, zoom, filter, and heatmap options.
 void Plot::mousePressed(QMouseEvent* event)
 {
     if (event->button() == Qt::RightButton)
     {
-       popupMenu = new QMenu(tr("Plot options"), this);
-       popupMenu->addAction(SaveOption);
-       popupMenu->addAction(ExportOption);
-       popupMenu->addAction(LoadOption);
-       popupMenu->addAction(XaxisZoomOption);
-       popupMenu->addAction(YaxisZoomOption);
-       popupMenu->addAction(ZoomOutFullOption); // Full View
-       popupMenu->addAction(ZoomOutOneLevelOption); // <-- NEW: One Level Zoom Out
-       popupMenu->addAction(FilterOption);
-       popupMenu->addAction(TrackOption);
-       popupMenu->addAction(ClipboardOption);
-       popupMenu->addAction(CommentOption);
-       popupMenu->addAction(HeatOption);
-       popupMenu->exec(event->globalPosition().toPoint());
+        popupMenu = new QMenu(tr("Plot options"), this);
+        popupMenu->addAction(SaveOption);
+        popupMenu->addAction(ExportOption);
+        popupMenu->addAction(LoadOption);
+        popupMenu->addAction(XaxisZoomOption);
+        popupMenu->addAction(YaxisZoomOption);
+        popupMenu->addAction(ZoomOutFullOption); // Full View
+        popupMenu->addAction(ZoomOutOneLevelOption); // <-- NEW: One Level Zoom Out
+        popupMenu->addAction(FilterOption);
+        popupMenu->addAction(TrackOption);
+        popupMenu->addAction(ClipboardOption);
+        popupMenu->addAction(CommentOption);
+        popupMenu->addAction(HeatOption);
+        popupMenu->exec(event->globalPosition().toPoint());
     }
 }
 
-// Save all the comments to a text file. The comments include
-// all the plot commands.
+// Save — writes the entire comment/command block to filename as a .plot text file
+// and updates the plotFile title element.
 void Plot::Save(QString filename)
 {
     if(filename.isEmpty()) return;
     QFile file(filename);
     if(file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
-        // We're going to streaming text to the file
         QTextStream stream(&file);
         stream << ui->txtComments->toPlainText();
         file.close();
@@ -601,13 +602,15 @@ void Plot::Save(QString filename)
     }
 }
 
+// slotSaveMenu — opens a file-save dialog and calls Save() with the chosen path.
 void Plot::slotSaveMenu(void)
 {
     QString fileName = QFileDialog::getSaveFileName(this, "Save plot data","","Plot (*.plot);;All files (*.*)");
     Save(fileName);
 }
 
-// This function will export the current data to a CSV file
+// slotExportMenu — opens dialogs to select a CSV file and a plot number, then
+// exports that scan's X/Y data with optional Savitzky-Golay filtering.
 void Plot::slotExportMenu(void)
 {
     QList<float> I,A;
@@ -616,7 +619,6 @@ void Plot::slotExportMenu(void)
 
     if(plotGraphs.count() <= 0) return;
     QString fileName = QFileDialog::getSaveFileName(this, "Export plot data","","Plot (*.csv);;All files (*.*)");
-    // Open file for write
     if(fileName.isEmpty()) return;
     QString res = QInputDialog::getText(this, "Export", "Enter plot number to export", QLineEdit::Normal,QString(), &ok);
     if(!ok && res.isEmpty()) return;
@@ -629,7 +631,6 @@ void Plot::slotExportMenu(void)
     QFile file(fileName);
     if(file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
-        // We're going to streaming text to the file
         QTextStream stream(&file);
         // Write the Xaxis data row
         rec.clear();
@@ -669,6 +670,7 @@ void Plot::slotExportMenu(void)
     statusBar->showMessage("Export failed!");
 }
 
+// slotLoadMenu — opens a file-open dialog and calls Load() with the chosen path.
 void Plot::slotLoadMenu(void)
 {
     QString fileName = QFileDialog::getOpenFileName(this, "Load plot data","","Plot (*.plot);;All files (*.*)");
@@ -687,27 +689,26 @@ void Plot::Load(QString filename)
     if(filename.isEmpty()) return;
     QFile file(filename);
     if(file.open(QIODevice::ReadOnly|QIODevice::Text))
-    {      
-        // We're going to streaming the file
-        // to a QString
+    {
         QTextStream stream(&file);
         Comments = stream.readAll();
         ui->txtComments->clear();
         ui->txtComments->appendPlainText(Comments);
-        // Clear and current data
+        // Clear current data
         FreeAllData();
         file.close();
         // process the commands
         QStringList Lines = Comments.split("\n");
         for(int i=0;i<Lines.count();i++)
         {
-            //qDebug() << Lines[i];
-            PlotCommand(Lines[i],true);
+            PlotCommand(Lines[i], true);
         }
         PlotCommand("plotFile," + QDir(filename).dirName(), false);
     }
 }
 
+// slotCommentMenu — shows the comments text area and hides the graph, allowing
+// the user to view and edit the raw command/comment block.
 void Plot::slotCommentMenu(void)
 {
     if(!ui->txtComments->isVisible())
@@ -718,6 +719,8 @@ void Plot::slotCommentMenu(void)
     }
 }
 
+// slotCloseComments — restores the graph view, hides the comments editor, and
+// saves any edits back to the Comments string.
 void Plot::slotCloseComments(void)
 {
     ui->Graph->setVisible(true);
@@ -738,35 +741,24 @@ void Plot::slotCloseComments(void)
  */
 void Plot::slotSaveRangeHistory(QCPRange newRange)
 {
-    // Assuming m_isUndoingZoom is a member variable (bool)
-    // and m_xAxisRangeHistory/m_yAxisRangeHistory are QStack<QCPRange> members
-    // We only track history if we are not currently restoring a historical state.
-    if (!m_isUndoingZoom)
+    // Only save range history when not in the middle of a zoom undo operation
+    if(!m_isUndoingZoom)
     {
-        // Check which axis triggered the signal based on the sender
         QCPAxis *axis = qobject_cast<QCPAxis*>(sender());
-        if (axis == ui->Graph->xAxis)
+        if(axis == ui->Graph->xAxis)
         {
             if(XaxisZoomOption->isChecked())
             {
-                // If the stack is too big, discard the oldest entry (optional, but good practice)
-                if (m_xAxisRangeHistory.count() > 20)
-                {
-                    //qDebug() << "X range history is full";
-                    m_xAxisRangeHistory.pop_front();
-                }
-                // Assuming m_xAxisRangeHistory is the stack member
+                if(m_xAxisRangeHistory.count() > 20) m_xAxisRangeHistory.pop_front();
                 m_xAxisRangeHistory.push(newRange);
-                //qDebug() << "X-Axis range saved to history: " << newRange;
             }
         }
-        else if (axis == ui->Graph->yAxis)
+        else if(axis == ui->Graph->yAxis)
         {
             if(YaxisZoomOption->isChecked())
             {
-                if (m_yAxisRangeHistory.count() > 20) m_yAxisRangeHistory.pop_front();
+                if(m_yAxisRangeHistory.count() > 20) m_yAxisRangeHistory.pop_front();
                 m_yAxisRangeHistory.push(newRange);
-                //qDebug() << "Y-Axis range saved to history: " << newRange;
             }
         }
     }
@@ -781,7 +773,6 @@ void Plot::slotZoomOut(void)
     m_isUndoingZoom = true;
     if(XaxisZoomOption->isChecked())
     {
-        // Calling rescaleAxes() automatically adjusts both axes to encompass all data points.
         ui->Graph->xAxis->rescale(true);
         ui->Graph->replot();
         m_xAxisRangeHistory.clear();
@@ -789,7 +780,6 @@ void Plot::slotZoomOut(void)
     }
     if(YaxisZoomOption->isChecked())
     {
-        // Calling rescaleAxes() automatically adjusts both axes to encompass all data points.
         ui->Graph->yAxis->rescale(true);
         ui->Graph->replot();
         m_yAxisRangeHistory.clear();
@@ -832,31 +822,33 @@ void Plot::slotZoomOutOneLevel(void)
     }
 }
 
-//Savitzky-Golay filter
+// SavitzkyGolayFilter — applies the Savitzky-Golay smoothing filter of the given
+// order index (0–3 → 5/7/9/11-point) to Y, writing the result into *Yf.
+// Pass order < 0 to copy Y unchanged.
 void Plot::SavitzkyGolayFilter(int order, QList<float> Y, QList<float> *Yf)
 {
-   float   val;
-   int     k;
-   SGcoeff sg;
+    float   val;
+    int     k;
+    SGcoeff sg;
 
-   (*Yf).clear();
-   if(order<0)
-   {
-       for(int i=0;i<Y.count();i++) (*Yf).append(Y[i]);
-       return;
-   }
-   sg = SG[order];
-   for(int i=0;i<Y.count();i++)
-   {
-       val = 0;
-       for(int j=-(sg.np-1)/2;j<=(sg.np-1)/2;j++)
-       {
-           k = abs(i+j);
-           if(k >= Y.count()) k = (2*Y.count()-1) -k;
-           val += Y[k] * sg.an[j+(sg.np-1)/2];
-       }
-       (*Yf).append(val/sg.h);
-   }
+    (*Yf).clear();
+    if(order<0)
+    {
+        for(int i=0;i<Y.count();i++) (*Yf).append(Y[i]);
+        return;
+    }
+    sg = SG[order];
+    for(int i=0;i<Y.count();i++)
+    {
+        val = 0;
+        for(int j=-(sg.np-1)/2;j<=(sg.np-1)/2;j++)
+        {
+            k = abs(i+j);
+            if(k >= Y.count()) k = (2*Y.count()-1) -k;
+            val += Y[k] * sg.an[j+(sg.np-1)/2];
+        }
+        (*Yf).append(val/sg.h);
+    }
 }
 
 /*!
@@ -951,8 +943,6 @@ void Plot::addAverageGraph(void)
             // Calculate the average for this specific Y-value.
             float averageY = (validGraphs > 0) ? sum / validGraphs : 0.0f;
 
-            // Allocate a new float on the heap for the average Y-value.
-            // IMPORTANT: The caller must manage this memory and free it later.
             newDataPoint->Y.append(new float(averageY));
         }
 
@@ -1089,7 +1079,6 @@ QString Plot::PlotCommand(QString cmd, bool PlotOnly)
     if((!PlotOnly) && (!plotOnly))
     {
         ui->txtComments->appendPlainText(cmd);
-        //Comments = ui->txtComments->toPlainText();
         Comments.append(cmd + "\n");
         if(reslist[0].toUpper() == "SAVE") Save(reslist[1]);
         else if(reslist[0].toUpper() == "LOAD") Load(reslist[1]);
@@ -1107,7 +1096,6 @@ QString Plot::PlotCommand(QString cmd, bool PlotOnly)
                     if(reslist[2].toInt()-1 == 0) plotGraphs.last()->NumScans++;
                     for(int i=3;i<reslist.count();i++)
                     {
-                        //plotGraphs.last()->Vec[reslist[2].toInt()-1 + i - 3]->X = (reslist[2].toFloat() + i-3) * m + b;
                         plotGraphs.last()->Vec[reslist[2].toInt()-1 + i - 3]->X = (reslist[2].toFloat() + i-3);
                         if(reslist[1].toInt() == 1) *plotGraphs.last()->Vec[reslist[2].toInt()-1 + i -3]->Y[0] += reslist[i].toFloat();
                         if((reslist[1].toInt() == 2) && (ui->Graph->graphCount() > 1)) *plotGraphs.last()->Vec[reslist[2].toInt()-1 + i -3]->Y[1] += reslist[i].toFloat();
@@ -1173,7 +1161,6 @@ QString Plot::PlotCommand(QString cmd, bool PlotOnly)
         for(int i=0; i<reslist[4].toInt(); i++)
         {
             ui->Graph->addGraph();
-            //if(i == 0) ui->Graph->graph(0)->setPen(QPen(Qt::blue));
             if(i == 1) ui->Graph->graph(1)->setPen(QPen(Qt::red));
         }
     }
@@ -1244,8 +1231,8 @@ QString Plot::PlotCommand(QString cmd, bool PlotOnly)
         }
         if(reslist.count()==3)
         {
-           ui->Graph->yAxis->setRange(reslist[1].toDouble(), reslist[2].toDouble());
-           ui->Graph->replot();
+            ui->Graph->yAxis->setRange(reslist[1].toDouble(), reslist[2].toDouble());
+            ui->Graph->replot();
         }
     }
     else if(cmd.toUpper() == "CLEAR")
@@ -1288,7 +1275,6 @@ QString Plot::PlotCommand(QString cmd, bool PlotOnly)
         if((reslist.count()==4) && (plotGraphs.count() > 1)) ui->Graph->graph(1)->addData(key, reslist[3].toDouble());
         ui->Graph->xAxis->setRangeUpper(key);
         ui->Graph->replot();
-        //this->raise();
     }
     else if(cmd.toUpper() == "PLOT")
     {
@@ -1313,6 +1299,7 @@ QString Plot::PlotCommand(QString cmd, bool PlotOnly)
     return "";
 }
 
+// slotXaxisZoomOption — toggles X-axis zoom mode and calls ZoomSelect() to apply it.
 void Plot::slotXaxisZoomOption(void)
 {
     if(XaxisZoomOption->isChecked()) XaxisZoomOption->setChecked(true);
@@ -1320,6 +1307,7 @@ void Plot::slotXaxisZoomOption(void)
     ZoomSelect();
 }
 
+// slotYaxisZoomOption — toggles Y-axis zoom mode and calls ZoomSelect() to apply it.
 void Plot::slotYaxisZoomOption(void)
 {
     if(YaxisZoomOption->isChecked()) YaxisZoomOption->setChecked(true);
@@ -1327,6 +1315,8 @@ void Plot::slotYaxisZoomOption(void)
     ZoomSelect();
 }
 
+// slotFilterOption — prompts the user for a Savitzky-Golay polynomial length
+// (5/7/9/11 or 0 to disable), then repaints the current scan with the new filter.
 void Plot::slotFilterOption(void)
 {
     QMessageBox msgBox;
@@ -1337,22 +1327,22 @@ void Plot::slotFilterOption(void)
     {
         switch(res.toInt())
         {
-           case 5:
+        case 5:
             Filter = 0;
             break;
-           case 7:
+        case 7:
             Filter = 1;
             break;
-           case 9:
+        case 9:
             Filter = 2;
             break;
-           case 11:
+        case 11:
             Filter = 3;
             break;
-           case 0:
+        case 0:
             Filter = -1;
             break;
-           default:
+        default:
             msgBox.setText("Invalid entry, filter will be turned off.");
             msgBox.setInformativeText("");
             msgBox.setStandardButtons(QMessageBox::Ok);
@@ -1395,13 +1385,12 @@ void Plot::slotRescaleYToDataInRange(QCPRange newXRange) {
         ui->Graph->yAxis->setRange(minY - margin, maxY + margin);
 
         // Prevent recursive history logging if this was triggered by an undo
-        //if (!m_isRangeChangeByHistory) {
-        //    m_yAxisRangeHistory.push(ui->Graph->yAxis->range());
-        //}
     }
 }
 
 
+// ZoomSelect — configures QCustomPlot interaction mode (lasso zoom or scroll-wheel)
+// based on the current X/Y zoom checkbox states.
 void Plot::ZoomSelect(void)
 {
     if(XaxisZoomOption->isChecked() && YaxisZoomOption->isChecked())
@@ -1451,170 +1440,168 @@ void Plot::ZoomSelect(void)
     else ui->Graph->setInteractions(QCP::iNone);
 }
 
+// slotHeatMap — toggles the dual QCPColorMap heatmap view. When enabled,
+// builds heatmap data for both ion channels from plotGraphs, applies the
+// Savitzky-Golay filter, and configures color scale and tick labels.
 void Plot::slotHeatMap(void)
 {
-   if(plotGraphs.count() <= 0) return;
-   if(plotGraphs[0]->Vec.count() <= 0) return;
-   if(HeatOption->isChecked())
-   {
-       ui->HeatMap1->setVisible(true);
-       // Heatmap 1 setup...
-       // configure axis rect:
-       colorMap1->data()->clear();
-       //ui->HeatMap1->setInteractions(QCP::iRangeDrag|QCP::iRangeZoom); // this will also allow rescaling the color scale by dragging/zooming
-       ui->HeatMap1->setInteractions(QCP::iRangeZoom); // this will also allow rescaling the color scale by dragging/zooming
-       ui->HeatMap1->axisRect()->setupFullAxesBox(true);
-       ui->HeatMap1->xAxis->setLabel(ui->Graph->xAxis->label());
-       if(Scan.isEmpty()) ui->HeatMap1->yAxis->setLabel("Scan");
-       else ui->HeatMap1->yAxis->setLabel(Scan.split(",")[0]);
-       // Arg was false, changed for Qt 5.9
-       ui->HeatMap1->xAxis->axisRect()->setRangeDrag(Qt::Horizontal);
-       ui->HeatMap1->xAxis->axisRect()->setRangeZoom(Qt::Horizontal);
+    if(plotGraphs.count() <= 0) return;
+    if(plotGraphs[0]->Vec.count() <= 0) return;
+    if(HeatOption->isChecked())
+    {
+        ui->HeatMap1->setVisible(true);
+        // Heatmap 1 setup...
+        // configure axis rect:
+        colorMap1->data()->clear();
+        //ui->HeatMap1->setInteractions(QCP::iRangeDrag|QCP::iRangeZoom); // this will also allow rescaling the color scale by dragging/zooming
+        ui->HeatMap1->setInteractions(QCP::iRangeZoom); // this will also allow rescaling the color scale by dragging/zooming
+        ui->HeatMap1->axisRect()->setupFullAxesBox(true);
+        ui->HeatMap1->xAxis->setLabel(ui->Graph->xAxis->label());
+        if(Scan.isEmpty()) ui->HeatMap1->yAxis->setLabel("Scan");
+        else ui->HeatMap1->yAxis->setLabel(Scan.split(",")[0]);
+        ui->HeatMap1->xAxis->axisRect()->setRangeDrag(Qt::Horizontal);
+        ui->HeatMap1->xAxis->axisRect()->setRangeZoom(Qt::Horizontal);
 
-       if(plotGraphs.isEmpty()) return;
-       // set up the QCPColorMap:
-       int nx = plotGraphs[0]->Vec.count();
-       int ny = plotGraphs.count();
-       colorMap1->data()->setSize(nx, ny); // we want the color map to have nx * ny data points
-       colorMap1->data()->setRange(QCPRange(0, plotGraphs[0]->Vec.count()), QCPRange(0, plotGraphs.count())); // and span the coordinate range -4..4 in both key (x) and value (y) dimensions
-       // now we assign some data, by accessing the QCPColorMapData instance of the color map:
-       QList<float> I,A;
-       for (int yIndex=0; yIndex<ny; ++yIndex)
-       {
-           I.clear();
-           for (int xIndex=0; xIndex<nx; ++xIndex) I.append(*plotGraphs[yIndex]->Vec[xIndex]->Y[0] / plotGraphs[yIndex]->NumScans);
-           SavitzkyGolayFilter(Filter,I,&A);
-           for (int xIndex=0; xIndex<nx; ++xIndex)
-           {
-               colorMap1->data()->setCell(xIndex, yIndex, A[xIndex]);
-           }
-       }
-       // add a color scale:
-       ui->HeatMap1->plotLayout()->addElement(0, 1, colorScale1); // add it to the right of the main axis rect
-       colorScale1->setType(QCPAxis::atRight); // scale shall be vertical bar with tick/axis labels right (actually atRight is already the default)
-       colorMap1->setColorScale(colorScale1); // associate the color map with the color scale
-       colorScale1->axis()->setLabel(Label1);
-       colorScale1->setRangeDrag(true);
-       colorScale1->setRangeZoom(true);
+        if(plotGraphs.isEmpty()) return;
+        // set up the QCPColorMap:
+        int nx = plotGraphs[0]->Vec.count();
+        int ny = plotGraphs.count();
+        colorMap1->data()->setSize(nx, ny); // we want the color map to have nx * ny data points
+        colorMap1->data()->setRange(QCPRange(0, plotGraphs[0]->Vec.count()), QCPRange(0, plotGraphs.count())); // and span the coordinate range -4..4 in both key (x) and value (y) dimensions
+        // now we assign some data, by accessing the QCPColorMapData instance of the color map:
+        QList<float> I,A;
+        for (int yIndex=0; yIndex<ny; ++yIndex)
+        {
+            I.clear();
+            for (int xIndex=0; xIndex<nx; ++xIndex) I.append(*plotGraphs[yIndex]->Vec[xIndex]->Y[0] / plotGraphs[yIndex]->NumScans);
+            SavitzkyGolayFilter(Filter,I,&A);
+            for (int xIndex=0; xIndex<nx; ++xIndex)
+            {
+                colorMap1->data()->setCell(xIndex, yIndex, A[xIndex]);
+            }
+        }
+        // add a color scale:
+        ui->HeatMap1->plotLayout()->addElement(0, 1, colorScale1); // add it to the right of the main axis rect
+        colorScale1->setType(QCPAxis::atRight); // scale shall be vertical bar with tick/axis labels right (actually atRight is already the default)
+        colorMap1->setColorScale(colorScale1); // associate the color map with the color scale
+        colorScale1->axis()->setLabel(Label1);
+        colorScale1->setRangeDrag(true);
+        colorScale1->setRangeZoom(true);
 
-       // set the color gradient of the color map to one of the presets:
-       colorMap1->setGradient(QCPColorGradient::gpPolar);
-       // we could have also created a QCPColorGradient instance and added own colors to
-       // the gradient, see the documentation of QCPColorGradient for what's possible.
+        // set the color gradient of the color map to one of the presets:
+        colorMap1->setGradient(QCPColorGradient::gpPolar);
 
-       // rescale the data dimension (color) such that all data points lie in the span visualized by the color gradient:
-       colorMap1->rescaleDataRange();
+        // rescale the data dimension (color) such that all data points lie in the span visualized by the color gradient:
+        colorMap1->rescaleDataRange();
 
-       // make sure the axis rect and color scale synchronize their bottom and top margins (so they line up):
-       QCPMarginGroup *marginGroup = new QCPMarginGroup(ui->HeatMap1);
-       ui->HeatMap1->axisRect()->setMarginGroup(QCP::msBottom|QCP::msTop, marginGroup);
-       colorScale1->setMarginGroup(QCP::msBottom|QCP::msTop, marginGroup);
+        // make sure the axis rect and color scale synchronize their bottom and top margins (so they line up):
+        QCPMarginGroup *marginGroup = new QCPMarginGroup(ui->HeatMap1);
+        ui->HeatMap1->axisRect()->setMarginGroup(QCP::msBottom|QCP::msTop, marginGroup);
+        colorScale1->setMarginGroup(QCP::msBottom|QCP::msTop, marginGroup);
 
-       int step = 5;
-       // Label the X axis ticks
-       QSharedPointer<QCPAxisTickerText> textTickerX(new QCPAxisTickerText);
-       for(int i=0;i<=step;i++) textTickerX->addTick(i * nx/5, QString::number(ui->Graph->xAxis->range().lower + i * (ui->Graph->xAxis->range().upper - ui->Graph->xAxis->range().lower)/step));
-       ui->HeatMap1->xAxis->setTicker(textTickerX);
-       // Label the y axis ticks
-       QSharedPointer<QCPAxisTickerText> textTickerY(new QCPAxisTickerText);
-       if(!Scan.isEmpty())
-       {
-          textTickerY->addTick(0,Scan.split(",")[1]);
-          textTickerY->addTick(ny/3,QString::number(Scan.split(",")[1].toFloat() + (Scan.split(",")[2].toFloat()-Scan.split(",")[1].toFloat())/3.0));
-          textTickerY->addTick(ny*2.0/3.0,QString::number(Scan.split(",")[1].toFloat() + 2.0*(Scan.split(",")[2].toFloat()-Scan.split(",")[1].toFloat())/3.0));
-          textTickerY->addTick(ny,Scan.split(",")[2]);
-          ui->HeatMap1->yAxis->setTicker(textTickerY);
-       }
-       // rescale the key (x) and value (y) axes so the whole color map is visible:
-       ui->HeatMap1->rescaleAxes();
-       ui->HeatMap1->replot();
+        int step = 5;
+        // Label the X axis ticks
+        QSharedPointer<QCPAxisTickerText> textTickerX(new QCPAxisTickerText);
+        for(int i=0;i<=step;i++) textTickerX->addTick(i * nx/5, QString::number(ui->Graph->xAxis->range().lower + i * (ui->Graph->xAxis->range().upper - ui->Graph->xAxis->range().lower)/step));
+        ui->HeatMap1->xAxis->setTicker(textTickerX);
+        // Label the y axis ticks
+        QSharedPointer<QCPAxisTickerText> textTickerY(new QCPAxisTickerText);
+        if(!Scan.isEmpty())
+        {
+            textTickerY->addTick(0,Scan.split(",")[1]);
+            textTickerY->addTick(ny/3,QString::number(Scan.split(",")[1].toFloat() + (Scan.split(",")[2].toFloat()-Scan.split(",")[1].toFloat())/3.0));
+            textTickerY->addTick(ny*2.0/3.0,QString::number(Scan.split(",")[1].toFloat() + 2.0*(Scan.split(",")[2].toFloat()-Scan.split(",")[1].toFloat())/3.0));
+            textTickerY->addTick(ny,Scan.split(",")[2]);
+            ui->HeatMap1->yAxis->setTicker(textTickerY);
+        }
+        // rescale the key (x) and value (y) axes so the whole color map is visible:
+        ui->HeatMap1->rescaleAxes();
+        ui->HeatMap1->replot();
 
-       if(plotGraphs[0]->Vec[0]->Y.count() < 2) return;
-       // Heatmap 2 setup...
-       ui->HeatMap2->setVisible(true);
-       // configure axis rect:
-       colorMap2->data()->clear();
-       //ui->HeatMap2->setInteractions(QCP::iRangeDrag|QCP::iRangeZoom); // this will also allow rescaling the color scale by dragging/zooming
-       ui->HeatMap2->setInteractions(QCP::iRangeZoom); // this will also allow rescaling the color scale by dragging/zooming
-       ui->HeatMap2->axisRect()->setupFullAxesBox(true);
-       ui->HeatMap2->xAxis->setLabel(ui->Graph->xAxis->label());
-       if(Scan.isEmpty()) ui->HeatMap2->yAxis->setLabel("Scan");
-       else ui->HeatMap2->yAxis->setLabel(Scan.split(",")[0]);
-       // Changed for Qt version 5.9
-       ui->HeatMap2->xAxis->axisRect()->setRangeDrag(Qt::Horizontal);
-       ui->HeatMap2->xAxis->axisRect()->setRangeZoom(Qt::Horizontal);
+        if(plotGraphs[0]->Vec[0]->Y.count() < 2) return;
+        // Heatmap 2 setup...
+        ui->HeatMap2->setVisible(true);
+        // configure axis rect:
+        colorMap2->data()->clear();
+        //ui->HeatMap2->setInteractions(QCP::iRangeDrag|QCP::iRangeZoom); // this will also allow rescaling the color scale by dragging/zooming
+        ui->HeatMap2->setInteractions(QCP::iRangeZoom); // this will also allow rescaling the color scale by dragging/zooming
+        ui->HeatMap2->axisRect()->setupFullAxesBox(true);
+        ui->HeatMap2->xAxis->setLabel(ui->Graph->xAxis->label());
+        if(Scan.isEmpty()) ui->HeatMap2->yAxis->setLabel("Scan");
+        else ui->HeatMap2->yAxis->setLabel(Scan.split(",")[0]);
+        ui->HeatMap2->xAxis->axisRect()->setRangeDrag(Qt::Horizontal);
+        ui->HeatMap2->xAxis->axisRect()->setRangeZoom(Qt::Horizontal);
 
-       // set up the QCPColorMap:
-       nx = plotGraphs[0]->Vec.count();
-       ny = plotGraphs.count();
-       colorMap2->data()->setSize(nx, ny); // we want the color map to have nx * ny data points
-       colorMap2->data()->setRange(QCPRange(0, plotGraphs[0]->Vec.count()), QCPRange(0, plotGraphs.count())); // and span the coordinate range -4..4 in both key (x) and value (y) dimensions
-       // now we assign some data, by accessing the QCPColorMapData instance of the color map:
-       for (int yIndex=0; yIndex<ny; ++yIndex)
-       {
-           I.clear();
-           for (int xIndex=0; xIndex<nx; ++xIndex) I.append(*plotGraphs[yIndex]->Vec[xIndex]->Y[1] / plotGraphs[yIndex]->NumScans);
-           SavitzkyGolayFilter(Filter,I,&A);
-           for (int xIndex=0; xIndex<nx; ++xIndex)
-           {
-               colorMap2->data()->setCell(xIndex, yIndex, A[xIndex]);
-           }
-       }
-       // add a color scale:
-       ui->HeatMap2->plotLayout()->addElement(0, 1, colorScale2); // add it to the right of the main axis rect
-       colorScale2->setType(QCPAxis::atRight); // scale shall be vertical bar with tick/axis labels right (actually atRight is already the default)
-       colorMap2->setColorScale(colorScale2); // associate the color map with the color scale
-       colorScale2->axis()->setLabel(Label2);
-       colorScale2->setRangeDrag(true);
-       colorScale2->setRangeZoom(true);
+        // set up the QCPColorMap:
+        nx = plotGraphs[0]->Vec.count();
+        ny = plotGraphs.count();
+        colorMap2->data()->setSize(nx, ny); // we want the color map to have nx * ny data points
+        colorMap2->data()->setRange(QCPRange(0, plotGraphs[0]->Vec.count()), QCPRange(0, plotGraphs.count())); // and span the coordinate range -4..4 in both key (x) and value (y) dimensions
+        // now we assign some data, by accessing the QCPColorMapData instance of the color map:
+        for (int yIndex=0; yIndex<ny; ++yIndex)
+        {
+            I.clear();
+            for (int xIndex=0; xIndex<nx; ++xIndex) I.append(*plotGraphs[yIndex]->Vec[xIndex]->Y[1] / plotGraphs[yIndex]->NumScans);
+            SavitzkyGolayFilter(Filter,I,&A);
+            for (int xIndex=0; xIndex<nx; ++xIndex)
+            {
+                colorMap2->data()->setCell(xIndex, yIndex, A[xIndex]);
+            }
+        }
+        // add a color scale:
+        ui->HeatMap2->plotLayout()->addElement(0, 1, colorScale2); // add it to the right of the main axis rect
+        colorScale2->setType(QCPAxis::atRight); // scale shall be vertical bar with tick/axis labels right (actually atRight is already the default)
+        colorMap2->setColorScale(colorScale2); // associate the color map with the color scale
+        colorScale2->axis()->setLabel(Label2);
+        colorScale2->setRangeDrag(true);
+        colorScale2->setRangeZoom(true);
 
-       // set the color gradient of the color map to one of the presets:
-       colorMap2->setGradient(QCPColorGradient::gpPolar);
-       // we could have also created a QCPColorGradient instance and added own colors to
-       // the gradient, see the documentation of QCPColorGradient for what's possible.
+        // set the color gradient of the color map to one of the presets:
+        colorMap2->setGradient(QCPColorGradient::gpPolar);
 
-       // rescale the data dimension (color) such that all data points lie in the span visualized by the color gradient:
-       colorMap2->rescaleDataRange();
+        // rescale the data dimension (color) such that all data points lie in the span visualized by the color gradient:
+        colorMap2->rescaleDataRange();
 
-       // make sure the axis rect and color scale synchronize their bottom and top margins (so they line up):
-       QCPMarginGroup *marginGroup2 = new QCPMarginGroup(ui->HeatMap2);
-       ui->HeatMap2->axisRect()->setMarginGroup(QCP::msBottom|QCP::msTop, marginGroup2);
-       colorScale2->setMarginGroup(QCP::msBottom|QCP::msTop, marginGroup2);
+        // make sure the axis rect and color scale synchronize their bottom and top margins (so they line up):
+        QCPMarginGroup *marginGroup2 = new QCPMarginGroup(ui->HeatMap2);
+        ui->HeatMap2->axisRect()->setMarginGroup(QCP::msBottom|QCP::msTop, marginGroup2);
+        colorScale2->setMarginGroup(QCP::msBottom|QCP::msTop, marginGroup2);
 
-       step = 5;
-       // Label the X axis ticks, drift time axis
-       QSharedPointer<QCPAxisTickerText> textTickerX2(new QCPAxisTickerText);
-       for(int i=0;i<=step;i++) textTickerX2->addTick(i * nx/5, QString::number(ui->Graph->xAxis->range().lower + i * (ui->Graph->xAxis->range().upper - ui->Graph->xAxis->range().lower)/step));
-       ui->HeatMap2->xAxis->setTicker(textTickerX2);
-       // Label the y axis ticks
-       QSharedPointer<QCPAxisTickerText> textTickerY2(new QCPAxisTickerText);
-       if(!Scan.isEmpty())
-       {
-          textTickerY2->addTick(0,Scan.split(",")[1]);
-          textTickerY2->addTick(ny/3,QString::number(Scan.split(",")[1].toFloat() + (Scan.split(",")[2].toFloat()-Scan.split(",")[1].toFloat())/3.0));
-          textTickerY2->addTick(ny*2.0/3.0,QString::number(Scan.split(",")[1].toFloat() + 2.0*(Scan.split(",")[2].toFloat()-Scan.split(",")[1].toFloat())/3.0));
-          textTickerY2->addTick(ny,Scan.split(",")[2]);
-          ui->HeatMap2->yAxis->setTicker(textTickerY2);
-       }
-       // rescale the key (x) and value (y) axes so the whole color map is visible:
-       ui->HeatMap2->rescaleAxes();
-       ui->HeatMap2->replot();
-   }
-   else
-   {
-       ui->HeatMap1->setVisible(false);
-       ui->HeatMap2->setVisible(false);
-   }
-   this->resize(this->width()+1,this->height());
-   //this->resize(this->size());
+        step = 5;
+        // Label the X axis ticks, drift time axis
+        QSharedPointer<QCPAxisTickerText> textTickerX2(new QCPAxisTickerText);
+        for(int i=0;i<=step;i++) textTickerX2->addTick(i * nx/5, QString::number(ui->Graph->xAxis->range().lower + i * (ui->Graph->xAxis->range().upper - ui->Graph->xAxis->range().lower)/step));
+        ui->HeatMap2->xAxis->setTicker(textTickerX2);
+        // Label the y axis ticks
+        QSharedPointer<QCPAxisTickerText> textTickerY2(new QCPAxisTickerText);
+        if(!Scan.isEmpty())
+        {
+            textTickerY2->addTick(0,Scan.split(",")[1]);
+            textTickerY2->addTick(ny/3,QString::number(Scan.split(",")[1].toFloat() + (Scan.split(",")[2].toFloat()-Scan.split(",")[1].toFloat())/3.0));
+            textTickerY2->addTick(ny*2.0/3.0,QString::number(Scan.split(",")[1].toFloat() + 2.0*(Scan.split(",")[2].toFloat()-Scan.split(",")[1].toFloat())/3.0));
+            textTickerY2->addTick(ny,Scan.split(",")[2]);
+            ui->HeatMap2->yAxis->setTicker(textTickerY2);
+        }
+        // rescale the key (x) and value (y) axes so the whole color map is visible:
+        ui->HeatMap2->rescaleAxes();
+        ui->HeatMap2->replot();
+    }
+    else
+    {
+        ui->HeatMap1->setVisible(false);
+        ui->HeatMap2->setVisible(false);
+    }
+    this->resize(this->width()+1,this->height());
 }
 
+// slotTrackOption — toggles cursor-position tracking in the status bar.
 void Plot::slotTrackOption(void)
 {
     if(TrackOption->isChecked()) TrackOption->setChecked(true);
     else TrackOption->setChecked(false);
 }
 
+// slotClipBoard — copies the current graph as a pixmap to the system clipboard.
 void Plot::slotClipBoard(void)
 {
     // Set the clilpboard image
@@ -1630,6 +1617,8 @@ void Plot::slotClipBoard(void)
 // PlotData         ********************************************************************************
 // *************************************************************************************************
 
+// PlotData — constructor. Creates an embedded Plot widget inside a plain QWidget
+// frame at (x, y) with the given dimensions. Call Show() to make it visible.
 PlotData::PlotData(QWidget *parent, QString name, QString Yname, QString Xname, int numGraphs, int width, int height, int x, int y) : QWidget(parent)
 {
     p      = parent;
@@ -1644,6 +1633,7 @@ PlotData::PlotData(QWidget *parent, QString name, QString Yname, QString Xname, 
     layout->addWidget(plot);
 }
 
+// Show — makes the container and embedded plot visible, and clears any stale graph data.
 void PlotData::Show(void)
 {
     w->show();
@@ -1651,6 +1641,8 @@ void PlotData::Show(void)
     plot->PlotCommand("Clear",true);
 }
 
+// Report — returns a multi-line CSV string prefixed with the widget title,
+// replaying every stored PlotCommand so the state can be saved and restored.
 QString PlotData::Report(void)
 {
     QString res;
@@ -1668,6 +1660,8 @@ QString PlotData::Report(void)
     return res;
 }
 
+// SetValues — parses a "title,<PlotCommand>" CSV string and forwards the command
+// to the embedded Plot. Returns false if the title does not match.
 bool PlotData::SetValues(QString strVals)
 {
     QStringList resList;
@@ -1684,6 +1678,9 @@ bool PlotData::SetValues(QString strVals)
     return true;
 }
 
+// ProcessCommand — scripting API handler. Strips the widget title prefix and
+// passes the right-hand side of a "title=<PlotCommand>" string to PlotCommand().
+// Returns "?" if the title does not match.
 QString PlotData::ProcessCommand(QString cmd)
 {
     QString title;

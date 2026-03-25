@@ -1,14 +1,31 @@
+// =============================================================================
+// modbus.cpp
+//
+// Modbus RTU interface classes for the MIPS host application.
+// Specifically designed for the Novus temperature controller but usable
+// with any Modbus RTU device.
+//
+// Control panel config syntax:
+//   ModBus,Port,Baud,Parity
+//   ModChannel,Name,Add,Table,Chan,m,b,units,x,y
+//
+// Depends on:  Utilities.h, Qt Modbus (QModbusRtuSerialClient)
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
+
 #include "modbus.h"
 #include "Utilities.h"
 
-// Control panel support for ModBus, specfically designed for the Novus temp controller.
-// The ModBus command must be issued first as follows:
-// ModBus,Port,Baud,Parity
-// This command will connect to the interface and configure the connection
-// The ModChannel commands will place controls on the panel using the following
-// syntax
-// ModChannel,Name,Add,Table,Chan,m,b,units,x,y
+// ---------------------------------------------------------------------------
+// ModBus
+// ---------------------------------------------------------------------------
 
+// ModBus — constructor. Configures and connects a QModbusRtuSerialClient to
+// the given port, baud rate, and parity (N/E/O). Sets Status to "Connected"
+// on success, or an error string on failure.
 ModBus::ModBus(QString Port, QString Baud, QString Parity)
 {
     int p = 0;
@@ -27,15 +44,21 @@ ModBus::ModBus(QString Port, QString Baud, QString Parity)
     modbusDevice.setNumberOfRetries(3);
     if (!modbusDevice.connectDevice()) Status = tr("Connect failed: ") + modbusDevice.errorString();
     else Status = "Connected";
-    qDebug() << Status;
 }
 
+// ~ModBus — disconnects the Modbus device.
 ModBus::~ModBus()
 {
     modbusDevice.disconnect();
 }
 
+// ---------------------------------------------------------------------------
+// ModChannel
+// ---------------------------------------------------------------------------
 
+// ModChannel — constructor. Records the channel identity, Modbus address,
+// register table, channel index, linear scale (M) and offset (B), and
+// display position. Call Show() to create the visible widgets.
 ModChannel::ModChannel(QWidget *parent, QString Name, int Add, int Table, int Chan, float m, float b, QString units,int x, int y)
 {
     modbus     = NULL;
@@ -52,14 +75,15 @@ ModChannel::ModChannel(QWidget *parent, QString Name, int Add, int Table, int Ch
     Writable   = false;
 }
 
+// Show — creates the channel frame with a value line edit and unit label,
+// installs drag support, and issues an initial Read() to populate the field.
 void ModChannel::Show(void)
 {
-    // Display UI
     frmModChannel = new QFrame(p);                frmModChannel->setGeometry(X,Y,180,21);
     leModChannel  = new QLineEdit(frmModChannel); leModChannel->setGeometry(70,0,70,21);
     labels[0] = new QLabel(Title,frmModChannel);  labels[0]->setGeometry(0,0,59,16);
     labels[1] = new QLabel(Units,frmModChannel);  labels[1]->setGeometry(150,0,31,16);
-    connect(leModChannel,SIGNAL(editingFinished()),this,SLOT(leModChannelChange()));
+    if(leModChannel) connect(leModChannel, &QLineEdit::returnPressed, this, &ModChannel::leModChannelChange);
     frmModChannel->installEventFilter(this);
     frmModChannel->setMouseTracking(true);
     labels[0]->installEventFilter(this);
@@ -67,12 +91,15 @@ void ModChannel::Show(void)
     Read();
 }
 
+// eventFilter — delegates drag-to-move to moveWidget().
 bool ModChannel::eventFilter(QObject *obj, QEvent *event)
 {
     if(moveWidget(obj, frmModChannel, labels[0] , event)) return true;
     return false;
 }
 
+// Write — converts the displayed value through (val - B) / M and sends an
+// asynchronous Modbus write request. Stores any error in WriteError.
 void ModChannel::Write(void)
 {
     if (modbus == NULL) return;
@@ -93,29 +120,29 @@ void ModChannel::Write(void)
         if (!reply->isFinished())
         {
             connect(reply, &QModbusReply::finished, this, [this, reply]()
-            {
-                if (reply->error() == QModbusDevice::ProtocolError)
-                {
-                    WriteError = tr("Write response error: %1 (Mobus exception: 0x%2)")
-                        .arg(reply->errorString()).arg(reply->rawResult().exceptionCode(), -1, 16);
-                } else if (reply->error() != QModbusDevice::NoError)
-                {
-                    WriteError = tr("Write response error: %1 (code: 0x%2)").
-                        arg(reply->errorString()).arg(reply->error(), -1, 16);
-                }
-                reply->deleteLater();
-            });
+                    {
+                        if (reply->error() == QModbusDevice::ProtocolError)
+                        {
+                            WriteError = tr("Write response error: %1 (Modbus exception: 0x%2)")
+                            .arg(reply->errorString()).arg(reply->rawResult().exceptionCode(), -1, 16);
+                        } else if (reply->error() != QModbusDevice::NoError)
+                        {
+                            WriteError = tr("Write response error: %1 (code: 0x%2)").
+                                         arg(reply->errorString()).arg(reply->error(), -1, 16);
+                        }
+                        reply->deleteLater();
+                    });
         } else {
-            // broadcast replies return immediately
+            // Broadcast replies return immediately
             reply->deleteLater();
         }
     } else {
         WriteError = tr("Write error: ") + modbus->modbusDevice.errorString();
     }
-    if(WriteError != "") qDebug() << WriteError;
 }
 
-
+// Read — issues an asynchronous Modbus read request for one register. The
+// result is applied in readReady() when the reply signal fires.
 void ModChannel::Read(void)
 {
     if (modbus == NULL) return;
@@ -125,10 +152,13 @@ void ModChannel::Read(void)
         if (!reply->isFinished())
             connect(reply, &QModbusReply::finished, this, &ModChannel::readReady);
         else
-            delete reply; // broadcast replies return immediately
+            delete reply; // Broadcast replies return immediately
     } else ReadError = tr("Read error: ") + modbus->modbusDevice.errorString();
 }
 
+// readReady — slot called when the Modbus read reply arrives. Applies the
+// linear scale (val * M + B) and updates the line edit, or stores the error
+// string in ReadError on failure.
 void ModChannel::readReady()
 {
     auto reply = qobject_cast<QModbusReply *>(sender());
@@ -139,37 +169,38 @@ void ModChannel::readReady()
         const QModbusDataUnit unit = reply->result();
         for (uint i = 0; i < unit.valueCount(); i++)
         {
-            const QString entry = tr("Address: %1, Value: %2").arg(unit.startAddress() + i)
-                                     .arg(QString::number(unit.value(i),
-                                     unit.registerType() <= QModbusDataUnit::Coils ? 10 : 16));
             leModChannel->setText(QString::number(unit.value(i) * M + B));
             ReadError.clear();
         }
     } else if (reply->error() == QModbusDevice::ProtocolError) {
-        ReadError = tr("Read response error: %1 (Mobus exception: 0x%2)").
-                                    arg(reply->errorString()).
-                                    arg(reply->rawResult().exceptionCode(), -1, 16);
+        ReadError = tr("Read response error: %1 (Modbus exception: 0x%2)").
+                    arg(reply->errorString()).
+                    arg(reply->rawResult().exceptionCode(), -1, 16);
     } else {
         ReadError = tr("Read response error: %1 (code: 0x%2)").
-                                    arg(reply->errorString()).
-                                    arg(reply->error(), -1, 16);
+                    arg(reply->errorString()).
+                    arg(reply->error(), -1, 16);
     }
 
     reply->deleteLater();
-    if(ReadError != "") qDebug() << ReadError;
 }
 
+// Update — called on each control panel update cycle. Issues a Read() unless
+// the channel is writable and the field currently has focus.
 void ModChannel::Update(void)
 {
     if((Writable) && (leModChannel->hasFocus())) return;
     Read();
 }
 
+// leModChannelChange — slot called on returnPressed. Triggers a Modbus write
+// with the current line edit value.
 void ModChannel::leModChannelChange(void)
 {
     Write();
 }
 
+// Report — returns a "title,value" CSV string for method file save.
 QString ModChannel::Report(void)
 {
     QString res;
@@ -182,6 +213,12 @@ QString ModChannel::Report(void)
     return(res);
 }
 
+// ProcessCommand — scripting API for this channel. Supports:
+//   title          — returns the current value
+//   title=val      — sets the value (only if Writable)
+//   title.Update   — triggers an immediate read
+//   title.Status   — returns connection/read/write status
+// Returns "?" for unrecognised commands.
 QString ModChannel::ProcessCommand(QString cmd)
 {
     QString title;
@@ -201,9 +238,9 @@ QString ModChannel::ProcessCommand(QString cmd)
     }
     if(cmd == title + ".Status")
     {
-        // This option will return the interface status, a number of things are tested
-        // including the ModBus connection status.
-        if(modbus == NULL) return "ModBus interface not initalized!";
+        // Returns the interface status — tests ModBus connection, read errors,
+        // and write errors in order of severity.
+        if(modbus == NULL) return "ModBus interface not initialized!";
         if(modbus->Status != "Connected") return modbus->Status;
         if(ReadError != "") return ReadError;
         if(WriteError != "") return WriteError;
@@ -213,14 +250,17 @@ QString ModChannel::ProcessCommand(QString cmd)
     QStringList resList = cmd.split("=");
     if((resList.count()==2) && (resList[0].trimmed() == title.trimmed()))
     {
-       leModChannel->setText(resList[1].trimmed());
-       leModChannel->setModified(true);
-       emit leModChannel->editingFinished();
-       return "";
+        leModChannel->setText(resList[1].trimmed());
+        leModChannel->setModified(true);
+        emit leModChannel->editingFinished();
+        return "";
     }
     return "?";
 }
 
+// SetValues — parses a "title,value" CSV string and applies the value.
+// No-op and returns false if the channel is not writable or the title
+// does not match.
 bool ModChannel::SetValues(QString strVals)
 {
     QStringList resList;
@@ -238,4 +278,4 @@ bool ModChannel::SetValues(QString strVals)
     leModChannel->setModified(true);
     emit leModChannel->editingFinished();
     return true;
- }
+}

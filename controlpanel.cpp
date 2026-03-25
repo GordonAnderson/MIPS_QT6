@@ -1,96 +1,17 @@
+// =============================================================================
+// controlpanel.cpp
 //
-// Controlpanel.cpp
+// ControlPanel — user-defined custom control panel for MIPS hardware.
+// Reads a .cfg configuration file and dynamically creates widgets (RF channels,
+// DC bias channels, timing generators, scripting, etc.) at positions specified
+// in the file. Supports multiple simultaneous MIPS systems identified by name.
 //
-// This file contains the classes used to create a user defined control panel. The control panels
-// display MIPS controls for most features supported by MIPS. The user can define a background
-// image and then place controls such as RF channels and DC bias channels at the locations the user
-// defines on the background image.
+// Depends on:  controlpanel.h, Utilities.h
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — Phase 3 refactoring (loadConfig extraction)
 //
-// This feature also supports multiple MIPS systems connected to your PC at the same time. Use the
-// "Find MIPS and Connect" button to find all connected MIPS system. The control panel configuration
-// file uses the MIPS name to determine where the channels are located. Its important that you
-// define a unique name for each MIPS system.
-//
-// The control panel also support the IFT (Ion Funnel Trap). This includes generation of an IFT
-// trapping pulse sequence as well as calling an external application to acquire data from you
-// detection system. Additionally a more generic timing generator control has been added.
-//
-// Feb 26, 2019, new control idea(s)
-//  Implement a generic control with the following features:
-//      - TYPE, defines the control type
-//              - LineEdit, CheckBox, Button
-//      - Set command, to set the MIPS value from LineEdit box
-//      - Get command, to read the MIPS value to update the LineEdit box
-//      - Readback command, if set add a readback box and this command will read the value
-//  Syntax example:
-//      Ccontrol,name,mips name,type,get command,set command,readback command,units,X,Y
-//  This idea can be expanded to check boxes, radio buttons, etc.
-//  This would allow a MIPS status page with control of system parameters.
-//  The cool thing is this is not hard to implement and will support the FAIMSFB system.
-//  For FAIMSFB I need to figureout how to do the plotting and heat maps. Generic plotting
-//  is an idea I have thought about and need to mature this concept.
-//  How can I support tabs or multiple control panel pages?
-//      - Could have a control panel call another control panel basically a
-//        child control panel. Somehow I would need to pass control, to the child.
-//      - Could allow multiple control panels, this whould be pretty easy to do.
-//      - Could have a master control panel and buttons to start other control panels,
-//        how would methode save and load work in this case? (leading idea)
-//      - Have a button that is tied to a control panel config file. load all the
-//        control panels on start. when the button is pressed show the panel.
-//
-//  Add groupbox
-//      GroupBox,name,width,hieght,X,Y  // Command to start group
-//      GroupBoxEnd                     // Signals end of group box
-//      Commands after group box is defined and before the end will be
-//      placed in the group boc and there names will have the groupbox
-//      name prepended delineated by a ".".
-//
-//  Add plotting capability
-//      Could tie to scripting and popup a plot that is populated by a script. The script
-//      could issue all the MIPS commands to scan and plot.
-//
-//  Buttons tied to scripts
-//      This could allow plotting / scanning. You press the button and the script loads
-//      and plays, the button name changes to abort. (leading idea)
-//      Light up the button and if pressed again ask if the user would like to abort.
-//      Add script commands for:
-//          - Open file for save and load
-//          - Write string to file
-//          - Read string from file
-//          - File CSV IO
-//      Need to add script commands to allow generation of a plot and live feed of data.
-//      Performance could be an issue here.
-//      How to tie a script to a static plot on the control panel, via its name?
-//
-//  FAIMSFB specific notes:
-//      A scan command could cause FAIMSFB to start scanning and send back the scan data
-//      records. The scan data could be the scan point number followed by the specific
-//      values, these would all be monitor or readback values. Plot(s) would be crreated
-//      live. This could be a speed issues, maybe just send the electrometer data. The scan
-//      data would not use a handshake, it would just be sent from MIPS.
-//
-//  Add script command for file selection dialog pop up. Return the selected
-//  file name or empty string on cancel.
-//      SelectFile(type,message,ext)
-//
-//  Add csv file support for scripting. Call a function with file name that will
-//  read the full file and make a list of lists. The first first list is of each
-//  line in the file. The second list is of the entries in each line. This will
-//  be a list of QStringLists. Need the following functions:
-//      ReadCSVfile(filename)
-//      ReadCSVentry(int line, int entry)
-//
-//  Add Define capability, Define,Name,Value. This will define Name to Value and every
-//  place Name is used in the control panel it will be replaced with Value. Case sensative.
-//  Defines so into a list and can be over written. Defines are always strings. You can not
-//  perform any opearations on Defined values. Create a type that is a Name,Value set of QStrings.
-//  Create a function to perform the subsitution, do this at or after string split.
-//
-//  Add Subroutine capability, Subroutine,Name,args... This will define a subroutine
-//  named Name with a variable number of arguments. To call; Call,Name,args....
-//
-// Gordon Anderson
-//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
 #include "controlpanel.h"
 #include "ui_controlpanel.h"
 #include "cdirselectiondlg.h"
@@ -122,24 +43,18 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
     ui(new Ui::ControlPanel)
 {
     m_storage.clear();
-    QString readOption;
-    QStringList resList;
-    qint64 filePos = -1,optionsFilePos = -1;
-    int NextRecord;
-    QList<Define *> savedDefines;
     ui->setupUi(this);
     ControlPanel::setWindowTitle("Custom control panel, right click for options");
     Systems = S;
     // Init a number of variables
-    float StepSize = 1.0;
     parentCP = pcp;
     SerialWatchDog = 0;
     HelpFile.clear();
     LoadedConfig = false;
-    mc        = NULL;
-    DCBgroups = NULL;
-    statusBar = NULL;
-    modbus = NULL;
+    mc        = nullptr;
+    DCBgroups = nullptr;
+    statusBar = nullptr;
+    modbus = nullptr;
     Defines.clear();
     ARBcompressorButton.clear();
     comp.clear();
@@ -181,8 +96,8 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
     StartMIPScomms = false;
     SystemIsShutdown = false;
     isUpdating = false;
-    scriptconsole = NULL;
-    tcp = NULL;
+    scriptconsole = nullptr;
+    tcp = nullptr;
     sl.clear();
     tm.clear();
     properties = prop;
@@ -195,15 +110,34 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
     if(CPfileName == "") fileName = QFileDialog::getOpenFileName(this, tr("Load Configuration from File"),"",tr("cfg (*.cfg);;All files (*.*)"));
     else fileName = CPfileName;
     if((fileName == "") || (fileName.isEmpty())) return;
+    loadConfig(fileName);
+}
+
+// -----------------------------------------------------------------------------
+// loadConfig — reads the .cfg file and creates all widgets and connections.
+// -----------------------------------------------------------------------------
+/*! \brief ControlPanel::loadConfig
+ * Reads the .cfg configuration file and creates all widgets defined in it.
+ * Also handles post-load setup (timing signals, script injection, QAction
+ * creation, and serial watchdog enable).
+ */
+void ControlPanel::loadConfig(QString fileName)
+{
+    QString readOption;
+    QStringList resList;
+    qint64 filePos = -1, optionsFilePos = -1;
+    int NextRecord;
+    QList<Define *> savedDefines;
+    float StepSize = 1.0;
     QFile file(fileName);
     ControlPanelFile = fileName;
-    if(properties != NULL) properties->Log("Control panel loaded: " + ControlPanelFile);
+    if(properties != nullptr) properties->Log("Control panel loaded: " + ControlPanelFile);
     MIPSnames.clear();
     for(int i=0;i<Systems.count();i++)
     {
        QString res = Systems[i]->MIPSname + ": " + Systems[i]->SendMess("GVER\n");
        // Add MIPS firmware version to log file
-       if(properties != NULL) properties->Log(Systems[i]->MIPSname + ": " + Systems[i]->SendMess("GVER\n"));
+       if(properties != nullptr) properties->Log(Systems[i]->MIPSname + ": " + Systems[i]->SendMess("GVER\n"));
        MIPSnames += "# " + res + "\n";
     }
     // Open UDP socket to send commands to reader app
@@ -214,7 +148,6 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
     // Read the configuration file and create the form as
     // well as all the controls.
     ui->lblBackground->setObjectName("");
-    //Container = ui->lblBackground;
     Containers.append(ui->lblBackground);
     if(file.open(QIODevice::ReadOnly|QIODevice::Text))
     {
@@ -343,7 +276,6 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 if(filePos >= 0)
                 {
                     stream.seek(filePos);
-                    //line = stream.readLine();   // This was causing the system to miss the next line after a Call
                     Defines.clear();
                     Defines = savedDefines;
                     savedDefines.clear();
@@ -373,7 +305,7 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 statusBar->setGeometry(0,resList[2].toInt()-18,resList[1].toInt(),18);
                 statusBar->showMessage("Control panel loaded: " + QDateTime().currentDateTime().toString());
                 statusBar->raise();
-                connect(statusBar,SIGNAL(messageChanged(QString)),this,SLOT(slotLogStatusBarMessage(QString)));
+                connect(statusBar, &QStatusBar::messageChanged, this, &ControlPanel::slotLogStatusBarMessage);
             }
             if((resList[0].toUpper() == "IMAGE") && (resList.length()==2))
             {
@@ -456,7 +388,7 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 cpObjects.append(stream.pos());
                 cpObjects.append("Table");
                 cpObjects.append(QVariant::fromValue(Tables.last()));
-                connect(Tables.last(),SIGNAL(change(QString)),this,SLOT(controlChange(QString)));
+                connect(Tables.last(), &Table::change, this, &ControlPanel::controlChange);
             }
             if((resList[0].toUpper() == "SLIDER") && (resList.length()==8))
             {
@@ -465,7 +397,7 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 cpObjects.append(stream.pos());
                 cpObjects.append("Slider");
                 cpObjects.append(QVariant::fromValue(Sliders.last()));
-                connect(Sliders.last(),SIGNAL(change(QString)),this,SLOT(controlChange(QString)));
+                connect(Sliders.last(), &Slider::change, this, &ControlPanel::controlChange);
             }
             if((resList[0].toUpper() == "RFCHANNEL") && (resList.length()==6))
             {
@@ -540,7 +472,7 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 cpObjects.append(stream.pos());
                 cpObjects.append("Ccontrol");
                 cpObjects.append(QVariant::fromValue(Ccontrols.last()));
-                connect(Ccontrols.last(),SIGNAL(change(QString)),this,SLOT(controlChange(QString)));
+                connect(Ccontrols.last(), &Ccontrol::change, this, &ControlPanel::controlChange);
             }
             if(resList[0].toUpper() == "COMBOBOXLIST")
             {
@@ -632,7 +564,6 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 cpObjects.append(stream.pos());
                 cpObjects.append("RFamp");
                 cpObjects.append(QVariant::fromValue(widget));
-                //Containers.push_back(rfa.last()); // Add RFamp to Containers
             }
             if((resList[0].toUpper() == "MODBUS") && (resList.length()==4))
             {
@@ -697,7 +628,7 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
             {
                 CPbuttons.append(new CPbutton(Containers.last(), resList[1], findFile(resList[2],QFileInfo(ControlPanelFile).canonicalPath()), resList[3].toInt(), resList[4].toInt()));
                 CPbuttons.last()->Show();
-                connect(CPbuttons.last(),SIGNAL(CPselected(QString)),this,SLOT(slotCPselected(QString)));
+                connect(CPbuttons.last(), &CPbutton::CPselected, this, &ControlPanel::slotCPselected);
                 cpObjects.append(stream.pos());
                 cpObjects.append("CPbutton");
                 cpObjects.append(QVariant::fromValue(CPbuttons.last()));
@@ -746,22 +677,17 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 QTabWidget *tab;
                 foreach(tab, Tabs)
                 {
-                    //qDebug() << tab->objectName();
                     if(tab->objectName().endsWith(resList[1]))
                     {
                         // Now find the proper tab
                         for(int i = 0; i<tab->count(); i++)
                         {
-                            //qDebug() << tab->tabText(i);
-                            //qDebug() << resList[2];
-                            //if(tab->tabText(i) == resList[2]) Containers.last() = tab->widget(i);
 
                             if(Containers.last()->objectName() != "") tab->widget(i)->setObjectName(Containers.last()->objectName() + "." + tab->tabText(i));
                             else tab->widget(i)->setObjectName(tab->tabText(i));
 
                             if(tab->tabText(i) == resList[2])
                             {
-                                //qDebug() << "Tab widget name: " << tab->widget(i)->objectName();
                                 Containers.append(tab->widget(i));
                             }
                         }
@@ -828,9 +754,9 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 TC.last()->statusBar = statusBar;
                 TC.last()->properties = properties;
                 TC.last()->Show();
-                connect(TC.last(),SIGNAL(dataAcquired(QString)),this,SLOT(slotDataAcquired(QString)));
-                connect(TC.last(),SIGNAL(dataFileDefined(QString)),this,SLOT(slotDataFileDefined(QString)));
-                connect(TC.last()->TG,SIGNAL(change(QString)),this,SLOT(controlChange(QString)));
+                connect(TC.last(), &TimingControl::dataAcquired, this, &ControlPanel::slotDataAcquired);
+                connect(TC.last(), &TimingControl::dataFileDefined, this, &ControlPanel::slotDataFileDefined);
+                connect(TC.last()->TG, &TimingGenerator::change, this, &ControlPanel::controlChange);
                 cpObjects.append(stream.pos());
                 cpObjects.append("Timing");
                 cpObjects.append(QVariant::fromValue(TC.last()));
@@ -854,15 +780,15 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
             {
                 TC.last()->TG->EC.append(new EventControl(Containers.last(),resList[1],resList[2],resList[3].toInt(),resList[4].toInt()));
                 TC.last()->TG->EC.last()->Show();
-                connect(TC.last()->TG->EC.last(),SIGNAL(EventChanged(QString,QString)),TC.last(),SLOT(slotEventChanged(QString,QString)));
+                connect(TC.last()->TG->EC.last(), &EventControl::EventChanged, TC.last(), &TimingControl::slotEventChanged);
             }
             if((resList[0].toUpper() == "FILENAME") && (resList.length()==2)) if(TC.count() > 0) TC.last()->fileName = resList[1];
             if((resList[0].toUpper() == "SHUTDOWN") && (resList.length()==4))
             {
                 SD = new Shutdown(Containers.last(),resList[1],resList[2].toInt(),resList[3].toInt());
                 SD->Show();
-                connect(SD,SIGNAL(ShutdownSystem()),this,SLOT(pbSD()));
-                connect(SD,SIGNAL(EnableSystem()),this,SLOT(pbSE()));
+                connect(SD, &Shutdown::ShutdownSystem, this, &ControlPanel::pbSD);
+                connect(SD, &Shutdown::EnableSystem, this, &ControlPanel::pbSE);
                 SD->setFocus();
                 cpObjects.append(stream.pos());
                 cpObjects.append("Shutdown");
@@ -872,8 +798,8 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
             {
                 SL = new SaveLoad(Containers.last(),resList[1],resList[2],resList[3].toInt(),resList[4].toInt());
                 SL->Show();
-                connect(SL,SIGNAL(Save()),this,SLOT(pbSave()));
-                connect(SL,SIGNAL(Load()),this,SLOT(pbLoad()));
+                connect(SL, &SaveLoad::Save, this, &ControlPanel::pbSave);
+                connect(SL, &SaveLoad::Load, this, &ControlPanel::pbLoad);
                 cpObjects.append(stream.pos());
                 cpObjects.append("SaveLoad");
                 cpObjects.append(QVariant::fromValue(SL));
@@ -888,7 +814,7 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 ARBcompressorButton.last()->setToolTip("Press this button to edit the compression options");
                 comp.append(new Compressor(Containers.last(),resList[1],resList[2]));
                 comp.last()->comms = FindCommPort(resList[2],Systems);
-                connect(ARBcompressorButton.last(),SIGNAL(pressed()),this,SLOT(pbARBcompressor()));
+                connect(ARBcompressorButton.last(), &QPushButton::pressed, this, &ControlPanel::pbARBcompressor);
                 ARBcompressorButton.last()->installEventFilter(this);
                 ARBcompressorButton.last()->setMouseTracking(true);
                 cpObjects.append(stream.pos());
@@ -897,14 +823,14 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
             }
             if((resList[0].toUpper() == "MIPSCOMMS") && (resList.length()==3))
             {
-                if(parentCP == NULL)
+                if(parentCP == nullptr)
                 {
                     // Enable the MIPS communication button
                     MIPScommsButton = new QPushButton("MIPS comms",Containers.last());
                     MIPScommsButton->setGeometry(resList[1].toInt(),resList[2].toInt(),150,32);
                     MIPScommsButton->setAutoDefault(false);
                     MIPScommsButton->setToolTip("Press this button to manually send commands to MIPS");
-                    connect(MIPScommsButton,SIGNAL(pressed()),this,SLOT(pbMIPScomms()));
+                    connect(MIPScommsButton, &QPushButton::pressed, this, &ControlPanel::pbMIPScomms);
                     MIPScommsButton->installEventFilter(this);
                     MIPScommsButton->setMouseTracking(true);
                     cpObjects.append(stream.pos());
@@ -929,7 +855,7 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 scriptButton->setGeometry(resList[1].toInt(),resList[2].toInt(),150,32);
                 scriptButton->setAutoDefault(false);
                 scriptButton->setToolTip("Press this button load or define a script");
-                connect(scriptButton,SIGNAL(pressed()),this,SLOT(pbScript()));
+                connect(scriptButton, &QPushButton::pressed, this, &ControlPanel::pbScript);
                 scriptconsole = new ScriptingConsole(this,properties);
                 scriptButton->installEventFilter(this);
                 scriptButton->setMouseTracking(true);
@@ -941,8 +867,8 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
             {
                 DCBgroups = new DCBiasGroups(Containers.last(),resList[1].toInt(),resList[2].toInt());
                 DCBgroups->Show();
-                connect(DCBgroups,SIGNAL(disable()),this,SLOT(DCBgroupDisable()));
-                connect(DCBgroups,SIGNAL(enable()),this,SLOT(DCBgroupEnable()));
+                connect(DCBgroups, &DCBiasGroups::disable, this, &ControlPanel::DCBgroupDisable);
+                connect(DCBgroups, &DCBiasGroups::enable, this, &ControlPanel::DCBgroupEnable);
                 cpObjects.append(stream.pos());
                 cpObjects.append("DCBgroups");
                 cpObjects.append(QVariant::fromValue(DCBgroups));
@@ -973,7 +899,7 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
                 tcp->port = resList[1].toInt();
                 tcp->statusbar = statusBar;
                 tcp->listen();
-                connect(tcp,SIGNAL(lineReady()),this,SLOT(tcpCommand()));
+                connect(tcp, &TCPserver::lineReady, this, &ControlPanel::tcpCommand);
             }
         } while(!line.isNull());
     }
@@ -997,7 +923,7 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
             }
         }
         ControlPanel *cp = this;
-        while(cp != NULL)
+        while(cp != nullptr)
         {
             // Add DC bias channels
             foreach(DCBchannel *dcb, cp->DCBchans) if(dcb->MIPSnm == tc->MIPSnm) tc->TG->AddSignal(dcb->Title, QString::number(dcb->Channel));
@@ -1054,32 +980,31 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
         }
     }
     LoadedConfig = true;
-    //connect(ui->lblBackground, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(popupHelp(QPoint)));
     ui->lblBackground->installEventFilter(this);
 
     // Popup options menu actions
     Comments = new QAction("Comments", this);
-    connect(Comments, SIGNAL(triggered()), this, SLOT(slotComments()));
+    connect(Comments, &QAction::triggered, this, &ControlPanel::slotComments);
     SaveCP = new QAction("Save this Control Panel", this);
-    connect(SaveCP, SIGNAL(triggered()), this, SLOT(slotSaveCP()));
+    connect(SaveCP, &QAction::triggered, this, &ControlPanel::slotSaveCP);
     GeneralHelp = new QAction("General help", this);
-    connect(GeneralHelp, SIGNAL(triggered()), this, SLOT(slotGeneralHelp()));
+    connect(GeneralHelp, &QAction::triggered, this, &ControlPanel::slotGeneralHelp);
     MIPScommands = new QAction("MIPS commands", this);
-    connect(MIPScommands, SIGNAL(triggered()), this, SLOT(slotMIPScommands()));
+    connect(MIPScommands, &QAction::triggered, this, &ControlPanel::slotMIPScommands);
     ScriptHelp  = new QAction("Script help", this);
-    connect(ScriptHelp, SIGNAL(triggered()), this, SLOT(slotScriptHelp()));
+    connect(ScriptHelp, &QAction::triggered, this, &ControlPanel::slotScriptHelp);
     if(!HelpFile.isEmpty())
     {
         ThisHelp = new QAction("This control panel help", this);
-        connect(ThisHelp, SIGNAL(triggered()), this, SLOT(slotThisControlPanelHelp()));
+        connect(ThisHelp, &QAction::triggered, this, &ControlPanel::slotThisControlPanelHelp);
     }
     OpenLogFile = new QAction("Open data log", this);
-    connect(OpenLogFile, SIGNAL(triggered()), this, SLOT(slotOpenLogFile()));
+    connect(OpenLogFile, &QAction::triggered, this, &ControlPanel::slotOpenLogFile);
     CloseLogFile = new QAction("Close data log", this);
-    connect(CloseLogFile, SIGNAL(triggered()), this, SLOT(slotCloseLogFile()));
+    connect(CloseLogFile, &QAction::triggered, this, &ControlPanel::slotCloseLogFile);
     if(SerialWatchDog > 0)
     {
-        if(properties != NULL) properties->Log("Enabling serial watch dog on MIPS system(s)");
+        if(properties != nullptr) properties->Log("Enabling serial watch dog on MIPS system(s)");
         for(int i=0;i<Systems.count();i++)
         {
            Systems[i]->SendCommand("SSERWD," + QString::number(SerialWatchDog) + "\n");
@@ -1139,19 +1064,19 @@ ControlPanel::~ControlPanel()
     //
     if(SerialWatchDog > 0)
     {
-        if(properties != NULL) properties->Log("Disabling serial watch dog on MIPS system(s)");
+        if(properties != nullptr) properties->Log("Disabling serial watch dog on MIPS system(s)");
         for(int i=0;i<Systems.count();i++)
         {
            Systems[i]->SendCommand("SSERWD,0\n");
         }
     }
-    if(properties != NULL) properties->Log("Control panel unloading");
+    if(properties != nullptr) properties->Log("Control panel unloading");
     for(int i=0;i<devices.count();i++) delete devices[i];
     for(int i=0;i<Cpanels.count();i++) delete Cpanels[i]->cp;
     for(int i=0;i<ScripButtons.count();i++) delete ScripButtons[i];
     for(int i=0;i<scriptObj.count();i++) delete scriptObj[i];
     for(int i=0;i<ModChans.count();i++) delete ModChans[i];
-    if(modbus != NULL) delete(modbus);
+    if(modbus != nullptr) delete(modbus);
     for(int i=0;i<plots.count();i++) delete plots[i];
     delete tcp;
     delete ui;
@@ -1183,10 +1108,10 @@ void ControlPanel::reject()
     emit DialogClosed("");
 }
 
-// This slot is called when a control issues a change event with the
-// name of a script to execute as a result of the change. This allows
-// a control panel object to create an event when the user changes a
-// value.
+/*! \brief ControlPanel::controlChange
+ * Slot called when a control emits a change event with a script name.
+ * Finds the matching scriptObj and runs it.
+ */
 void ControlPanel::controlChange(QString scriptName)
 {
     foreach(Script *scrpt, scriptObj)
@@ -1196,25 +1121,23 @@ void ControlPanel::controlChange(QString scriptName)
             scrpt->scriptCall = "";
             QObject* callingObject = sender();
             Ccontrol *cc = qobject_cast<Ccontrol*>(callingObject);
-            if(cc != NULL) scrpt->scriptCall = cc->scriptCall;
+            if(cc != nullptr) scrpt->scriptCall = cc->scriptCall;
             Table *tbl = qobject_cast<Table*>(callingObject);
-            if(tbl != NULL) scrpt->scriptCall = tbl->scriptCall;
+            if(tbl != nullptr) scrpt->scriptCall = tbl->scriptCall;
             scrpt->run();
         }
     }
 }
 
-// This function will try to locate the filename. The full path and file name
-// will be returned if found or an empty string is the file can't be located.
-// The following steps are performed:
-// 1.) The file is tested as given in filename
-// 2.) The file is tested at the posiblePath is not empty
-// 3.) The app path is tested.
-QString ControlPanel::findFile(QString filename, QString posiblePath)
+/*! \brief ControlPanel::findFile
+ * Locates a file by checking the given path, a possible base path, and the
+ * application directory. Returns the full path or empty string if not found.
+ */
+QString ControlPanel::findFile(QString filename, QString possiblePath)
 {
     QString fn = QFileInfo(filename).fileName();
     if(QFileInfo::exists(filename)) return filename;
-    if(QFileInfo::exists(posiblePath + QDir::separator() + fn)) return posiblePath + QDir::separator() + fn;
+    if(QFileInfo::exists(possiblePath + QDir::separator() + fn)) return possiblePath + QDir::separator() + fn;
 #ifdef Q_OS_MAC
     QString ext = ".app";
 #else
@@ -1276,25 +1199,27 @@ void ControlPanel::slotComments(void)
     comments->SetTitle("Comments");
     comments->setText(CommentText);
     comments->show();
-    connect(comments, SIGNAL(finished(int)), this, SLOT(slotCommentsFinished()));
+    connect(comments, &Help::finished, this, &ControlPanel::slotCommentsFinished);
 
 }
 
+/*! \brief ControlPanel::slotCommentsFinished
+ * Saves the comment text when the comments dialog closes.
+ */
 void ControlPanel::slotCommentsFinished(void)
 {
     CommentText = comments->getText();
 }
 
-/*! \brief ControlPanel::slotGeneralHelp
- * This function is called when the user selects the General help option
- * from the popup menu. It will display the general help file.
+/*! \brief ControlPanel::slotSaveCP
+ * Saves the current control panel layout to a user-selected .cfg file.
  */
 void ControlPanel::slotSaveCP(void)
 {
     QStringList resList;
     QFileDialog fileDialog;
 
-    if(properties != NULL) fileDialog.setDirectory(properties->MethodesPath);
+    if(properties != nullptr) fileDialog.setDirectory(properties->MethodesPath);
     QString fileName = fileDialog.getSaveFileName(this, tr("Save to Config File"),"",tr("Config (*.cfg);;All files (*.*)"));
     if(fileName == "") return;
     QFile fileOut(fileName);
@@ -1674,6 +1599,9 @@ void ControlPanel::slotSaveCP(void)
     }
 }
 
+/*! \brief ControlPanel::slotGeneralHelp
+ * Displays the general MIPS help text.
+ */
 void ControlPanel::slotGeneralHelp(void)
 {
     help->SetTitle("MIPS Help");
@@ -1681,6 +1609,9 @@ void ControlPanel::slotGeneralHelp(void)
     help->show();
 }
 
+/*! \brief ControlPanel::slotMIPScommands
+ * Displays the MIPS commands reference.
+ */
 void ControlPanel::slotMIPScommands(void)
 {
     help->SetTitle("MIPS Commands");
@@ -1688,6 +1619,9 @@ void ControlPanel::slotMIPScommands(void)
     help->show();
 }
 
+/*! \brief ControlPanel::slotScriptHelp
+ * Displays the script help text.
+ */
 void ControlPanel::slotScriptHelp(void)
 {
     help->SetTitle("Script help");
@@ -1695,6 +1629,9 @@ void ControlPanel::slotScriptHelp(void)
     help->show();
 }
 
+/*! \brief ControlPanel::slotThisControlPanelHelp
+ * Displays the help file specific to this control panel.
+ */
 void ControlPanel::slotThisControlPanelHelp(void)
 {
     help->SetTitle("This Control panel help");
@@ -1702,18 +1639,19 @@ void ControlPanel::slotThisControlPanelHelp(void)
     help->show();
 }
 
+/*! \brief ControlPanel::slotLogStatusBarMessage
+ * Logs non-empty status bar messages to the properties log.
+ */
 void ControlPanel::slotLogStatusBarMessage(QString statusMess)
 {
     if(statusMess == "") return;
     if(statusMess.isEmpty()) return;
-    if(properties != NULL) properties->Log("CP StatusBar: " + statusMess);
+    if(properties != nullptr) properties->Log("CP StatusBar: " + statusMess);
 }
 
-// This menu option allows the user to define a data log file name and
-// define the minimum time between samples. After the file is opened a header
-// is written with the variable names and the time the logging started.
-// The data file is CSV with wach record having a time stamp in seconds from
-// the time the file was opened.
+/*! \brief ControlPanel::slotOpenLogFile
+ * Prompts for a log file name and sample period, then opens data logging.
+ */
 void ControlPanel::slotOpenLogFile(void)
 {
     QFileDialog fileDialog;
@@ -1743,6 +1681,9 @@ void ControlPanel::slotOpenLogFile(void)
     ControlPanel::setWindowTitle("Custom control panel, right click for options, data log file open: " + dataFile);
 }
 
+/*! \brief ControlPanel::slotCloseLogFile
+ * Closes the currently open data log file.
+ */
 void ControlPanel::slotCloseLogFile(void)
 {
     LogFile.clear();
@@ -1750,6 +1691,9 @@ void ControlPanel::slotCloseLogFile(void)
     ControlPanel::setWindowTitle("Custom control panel, right click for options");
 }
 
+/*! \brief ControlPanel::LogDataFile
+ * Appends a CSV data record to the open log file at the configured sample interval.
+ */
 void ControlPanel::LogDataFile(void)
 {
    QStringList vals;
@@ -1823,6 +1767,9 @@ void ControlPanel::LogDataFile(void)
    }
 }
 
+/*! \brief ControlPanel::InitMIPSsystems
+ * Sends initialization commands from a file to the named MIPS systems.
+ */
 void ControlPanel::InitMIPSsystems(QString initFilename)
 {
     // Open the file and send commands to MIPS systems.
@@ -1837,22 +1784,24 @@ void ControlPanel::InitMIPSsystems(QString initFilename)
             if(line.trimmed().startsWith("#")) continue;
             QStringList resList = line.split(",");
             Comms *cp =  FindCommPort(resList[0],Systems);
-            if(cp!=NULL) cp->SendString(line.mid(line.indexOf(resList[0]) + resList[0].length() + 1) + "\n");
+            if(cp!=nullptr) cp->SendString(line.mid(line.indexOf(resList[0]) + resList[0].length() + 1) + "\n");
         } while(!line.isNull());
         file.close();
     }
 }
 
-// Returns a pointer to the comm port for the MIPS system defined my its name.
-// Returns null if the MIPS system can't be found.
+/*! \brief ControlPanel::FindCommPort
+ * Returns the Comms pointer for the named MIPS system, or nullptr if not found.
+ */
 Comms* ControlPanel::FindCommPort(QString name, QList<Comms*> Systems)
 {
    for(int i = 0; i < Systems.length(); i++) if(Systems.at(i)->MIPSname == name) return(Systems.at(i));
-   return NULL;
+   return nullptr;
 }
 
-// This Update function is called by the MIPS class. This function will read all the controls
-// from the attached MIPS system and update the control panel with the values.
+/*! \brief ControlPanel::Update
+ * Called by the MIPS class each update cycle; delegates to UpdateStateMachine.
+ */
 void ControlPanel::Update(void)
 {
     if(updateState == 0) UpdateStateMachine();
@@ -1872,8 +1821,6 @@ void ControlPanel::UpdateStateMachine(void)
     int i,j,k;
 
     // Make sure the UpdateSemaphore is avaliable, if not exit
-    //if(UpdateSemaphore.available()==0) return;
-    //MySemaphoreLocker locker(&UpdateSemaphore, 1);
 
     switch (updateState)
     {
@@ -1896,8 +1843,8 @@ void ControlPanel::UpdateStateMachine(void)
                 Systems[i]->SendString("\n");
             }
         }
-        if(tcp != NULL) if(tcp->bytesAvailable() > 0) tcp->readData();
-        if(scriptconsole!=NULL) scriptconsole->UpdateStatus();
+        if(tcp != nullptr) if(tcp->bytesAvailable() > 0) tcp->readData();
+        if(scriptconsole!=nullptr) scriptconsole->UpdateStatus();
         if(UpdateStop) return;
         // loop so it can be called from the MIPScomms dialog
         for(i=0;i<TC.count();i++) if(TC[i]->Downloading) return;
@@ -1908,7 +1855,7 @@ void ControlPanel::UpdateStateMachine(void)
             mc = new MIPScomms(0,Systems);
             mc->show();
             UpdateStop = true;
-            connect(mc, SIGNAL(DialogClosed()), this, SLOT(CloseMIPScomms()));
+            connect(mc, &MIPScomms::DialogClosed, this, &ControlPanel::CloseMIPScomms);
             StartMIPScomms = false;
             UpdateStop = true;
             return;
@@ -1942,8 +1889,8 @@ void ControlPanel::UpdateStateMachine(void)
             }
             for(i=0;i<rfa.count();i++)        rfa[i]->Shutdown();
             for(i=0;i<ARBchans.count();i++)   ARBchans[i]->Shutdown();
-            if(statusBar != NULL) statusBar->showMessage("System shutdown, " + QDateTime().currentDateTime().toString());
-            if(properties != NULL) properties->Log("System Shutdown");
+            if(statusBar != nullptr) statusBar->showMessage("System shutdown, " + QDateTime().currentDateTime().toString());
+            if(properties != nullptr) properties->Log("System Shutdown");
             UpdateHoldOff = 1;
             return;
         }
@@ -1960,8 +1907,8 @@ void ControlPanel::UpdateStateMachine(void)
             for(i=0;i<Ccontrols.count();i++)  Ccontrols[i]->Restore();
             for(i=0;i<rfa.count();i++)        rfa[i]->Restore();
             for(i=0;i<ARBchans.count();i++)   ARBchans[i]->Restore();
-            if(statusBar != NULL) statusBar->showMessage("System enabled, " + QDateTime().currentDateTime().toString());
-            if(properties != NULL) properties->Log("System Restored");
+            if(statusBar != nullptr) statusBar->showMessage("System enabled, " + QDateTime().currentDateTime().toString());
+            if(properties != nullptr) properties->Log("System Restored");
             UpdateHoldOff = 1;
             return;
         }
@@ -1980,7 +1927,7 @@ void ControlPanel::UpdateStateMachine(void)
         {
             int ret;
             bool AutoR = false;
-            if(properties != NULL) if(properties->AutoRestore) AutoR = true;
+            if(properties != nullptr) if(properties->AutoRestore) AutoR = true;
             if(!AutoR)
             {
                 QString msg = "Connection(s) have been lost to " + res;
@@ -1994,7 +1941,7 @@ void ControlPanel::UpdateStateMachine(void)
             }
             else
             {
-                if(statusBar != NULL) statusBar->showMessage("Attempting to reestablish connection(s).",2000);
+                if(statusBar != nullptr) statusBar->showMessage("Attempting to reestablish connection(s).",2000);
                 msDelay(2000);
                 ret = QMessageBox::Yes;
             }
@@ -2169,7 +2116,6 @@ void ControlPanel::UpdateStateMachine(void)
  */
 QString ControlPanel::Save(QString Filename)
 {
-    //QString res;
     ControlPanel *cp;
 
     #ifdef Q_OS_MAC
@@ -2177,7 +2123,7 @@ QString ControlPanel::Save(QString Filename)
     #endif
     if(Filename == "") return "No file defined!";
     UpdateHoldOff = 1000;
-    if(properties != NULL) properties->Log("Save method file: " + Filename);
+    if(properties != nullptr) properties->Log("Save method file: " + Filename);
     QFile file(Filename);
     if(file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
@@ -2213,9 +2159,9 @@ QString ControlPanel::Save(QString Filename)
             if(cp->DCBoffsets.count() > 0)
             {
                 stream << "DCB offsets," + QString::number(cp->DCBoffsets.count()) + "\n";
-                for(int i=0; i<cp->DCBoffsets.count(); i++) if(cp->DCBoffsets[i] != NULL) stream << cp->DCBoffsets[i]->Report() + "\n";
+                for(int i=0; i<cp->DCBoffsets.count(); i++) if(cp->DCBoffsets[i] != nullptr) stream << cp->DCBoffsets[i]->Report() + "\n";
             }
-            if(cp->DCBgroups != NULL)
+            if(cp->DCBgroups != nullptr)
             {
                 stream << "DC bias groups\n";
                 stream << cp->DCBgroups->Report() + "\n";
@@ -2274,19 +2220,19 @@ QString ControlPanel::Save(QString Filename)
             if(cp->rfa.count() > 0)
             {
                 stream << "RFamp channels," + QString::number(cp->rfa.count()) + "\n";
-                for(int i=0; i<cp->rfa.count(); i++) if(cp->rfa[i] != NULL) stream << cp->rfa[i]->Report() + "\n";
+                for(int i=0; i<cp->rfa.count(); i++) if(cp->rfa[i] != nullptr) stream << cp->rfa[i]->Report() + "\n";
                 stream << "RFampEnd\n";
             }
             if(cp->devices.count() > 0)
             {
                 stream << "External devices," + QString::number(cp->devices.count()) + "\n";
-                for(int i=0; i<cp->devices.count(); i++) if(cp->devices[i] != NULL) stream << cp->devices[i]->Report() + "\n";
+                for(int i=0; i<cp->devices.count(); i++) if(cp->devices[i] != nullptr) stream << cp->devices[i]->Report() + "\n";
                 stream << "ExternalDevicesEnd\n";
             }
             if(cp->ModChans.count() > 0)
             {
                 stream << "ModBus channels," + QString::number(cp->ModChans.count()) + "\n";
-                for(int i=0; i<cp->ModChans.count(); i++) if(cp->ModChans[i] != NULL) stream << cp->ModChans[i]->Report() + "\n";
+                for(int i=0; i<cp->ModChans.count(); i++) if(cp->ModChans[i] != nullptr) stream << cp->ModChans[i]->Report() + "\n";
                 stream << "ModBusChannelsEnd\n";
             }
             if(cp->plotData.count() > 0)
@@ -2340,14 +2286,14 @@ QString ControlPanel::Load(QString Filename)
     cp = this;
     // Test is Filename ends in .settings, if not add .settings
     if(!Filename.endsWith(".SETTINGS",Qt::CaseInsensitive)) Filename += ".settings";
-    if(properties != NULL) QDir().setCurrent(properties->MethodesPath);
+    if(properties != nullptr) QDir().setCurrent(properties->MethodesPath);
     #ifdef Q_OS_MAC
     if(Filename.startsWith("~")) Filename = QDir::homePath() + "/" + Filename.mid(2);
     #endif
     if(Filename == "") return "No file defined!";
     UpdateHoldOff = 1000;
     QFile file(Filename);
-    if(properties != NULL) properties->Log("Load method file: " + Filename);
+    if(properties != nullptr) properties->Log("Load method file: " + Filename);
     if(file.open(QIODevice::ReadOnly|QIODevice::Text))
     {
         CommentText.clear();
@@ -2376,12 +2322,12 @@ QString ControlPanel::Load(QString Filename)
                 {
                     // See if we can find this control panel name and then point to it,
                     // quit is we can't find it...
-                    cp = NULL;
+                    cp = nullptr;
                     for(int j=0;j<Cpanels.count();j++)
                     {
                         if(Cpanels[j]->Title == resList[1]) cp = Cpanels[j]->cp;
                     }
-                    if(cp == NULL) break;
+                    if(cp == nullptr) break;
                 }
                 if(resList[0] == "RF channels") for(int i=0;i<resList[1].toInt();i++)
                 {
@@ -2399,8 +2345,6 @@ QString ControlPanel::Load(QString Filename)
                 {
                      line = stream.readLine();
                      if(line.isNull()) break;
-                     //if(i >= DCBchans.count()) break;
-                     //if(DCBchans[i]->SetValues(line)) continue;
                      for(int j=0;j<cp->DCBchans.count();j++) if(cp->DCBchans[j]->SetValues(line)) break;
                 }
                 if(resList[0] == "DAC channels") for(int i=0;i<resList[1].toInt();i++)
@@ -2480,7 +2424,7 @@ QString ControlPanel::Load(QString Filename)
                 {
                     line = stream.readLine();
                     if(line.isNull()) break;
-                    if(cp->DCBgroups != NULL) cp->DCBgroups->SetValues(line);
+                    if(cp->DCBgroups != nullptr) cp->DCBgroups->SetValues(line);
                 }
                 if(resList[0] == "Plot parameters") while(true)
                 {
@@ -2524,12 +2468,14 @@ QString ControlPanel::Load(QString Filename)
     UpdateHoldOff = 1;
 }
 
-// Called after data collection, save method to the filepath passed
+/*! \brief ControlPanel::slotDataAcquired
+ * Slot: saves method settings and notifies the reader app after data collection.
+ */
 void ControlPanel::slotDataAcquired(QString filepath)
 {
     if(filepath != "")
     {
-        if(properties != NULL) properties->Log("Data acquired: " + filepath);
+        if(properties != nullptr) properties->Log("Data acquired: " + filepath);
         Save(filepath + "/Method.settings");
         // Send UDP message to allow reader to open the data file
         QString mess = "Load,"+filepath+"/U1084A.data";
@@ -2537,19 +2483,26 @@ void ControlPanel::slotDataAcquired(QString filepath)
     }
 }
 
+/*! \brief ControlPanel::slotDataFileDefined
+ * Slot: sends a UDP notification that the data file path has been defined.
+ */
 void ControlPanel::slotDataFileDefined(QString filepath)
 {
     QString mess = "Data file defined,"+filepath;
     udpSocket->writeDatagram(mess.toLocal8Bit(),QHostAddress("127.0.0.1"), 7755);
 }
 
-// System shutdown
+/*! \brief ControlPanel::pbSD
+ * Slot: sets ShutdownFlag to trigger a system shutdown on the next update.
+ */
 void ControlPanel::pbSD(void)
 {
     ShutdownFlag = true;
 }
 
-// System enable
+/*! \brief ControlPanel::pbSE
+ * Slot: sets RestoreFlag to trigger a system enable on the next update.
+ */
 void ControlPanel::pbSE(void)
 {
     RestoreFlag = true;
@@ -2565,7 +2518,7 @@ void ControlPanel::pbSave(void)
 {
     QFileDialog fileDialog;
 
-    if(properties != NULL) fileDialog.setDirectory(properties->MethodesPath);
+    if(properties != nullptr) fileDialog.setDirectory(properties->MethodesPath);
     QString fileName = fileDialog.getSaveFileName(this, tr("Save to Settings File"),"",tr("Settings (*.settings);;All files (*.*)"));
     if(fileName == "") return;
     statusBar->showMessage(Save(fileName), 5000);
@@ -2581,7 +2534,7 @@ void ControlPanel::pbLoad(void)
 {
     QFileDialog fileDialog;
 
-    if(properties != NULL) fileDialog.setDirectory(properties->MethodesPath);
+    if(properties != nullptr) fileDialog.setDirectory(properties->MethodesPath);
     QString fileName = fileDialog.getOpenFileName(this, tr("Load Settings from File"),"",tr("Settings (*.settings);;All files (*.*)"));
     if(fileName == "") return;
     statusBar->showMessage(Load(fileName), 5000);
@@ -2596,16 +2549,25 @@ void ControlPanel::pbLoad(void)
     }
 }
 
+/*! \brief ControlPanel::CloseMIPScomms
+ * Slot: re-enables the update loop after the MIPScomms dialog closes.
+ */
 void ControlPanel::CloseMIPScomms(void)
 {
     UpdateStop = false;
 }
 
+/*! \brief ControlPanel::pbMIPScomms
+ * Slot: requests the MIPScomms dialog to be opened on the next update cycle.
+ */
 void ControlPanel::pbMIPScomms(void)
 {
    StartMIPScomms = true;
 }
 
+/*! \brief ControlPanel::pbARBcompressor
+ * Slot: shows the compressor dialog matching the pressed button.
+ */
 void ControlPanel::pbARBcompressor(void)
 {
     QObject*    obj = sender();
@@ -2621,25 +2583,37 @@ void ControlPanel::pbARBcompressor(void)
     }
 }
 
+/*! \brief ControlPanel::scriptShutdown
+ * Slot: triggers system shutdown from a script.
+ */
 void ControlPanel::scriptShutdown(void)
 {
     ShutdownFlag = true;
 }
 
+/*! \brief ControlPanel::DCBgroupDisable
+ * Disables link-grouping on all DC bias channels.
+ */
 void ControlPanel::DCBgroupDisable(void)
 {
     for(int i=0;i<DCBchans.count();i++) DCBchans[i]->LinkEnable = false;
 }
 
+/*! \brief ControlPanel::FindDCBchannel
+ * Returns a pointer to the named DC bias channel, or nullptr if not found.
+ */
 DCBchannel * ControlPanel::FindDCBchannel(QString name)
 {
     for(int i=0;i<DCBchans.count();i++)
     {
         if(DCBchans[i]->Title.toUpper() == name.toUpper()) return DCBchans[i];
     }
-    return NULL;
+    return nullptr;
 }
 
+/*! \brief ControlPanel::DCBgroupEnable
+ * Rebuilds DC bias channel link groups from the DCBgroups combo selection.
+ */
 void ControlPanel::DCBgroupEnable(void)
 {
     DCBchannel            *dcb;
@@ -2651,7 +2625,7 @@ void ControlPanel::DCBgroupEnable(void)
         DCBs.clear();
         for(int j=0;j<resList.count();j++)
         {
-            if((dcb=FindDCBchannel(resList[j])) != NULL)
+            if((dcb=FindDCBchannel(resList[j])) != nullptr)
             {
                 DCBs.append(dcb);
             }
@@ -2667,22 +2641,28 @@ void ControlPanel::DCBgroupEnable(void)
     }
 }
 
+/*! \brief ControlPanel::pbScript
+ * Slot: shows and raises the scripting console.
+ */
 void ControlPanel::pbScript(void)
 {
-    if(scriptconsole == NULL) return;
+    if(scriptconsole == nullptr) return;
     scriptconsole->show();
     scriptconsole->raise();
     scriptconsole->repaint();
 }
 
+/*! \brief ControlPanel::MakePathNameUnique
+ * Returns a unique path by delegating to the global MakePathUnique utility.
+ */
 QString ControlPanel::MakePathNameUnique(QString path)
 {
     return MakePathUnique(path);
 }
 
-// Generate a unique file name using the properties path
-// and base filename. Return empty string if we cannot generate a
-// unique name.
+/*! \brief ControlPanel::GenerateUniqueFileName
+ * Generates a unique filename under properties->DataFilePath with a sequential suffix.
+ */
 QString ControlPanel::GenerateUniqueFileName(void)
 {
     QString snum;
@@ -2711,6 +2691,9 @@ QString ControlPanel::GenerateUniqueFileName(void)
     return fname;
 }
 
+/*! \brief ControlPanel::MakeFileNameUnique
+ * Returns a unique filename by incrementing the four-digit numeric extension.
+ */
 QString ControlPanel::MakeFileNameUnique(QString fileName)
 {
     QFileInfo fileInfo(fileName);
@@ -2748,7 +2731,9 @@ QString ControlPanel::MakeFileNameUnique(QString fileName)
     return uniqueFileName;
 }
 
-// Used by scripting system, the record should be \n terminated, this is not checked!
+/*! \brief ControlPanel::AppendToFile
+ * Appends a record to the named file. Returns empty string on success, error message on failure.
+ */
 QString ControlPanel::AppendToFile(QString fileName, QString record)
 {
     QFile file(fileName);
@@ -2763,6 +2748,9 @@ QString ControlPanel::AppendToFile(QString fileName, QString record)
     else return "Error opening file for appending:" + file.errorString();
 }
 
+/*! \brief ControlPanel::ReadFile
+ * Reads and returns the entire contents of the named file.
+ */
 QString ControlPanel::ReadFile(QString fileName)
 {
     QFile file(fileName);
@@ -2776,6 +2764,9 @@ QString ControlPanel::ReadFile(QString fileName)
     return "";
 }
 
+/*! \brief ControlPanel::ReadFileLine
+ * Returns the specified line (1-based) from the named file.
+ */
 QString ControlPanel::ReadFileLine(QString fileName, int line)
 {
     QFile file(fileName);
@@ -2798,51 +2789,74 @@ QString ControlPanel::ReadFileLine(QString fileName, int line)
     else return "Error opening file.";
 }
 
-// The following functions are for the scripting system
+/*! \brief ControlPanel::GetLine
+ * Reads and returns the next available line from the named MIPS system's buffer.
+ */
 QString ControlPanel::GetLine(QString MIPSname)
 {
    Comms *cp =  FindCommPort(MIPSname,Systems);
-   if(cp==NULL) return "";
+   if(cp==nullptr) return "";
    cp->waitforline(500);
    return cp->getline();
 }
 
+/*! \brief ControlPanel::SendCommand
+ * Sends a command string to the named MIPS system.
+ */
 bool ControlPanel::SendCommand(QString MIPSname, QString message)
 {
    Comms *cp =  FindCommPort(MIPSname,Systems);
-   if(cp==NULL) return false;
+   if(cp==nullptr) return false;
    return cp->SendCommand(message);
 }
 
+/*! \brief ControlPanel::SendString
+ * Sends a raw string to the named MIPS system.
+ */
 bool ControlPanel::SendString(QString MIPSname, QString message)
 {
    Comms *cp =  FindCommPort(MIPSname,Systems);
-   if(cp==NULL) return false;
+   if(cp==nullptr) return false;
    return cp->SendString(message);
 }
 
+/*! \brief ControlPanel::SendMess
+ * Sends a message to the named MIPS system and returns the response.
+ */
 QString ControlPanel::SendMess(QString MIPSname, QString message)
 {
     Comms *cp =  FindCommPort(MIPSname,Systems);
-    if(cp==NULL) return "MIPS not found!";
+    if(cp==nullptr) return "MIPS not found!";
     return cp->SendMess(message);
 }
 
+/*! \brief ControlPanel::SystemEnable
+ * Sets RestoreFlag to re-enable the system.
+ */
 void ControlPanel::SystemEnable(void)
 {
     RestoreFlag = true;
 }
 
+/*! \brief ControlPanel::SystemShutdown
+ * Sets ShutdownFlag to shut down the system.
+ */
 void ControlPanel::SystemShutdown(void)
 {
     ShutdownFlag = true;
 }
 
+/*! \brief ControlPanel::isShutDown
+ * Returns true if the system is currently in shutdown state.
+ */
 bool ControlPanel::isShutDown(void)
 {
     return(SystemIsShutdown);
 }
 
+/*! \brief ControlPanel::Acquire
+ * Triggers data acquisition to the given file path via the last TimingControl.
+ */
 void ControlPanel::Acquire(QString filePath)
 {
    filePath.replace("\\","/");
@@ -2858,27 +2872,42 @@ void ControlPanel::Acquire(QString filePath)
    if(TC.count() > 0) TC.last()->AcquireData(filePath);
 }
 
+/*! \brief ControlPanel::isAcquiring
+ * Returns true if the last TimingControl is actively acquiring data.
+ */
 bool ControlPanel::isAcquiring(void)
 {
   if(TC.count() > 0) return(TC.last()->AD->Acquiring);
   return(false);
 }
 
+/*! \brief ControlPanel::DismissAcquire
+ * Dismisses the active acquisition dialog.
+ */
 void ControlPanel::DismissAcquire(void)
 {
   if(TC.count() > 0)  TC.last()->AD->Dismiss();
 }
 
+/*! \brief ControlPanel::msDelay
+ * Blocking delay of the specified number of milliseconds.
+ */
 void ControlPanel::msDelay(int ms)
 {
     QThread::msleep(ms);
 }
 
+/*! \brief ControlPanel::statusMessage
+ * Displays a message in the status bar.
+ */
 void ControlPanel::statusMessage(QString message)
 {
     statusBar->showMessage(message);
 }
 
+/*! \brief ControlPanel::popupMessage
+ * Shows a modal message box with the given text.
+ */
 void ControlPanel::popupMessage(QString message)
 {
     QMessageBox msgBox;
@@ -2889,6 +2918,9 @@ void ControlPanel::popupMessage(QString message)
     msgBox.exec();
 }
 
+/*! \brief ControlPanel::popupYesNoMessage
+ * Shows a Yes/No message box; returns true if Yes was selected.
+ */
 bool ControlPanel::popupYesNoMessage(QString message)
 {
     QMessageBox msgBox;
@@ -2902,6 +2934,9 @@ bool ControlPanel::popupYesNoMessage(QString message)
     return true;
 }
 
+/*! \brief ControlPanel::popupUserInput
+ * Shows an input dialog; returns entered text, or empty string on cancel.
+ */
 QString ControlPanel::popupUserInput(QString title, QString message)
 {
     bool ok;
@@ -2921,7 +2956,7 @@ bool ControlPanel::sysUpdating(void)
 {
     ControlPanel *cp=this;
 
-    while(cp->parentCP != NULL) cp = cp->parentCP;
+    while(cp->parentCP != nullptr) cp = cp->parentCP;
     return cp->isUpdating;
 }
 
@@ -2929,12 +2964,14 @@ bool ControlPanel::UpdateHalted(bool stop)
 {
     ControlPanel *cp=this;
 
-    while(cp->parentCP != NULL) cp = cp->parentCP;
+    while(cp->parentCP != nullptr) cp = cp->parentCP;
     cp->UpdateStop = stop;
-    //cp->ProcessEvents = !stop;
     return cp->UpdateStop;
 }
 
+/*! \brief ControlPanel::tcpSocket
+ * Manages a persistent TCP socket. Supports Connect, Write, Read, and Close commands.
+ */
 QString ControlPanel::tcpSocket(QString cmd, QString arg1, QString arg2)
 {
     static QTcpSocket *socket = new QTcpSocket(this);
@@ -2980,8 +3017,9 @@ QString ControlPanel::tcpSocket(QString cmd, QString arg1, QString arg2)
     return "";
 }
 
-// This function is called with a command in the TCP server buffer.
-// This function will process this command.
+/*! \brief ControlPanel::tcpCommand
+ * Reads a command from the TCP server buffer, processes it, and sends the response.
+ */
 void ControlPanel::tcpCommand(void)
 {
     QString cmd = tcp->readLine();
@@ -3007,13 +3045,13 @@ QString ControlPanel::Command(QString cmd)
    if(cmd.toUpper() == "SHUTDOWN")
    {
        ShutdownFlag = true;
-       if(SD != NULL) SD->SetState(true);
+       if(SD != nullptr) SD->SetState(true);
        return res;
    }
    if(cmd.toUpper() == "RESTORE")
    {
        RestoreFlag  = true;
-       if(SD != NULL) SD->SetState(false);
+       if(SD != nullptr) SD->SetState(false);
        return res;
    }
    if(cmd.startsWith("LOAD",Qt::CaseInsensitive))
@@ -3157,8 +3195,9 @@ QString ControlPanel::Command(QString cmd)
    return("?\n");
 }
 
-// This function allows the script system to popup a file selection dalog for file open
-// or save.
+/*! \brief ControlPanel::SelectFile
+ * Shows an open or save file dialog and returns the selected filename.
+ */
 QString ControlPanel::SelectFile(QString fType, QString Title, QString Ext)
 {
     QString fileName = "";
@@ -3169,13 +3208,14 @@ QString ControlPanel::SelectFile(QString fType, QString Title, QString Ext)
     }
     if(fType.toUpper() == "SAVE")
     {
-        //fileName = QFileDialog::getSaveFileName(nullptr, Title,"",Ext + " (*." + Ext + ");;All files (*.*)");
         fileName = QFileDialog::getSaveFileName(this, Title,"", Ext);
     }
     return fileName;
 }
 
-// Reads a CSV file into the CSVdata list and divides it into lines and elements.
+/*! \brief ControlPanel::ReadCSVfile
+ * Reads a delimited file into CSVdata. Returns line count or -1 on error.
+ */
 int ControlPanel::ReadCSVfile(QString fileName, QString delimiter)
 {
     CSVdata.clear();
@@ -3199,7 +3239,9 @@ int ControlPanel::ReadCSVfile(QString fileName, QString delimiter)
     return -1;
 }
 
-// Returns the selected CSV line and entry in the selected line
+/*! \brief ControlPanel::ReadCSVentry
+ * Returns the specified entry from the specified line of the last-read CSV file.
+ */
 QString ControlPanel::ReadCSVentry(int line, int entry)
 {
     if(CSVdata.count() <= line) return("");
@@ -3207,6 +3249,9 @@ QString ControlPanel::ReadCSVentry(int line, int entry)
     return (*CSVdata[line])[entry];
 }
 
+/*! \brief ControlPanel::slotPlotDialogClosed
+ * Slot: removes and deletes the closed Plot from the plots list.
+ */
 void ControlPanel::slotPlotDialogClosed(Plot *thisPlot)
 {
     // Find this plot object in the list and then
@@ -3221,16 +3266,22 @@ void ControlPanel::slotPlotDialogClosed(Plot *thisPlot)
     }
 }
 
+/*! \brief ControlPanel::CreatePlot
+ * Creates a new plot window with the given title, axis labels, and trace count.
+ */
 void ControlPanel::CreatePlot(QString Title, QString Yaxis, QString Xaxis, int NumPlots)
 {
     plots.append(new Plot(0, Title, Yaxis, Xaxis, NumPlots));
     plots.last()->show();
     plots.last()->activateWindow();
     plots.last()->raise();
-    connect(plots.last(),SIGNAL(DialogClosed(Plot *)),this,SLOT(slotPlotDialogClosed(Plot *)));
+    connect(plots.last(), &Plot::DialogClosed, this, &ControlPanel::slotPlotDialogClosed);
     activePlot = plots.last();
 }
 
+/*! \brief ControlPanel::PlotCommand
+ * Forwards a command to the active plot, or deletes it if cmd is "DELETE".
+ */
 void ControlPanel::PlotCommand(QString cmd)
 {
     if(plots.count() < 1) return;
@@ -3243,55 +3294,60 @@ void ControlPanel::PlotCommand(QString cmd)
     else plots.last()->PlotCommand(cmd);
 }
 
+/*! \brief ControlPanel::slotCPselected
+ * Slot: emits DialogClosed with the selected control panel filename.
+ */
 void ControlPanel::slotCPselected(QString CPfilename)
 {
     emit DialogClosed(CPfilename);
 }
 
+/*! \brief ControlPanel::elapsedTime
+ * Returns elapsed milliseconds since the last init call (init=true resets the timer).
+ */
 int ControlPanel::elapsedTime(bool init)
 {
-    //static QTime time = QTime::currentTime();
 
-    //if(init) time = QTime::currentTime();
-    //return time.elapsed();
     static QElapsedTimer time;
 
     if(init) time.start();
     return time.elapsed();
 }
 
+/*! \brief ControlPanel::setValue
+ * Stores a key/value pair in the top-level control panel's persistent storage map.
+ */
 void ControlPanel::setValue(const QString &key, const QVariant &value)
 {
     ControlPanel *cp=this;
 
     // Find the top level control panel
-    while(cp->parentCP != NULL) cp = cp->parentCP;
+    while(cp->parentCP != nullptr) cp = cp->parentCP;
 
     if (key.isEmpty()) {
-        //qWarning() << "Cannot save key-value pair: Key is empty.";
         return;
     }
 
     // Insert or update the value in the QMap
     cp->m_storage.insert(key, value);
-    //qDebug() << "Saved key to QMap:" << key << "with value:" << value;
 }
 
+/*! \brief ControlPanel::getValue
+ * Retrieves a value by key from the top-level control panel's storage map.
+ */
 QVariant ControlPanel::getValue(const QString &key)
 {
     ControlPanel *cp=this;
 
     // Find the top level control panel
-    while(cp->parentCP != NULL) cp = cp->parentCP;
+    while(cp->parentCP != nullptr) cp = cp->parentCP;
 
     if (key.isEmpty()) {
-        //qWarning() << "Cannot retrieve key-value pair: Key is empty.";
         return "no key";
     }
 
     // QMap::value() returns the value associated with the key, or defaultValue if the key is not found.
     QVariant value = cp->m_storage.value(key, "no key");
-    //qDebug() << "Retrieved key from QMap:" << key << "with value:" << value;
     return value;
 }
 
@@ -3309,11 +3365,14 @@ bool ControlPanel::CreateProcess(QString name, QString program)
         if(extProcs[i]->name == name) return false;
     }
     extProcs.append(new extProcess(this,name,program));
-    connect(extProcs.last(),SIGNAL(DialogClosed(QString)),this,SLOT(slotExtProcessClosed(QString)));
-    connect(extProcs.last(),SIGNAL(change(QString)),this,SLOT(slotExternalProcessChange(QString)));
+    connect(extProcs.last(), &extProcess::DialogClosed, this, &ControlPanel::slotExtProcessClosed);
+    connect(extProcs.last(), &extProcess::change, this, &ControlPanel::slotExternalProcessChange);
     return true;
 }
 
+/*! \brief ControlPanel::slotExtProcessClosed
+ * Slot: removes and deletes the named external process from extProcs.
+ */
 void ControlPanel::slotExtProcessClosed(QString name)
 {
     // It is safer to iterate backward when removing items by index.
@@ -3326,1779 +3385,27 @@ void ControlPanel::slotExtProcessClosed(QString name)
         // Check if the name matches the process we are looking for
         if(extProcs[i]->name == name)
         {
-            // CRITICAL STEP 1: Delete the object pointed to by the pointer (prevent memory leak)
             delete extProcs[i];
 
-            // CRITICAL STEP 2: Remove the pointer from the QList (shrink the list)
             extProcs.removeAt(i);
 
-            // DO NOT return here if you want to remove all potential duplicates.
-            // Continue the loop to check the rest of the list.
         }
     }
 }
 
+/*! \brief ControlPanel::slotExternalProcessChange
+ * Slot: forwards an external process change event to the script system.
+ */
 void ControlPanel::slotExternalProcessChange(QString script)
 {
     // Call the scripting system to process this script
     controlChange(script);
 }
 
+/*! \brief ControlPanel::ZMQ
+ * Sends a command to the ZMQ worker and returns the response.
+ */
 QString  ControlPanel::ZMQ(QString command)
 {
     return(zmq.command(command));
-}
-
-
-// *************************************************************************************************
-// Text box  ***************************************************************************************
-// *************************************************************************************************
-
-TextLabel::TextLabel(QWidget *parent, QString name, int s, int x, int y) : QWidget(parent)
-{
-    p      = parent;
-    Title  = name;
-    Size   = s;
-    X      = x;
-    Y      = y;
-}
-
-void TextLabel::Show(void)
-{
-    label = new QLabel(Title,p); label->setGeometry(X,Y,1,1);
-    QFont font = label->font();
-    font.setPointSize(Size);
-    label->setFont(font);
-    label->adjustSize();
-    label->installEventFilter(this);
-    label->setMouseTracking(true);
-}
-
-bool TextLabel::eventFilter(QObject *obj, QEvent *event)
-{
-    if(moveWidget(obj, label, label , event)) return true;
-    return false;
-}
-
-// *************************************************************************************************
-// System shutdown and restore button  *************************************************************
-// *************************************************************************************************
-
-Shutdown::Shutdown(QWidget *parent, QString name, int x, int y) : QWidget(parent)
-{
-    p      = parent;
-    Title  = name;
-    X      = x;
-    Y      = y;
-}
-
-void Shutdown::Show(void)
-{
-    pbShutdown = new QPushButton("System shutdown",p);
-    pbShutdown->setGeometry(X,Y,150,32);
-    pbShutdown->setAutoDefault(false);
-    connect(pbShutdown,SIGNAL(pressed()),this,SLOT(pbPressed()));
-    pbShutdown->installEventFilter(this);
-    pbShutdown->setMouseTracking(true);
-}
-
-bool Shutdown::eventFilter(QObject *obj, QEvent *event)
-{
-    if(moveWidget(obj, pbShutdown, pbShutdown , event)) return false;
-    return false;
-}
-
-void Shutdown::SetState(bool ShutDown)
-{
-    if(ShutDown) pbShutdown->setText("System enable");
-    else pbShutdown->setText("System shutdown");
-}
-
-void Shutdown::pbPressed(void)
-{
-    if(pbShutdown->text() == "System shutdown")
-    {
-        pbShutdown->setText("System enable");
-        emit ShutdownSystem();
-    }
-    else
-    {
-        pbShutdown->setText("System shutdown");
-        emit EnableSystem();
-    }
-}
-
-// *************************************************************************************************
-// Save and load buttons  **************************************************************************
-// *************************************************************************************************
-
-SaveLoad::SaveLoad(QWidget *parent, QString nameSave, QString nameLoad, int x, int y) : QWidget(parent)
-{
-    p          = parent;
-    TitleSave  = nameSave;
-    TitleLoad  = nameLoad;
-    X          = x;
-    Y          = y;
-}
-
-void SaveLoad::Show(void)
-{
-    pbSave = new QPushButton(TitleSave,p);
-    pbSave->setGeometry(X,Y,150,32);
-    pbSave->setAutoDefault(false);
-    pbLoad = new QPushButton(TitleLoad,p);
-    pbLoad->setGeometry(X,Y+40,150,32);
-    pbLoad->setAutoDefault(false);
-    pbSave->setMouseTracking(true);
-    pbLoad->setMouseTracking(true);
-    pbSave->installEventFilter(this);
-    pbLoad->installEventFilter(this);
-    connect(pbSave,SIGNAL(pressed()),this,SLOT(pbSavePressed()));
-    connect(pbLoad,SIGNAL(pressed()),this,SLOT(pbLoadPressed()));
-}
-
-bool SaveLoad::eventFilter(QObject *obj, QEvent *event)
-{
-    if(obj == pbSave){ if(moveWidget(obj, pbSave, pbSave , event)) return true; }
-    if(obj == pbLoad){ if(moveWidget(obj, pbLoad, pbLoad , event)) return true; }
-    return false;
-}
-
-void SaveLoad::pbSavePressed(void)
-{
-    pbSave->setDown(false);
-    emit Save();
-}
-
-void SaveLoad::pbLoadPressed(void)
-{
-//    QApplication::processEvents();
-    pbLoad->setDown(false);
-    emit Load();
-}
-
-// *************************************************************************************************
-// Load Control Panel button  **********************************************************************
-// *************************************************************************************************
-
-CPbutton::CPbutton(QWidget *parent, QString name, QString CPfilename, int x, int y) : QWidget(parent)
-{
-    p          = parent;
-    Title      = name;
-    FileName   = CPfilename;
-    X          = x;
-    Y          = y;
-}
-
-void CPbutton::Show(void)
-{
-    pbCPselect = new QPushButton(Title,p);
-    pbCPselect->setGeometry(X,Y,150,32);
-    pbCPselect->setAutoDefault(false);
-    connect(pbCPselect,SIGNAL(pressed()),this,SLOT(pbCPselectPressed()));
-    pbCPselect->installEventFilter(this);
-    pbCPselect->setMouseTracking(true);
-}
-
-bool CPbutton::eventFilter(QObject *obj, QEvent *event)
-{
-    if(moveWidget(obj, pbCPselect, pbCPselect , event)) return true;
-    return false;
-}
-
-QString CPbutton::ProcessCommand(QString cmd)
-{
-    QString res;
-
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    if(cmd == res)
-    {
-        pbCPselectPressed();
-        return "";
-    }
-    return "?";
-}
-
-void CPbutton::pbCPselectPressed(void)
-{
-    pbCPselect->setDown(true);
-    emit CPselected(FileName);
-}
-
-// *************************************************************************************************
-// DAC channels    *********************************************************************************
-// *************************************************************************************************
-
-DACchannel::DACchannel(QWidget *parent, QString name, QString MIPSname, int x, int y) : QWidget(parent)
-{
-    p      = parent;
-    Title  = name;
-    MIPSnm = MIPSname;
-    X      = x;
-    Y      = y;
-    comms  = NULL;
-    Units = "V";
-    m = 1;
-    b = 0;
-    Format = "%.3f";
-    Updating = false;
-    UpdateOff = false;
-}
-
-void DACchannel::Show(void)
-{
-    frmDAC = new QFrame(p); frmDAC->setGeometry(X,Y,180,21);
-    Vdac = new QLineEdit(frmDAC); Vdac->setGeometry(70,0,70,21); Vdac->setValidator(new QDoubleValidator);
-    labels[0] = new QLabel(Title,frmDAC); labels[0]->setGeometry(0,0,59,16);
-    labels[1] = new QLabel(Units,frmDAC); labels[1]->setGeometry(150,0,31,16);
-    Vdac->setToolTip("DAC output CH" +  QString::number(Channel) + ", "  + MIPSnm);
-    connect(Vdac,SIGNAL(editingFinished()),this,SLOT(VdacChange()));
-    frmDAC->installEventFilter(this);
-    frmDAC->setMouseTracking(true);
-    labels[0]->installEventFilter(this);
-    labels[0]->setMouseTracking(true);
-    Vdac->installEventFilter(this);
-    Vdac->setMouseTracking(true);
-}
-
-bool DACchannel::eventFilter(QObject *obj, QEvent *event)
-{
-    if(moveWidget(obj, frmDAC, labels[0] , event)) return true;
-    if(Updating) return true;
-    UpdateOff = true;
-    if(adjustValue(obj,Vdac,event,1))
-    {
-        UpdateOff = false;
-        return true;
-    }
-    UpdateOff = false;
-    return QObject::eventFilter(obj, event);
- }
-
-QString DACchannel::Report(void)
-{
-    QString res;
-
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title + "," + Vdac->text();
-    return(res);
-}
-
-bool DACchannel::SetValues(QString strVals)
-{
-    QStringList resList;
-    QString res;
-
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    if(!strVals.startsWith(res)) return false;
-    resList = strVals.split(",");
-    if(resList.count() < 2) return false;
-    Vdac->setText(resList[1]);
-    Vdac->setModified(true);
-    emit Vdac->editingFinished();
-    return true;
-}
-
-// The following commands are processed:
-// title            return the offset value
-// title=val        sets the offset value
-// returns "?" if the command could not be processed
-QString DACchannel::ProcessCommand(QString cmd)
-{
-    QString res;
-
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    if(!cmd.startsWith(res)) return "?";
-    if(cmd == Title) return Vdac->text();
-    QStringList resList = cmd.split("=");
-    if(resList.count()==2)
-    {
-       Vdac->setText(resList[1]);
-       Vdac->setModified(true);
-       emit Vdac->editingFinished();
-       return "";
-    }
-    return "?";
-}
-
-// display = m*readValue + b
-void DACchannel::Update(void)
-{
-    QString res;
-
-    if(comms == NULL) return;
-    if(UpdateOff) return;
-    Updating = true;
-    comms->rb.clear();
-    res = "GDACV,CH"  + QString::number(Channel) + "\n";
-    res = comms->SendMess(res);
-    if(res == "")
-    {
-        Updating = false;
-        return;
-    }
-    res = res.asprintf(Format.toStdString().c_str(),res.toFloat() * m + b);
-    if(!Vdac->hasFocus()) Vdac->setText(res);
-    Updating = false;
-}
-
-// writeValue = (display - b)/m
-void DACchannel::VdacChange(void)
-{
-   QString val;
-
-   if(comms == NULL) return;
-   if(!Vdac->isModified()) return;
-   val = val.asprintf("%.3f",(Vdac->text().toFloat() - b)/m);
-   QString res = "SDACV,CH" + QString::number(Channel) + "," + val + "\n";
-   comms->SendCommand(res.toStdString().c_str());
-   Vdac->setModified(false);
-}
-
-// *************************************************************************************************
-// DC bias groups  *********************************************************************************
-// *************************************************************************************************
-
-DCBiasGroups::DCBiasGroups(QWidget *parent, int x, int y)
-{
-    p      = parent;
-    X      = x;
-    Y      = y;
-}
-
-void DCBiasGroups::Show(void)
-{
-    gbDCBgroups = new QGroupBox("Define DC bias channel groups",p);
-    gbDCBgroups->setGeometry(X,Y,251,86);
-    gbDCBgroups->setToolTip("DC bias groups are sets of DC bias channels that will track, so when you change one channel all other channels in the group will change by the same about.");
-    comboGroups = new QComboBox(gbDCBgroups);
-    comboGroups->setGeometry(5,25,236,26);
-    comboGroups->setEditable(true);
-    comboGroups->setToolTip("Define a group by entering a list of channel names seperated by a comma. You can define many groups.");
-    DCBenaGroups = new QCheckBox(gbDCBgroups); DCBenaGroups->setGeometry(5,55,116,20);
-    DCBenaGroups->setText("Enable groups");
-    DCBenaGroups->setToolTip("Check enable to process the groups and apply.");
-    comboGroups->installEventFilter(this);
-    connect(DCBenaGroups,SIGNAL(clicked(bool)),this,SLOT(slotEnableChange()));
-    gbDCBgroups->installEventFilter(this);
-    gbDCBgroups->setMouseTracking(true);
-}
-
-void DCBiasGroups::slotEnableChange(void)
-{
-    // If disable is selected then emit signal to disable;
-    if(!DCBenaGroups->isChecked()) emit disable();
-    // if emable is selected then emit signal to enable;
-    if(DCBenaGroups->isChecked()) emit enable();
-}
-
-// One string is passed with all combobox entries. A semicolan seperates
-// the entries.
-bool DCBiasGroups::SetValues(QString strVals)
-{
-    DCBenaGroups->setChecked(false);
-    comboGroups->clear();
-    QStringList resList = strVals.split(";");
-    for(int i=0;i<resList.count();i++)
-    {
-       comboGroups->addItem(resList[i]);
-    }
-    return true;
-}
-
-QString DCBiasGroups::Report(void)
-{
-    QString res = "";
-
-    for(int i=0;i<comboGroups->count();i++)
-    {
-        if(res != "") res += ";";
-        res += comboGroups->itemText(i);
-    }
-    return res;
-}
-
-bool DCBiasGroups::eventFilter(QObject *obj, QEvent *event)
-{
-    if(moveWidget(obj, gbDCBgroups, gbDCBgroups , event)) return true;
-    if (event->type() == QEvent::KeyPress)
-    {
-        QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
-        if ((keyEvent->key() == Qt::Key::Key_Backspace) && (keyEvent->modifiers() == Qt::ShiftModifier))
-        {
-            auto combobox = dynamic_cast<QComboBox *>(obj);
-            if (combobox){
-                combobox->removeItem(combobox->currentIndex());
-                return true;
-            }
-        }
-    }
-    // standard event processing
-    return QObject::eventFilter(obj, event);
-}
-
-// **********************************************************************************************
-// ESI ******************************************************************************************
-// **********************************************************************************************
-
-ESI::ESI(QWidget *parent, QString name, QString MIPSname, int x, int y) : QWidget(parent)
-{
-    p      = parent;
-    Title  = name;
-    MIPSnm = MIPSname;
-    X      = x;
-    Y      = y;
-    comms  = NULL;
-    isShutdown = false;
-}
-
-void ESI::Show(void)
-{
-    frmESI = new QFrame(p); frmESI->setGeometry(X,Y,241,42);
-    ESIsp = new QLineEdit(frmESI); ESIsp->setGeometry(70,0,70,21); ESIsp->setValidator(new QDoubleValidator);
-    ESIrb = new QLineEdit(frmESI); ESIrb->setGeometry(140,0,70,21); ESIrb->setReadOnly(true);
-    ESIena = new QCheckBox(frmESI); ESIena->setGeometry(70,22,70,21);
-    ESIena->setText("Enable");
-    labels[0] = new QLabel(Title,frmESI); labels[0]->setGeometry(0,0,59,16);
-    labels[1] = new QLabel("V",frmESI);   labels[1]->setGeometry(220,0,21,16);
-    ESIsp->setToolTip(MIPSnm + " ESI channel " + QString::number(Channel));
-    connect(ESIsp,SIGNAL(editingFinished()),this,SLOT(ESIChange()));
-    connect(ESIena,SIGNAL(checkStateChanged(Qt::CheckState)),this,SLOT(ESIenaChange()));
-    frmESI->installEventFilter(this);
-    frmESI->setMouseTracking(true);
-    labels[0]->installEventFilter(this);
-    labels[0]->setMouseTracking(true);
-}
-
-bool ESI::eventFilter(QObject *obj, QEvent *event)
-{
-    if(moveWidget(obj, frmESI, frmESI , event)) return true;
-    return false;
-}
-
-QString ESI::Report(void)
-{
-    QString res;
-
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title + ",";
-    if(isShutdown)
-    {
-        if(activeEnableState) res += "ON,";
-        else res += "OFF,";
-    }
-    else
-    {
-        if(ESIena->isChecked()) res += "ON,";
-        else res += "OFF,";
-    }
-    res += ESIsp->text() + "," + ESIrb->text();
-    return(res);
-}
-
-bool ESI::SetValues(QString strVals)
-{
-    QStringList resList;
-    QString res;
-
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    if(!strVals.startsWith(res)) return false;
-    resList = strVals.split(",");
-    if(resList.count() < 3) return false;
-    if(isShutdown)
-    {
-        if(resList[1].contains("ON")) activeEnableState = true;
-        else  activeEnableState = false;
-    }
-    else
-    {
-        if(resList[1].contains("ON")) ESIena->setChecked(true);
-        else ESIena->setChecked(false);
-        if(resList[1].contains("ON")) emit ESIena->checkStateChanged(Qt::Checked);
-        else emit ESIena->checkStateChanged(Qt::Unchecked);
-    }
-    ESIsp->setText(resList[2]);
-    ESIsp->setModified(true);
-    emit ESIsp->editingFinished();
-    return true;
-}
-
-// title        setpoint
-// title=val    setpoint
-// title.readback
-// title.ena
-// title.ena= ON or OFF
-QString ESI::ProcessCommand(QString cmd)
-{
-    QString res;
-
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    if(!cmd.startsWith(res)) return "?";
-    if(cmd == res) return ESIsp->text();
-    if(cmd == res + ".readback") return ESIrb->text();
-    if(cmd == res + ".ena")
-    {
-        if(ESIena->isChecked()) return "ON";
-        return "OFF";
-    }
-    QStringList resList = cmd.split("=");
-    if(resList.count()==2)
-    {
-       if(resList[0] == Title)
-       {
-           ESIsp->setText(resList[1]);
-           ESIsp->setModified(true);
-           emit ESIsp->editingFinished();
-           return "";
-       }
-       if(resList[0] == res + ".ena")
-       {
-           if(resList[1] == "ON") ESIena->setChecked(true);
-           else if(resList[1] == "OFF") ESIena->setChecked(false);
-           else return "?";
-           if(resList[1] == "ON") emit ESIena->checkStateChanged(Qt::Checked);
-           else  emit ESIena->checkStateChanged(Qt::Unchecked);
-           return "";
-       }
-    }
-    return "?";
-}
-
-void ESI::Update(void)
-{
-    QString res;
-
-    if(comms == NULL) return;
-
-    comms->rb.clear();
-    res = "GHV,"  + QString::number(Channel) + "\n";
-    res = comms->SendMess(res);
-    if(res == "") return;
-    if(!ESIsp->hasFocus()) ESIsp->setText(res);
-    res = "GHVV," + QString::number(Channel) + "\n";
-    res = comms->SendMess(res);
-    if(res=="") return;
-    ESIrb->setText(res);
-    res = comms->SendMess("GHVSTATUS," + QString::number(Channel) + "\n");
-    bool oldState = ESIena->blockSignals(true);
-    if(res.contains("ON")) ESIena->setChecked(true);
-    if(res.contains("OFF")) ESIena->setChecked(false);
-    ESIena->blockSignals(oldState);
-}
-
-void ESI::ESIChange(void)
-{
-    if(comms == NULL) return;
-    if(!ESIsp->isModified()) return;
-    QString res = "SHV," + QString::number(Channel) + "," + ESIsp->text() + "\n";
-    comms->SendCommand(res.toStdString().c_str());
-    ESIsp->setModified(false);
-}
-
-void ESI::ESIenaChange(void)
-{
-   QString res;
-
-   if(comms == NULL) return;
-   if(ESIena->checkState()) res ="SHVENA," + QString::number(Channel) + "\n";
-   else res ="SHVDIS," + QString::number(Channel) + "\n";
-   comms->SendCommand(res.toStdString().c_str());
-}
-
-void ESI::Shutdown(void)
-{
-    if(isShutdown) return;
-    isShutdown = true;
-    activeEnableState = ESIena->checkState();
-    ESIena->setChecked(false);
-    emit ESIena->checkStateChanged(Qt::Unchecked);
-}
-
-void ESI::Restore(void)
-{
-    if(!isShutdown) return;
-    isShutdown = false;
-    ESIena->setChecked(activeEnableState);
-    emit ESIena->checkStateChanged(Qt::Unchecked);
-}
-
-// **********************************************************************************************
-// Ccontrol *************************************************************************************
-// **********************************************************************************************
-//  Implements a generic control with the following features:
-//      - TYPE, defines the control type
-//              - LineEdit, CheckBox, Button, ComboBox
-//      - Set command
-//              to set the MIPS value from LineEdit box
-//              checked state command for the CheckBox
-//              pressed command for Button
-//      - Get command
-//              to read the MIPS value to update the LineEdit box
-//              unchecked state command for the CheckBox
-//              not used for Button
-//      - Readback command
-//              if set add a readback box and this command will read the value for LineEdit
-//              if CheckBox has read command then format is COMMAND_CHK_UNCHK
-//              not used for Button
-//  Syntax example:
-//      Ccontrol,name,mips name,type,get command,set command,readback command,units,X,Y
-
-Ccontrol::Ccontrol(QWidget *parent, QString name, QString MIPSname,QString Type, QString Gcmd, QString Scmd, QString RBcmd, QString Units, int x, int y)
-{
-    p      = parent;
-    Title  = name;
-    MIPSnm = MIPSname;
-    GetCmd = Gcmd.replace("_",",");
-    SetCmd = Scmd.replace("_",",");
-    ReadbackCmd = RBcmd.replace("_",",");
-    UnitsText = Units;
-    Ctype = Type;
-    X      = x;
-    Y      = y;
-    comms  = NULL;
-    Step = 1.0;
-    isShutdown = false;
-    Updating   = false;
-    UpdateOff  = false;
-    ShutdownValue.clear();
-    Dtype = "Double";
-    comboBox = NULL;
-}
-
-bool Ccontrol::eventFilter(QObject *obj, QEvent *event)
-{
-    if(obj == frmCc) if(moveWidget(obj, frmCc, frmCc, event)) return true;
-    if(obj == pbButton) if(moveWidget(obj, pbButton, pbButton, event)) return true;
-
-    if(Dtype.toUpper() == "STRINGL") return QObject::eventFilter(obj, event);
-    if(Dtype.toUpper() == "STRING") return QObject::eventFilter(obj, event);
-    if(Updating) return true;
-    UpdateOff = true;
-    if(adjustValue(obj, Vsp, event, Step))
-    {
-        UpdateOff = false;
-        return true;
-    }
-    UpdateOff = false;
-    return QObject::eventFilter(obj, event);
-}
-
-void Ccontrol::Show(void)
-{
-    updateCount = generateRandomInt(1, skipCount);
-    if(Ctype == "LineEdit")
-    {
-        frmCc = new QFrame(p);
-        labels[0] = new QLabel(Title,frmCc); labels[0]->setGeometry(0,0,59,16);
-        labels[1] = new QLabel(UnitsText,frmCc);
-        // If Read back command or set command are empty then its only one lineEdit
-        // box, else two.
-        if(SetCmd.isEmpty() || ReadbackCmd.isEmpty())
-        {
-            // Only 1 line edit box
-            if(Dtype.toUpper() == "STRINGL") frmCc->setGeometry(X,Y,400,21);
-            else frmCc->setGeometry(X,Y,175,21);
-            if(SetCmd.isEmpty())
-            {
-                Vrb = new QLineEdit(frmCc);
-                Vrb->setGeometry(70,0,70,21);
-                Vrb->setReadOnly(true);
-            }
-            else if(ReadbackCmd.isEmpty())
-            {
-                Vsp = new QLineEdit(frmCc);
-                if(Dtype.toUpper() == "STRINGL") Vsp->setGeometry(70,0,300,21);
-                else Vsp->setGeometry(70,0,70,21);
-                if(Dtype.toUpper() == "DOUBLE") Vsp->setValidator(new QDoubleValidator);
-                Vsp->setToolTip(MIPSnm + "," + SetCmd);
-                connect(Vsp,SIGNAL(editingFinished()),this,SLOT(VspChange()));
-            }
-            labels[1]->setGeometry(150,0,30,16);
-        }
-        else
-        {
-            frmCc->setGeometry(X,Y,245,21);
-            Vsp = new QLineEdit(frmCc); Vsp->setGeometry(70,0,70,21); //Vsp->setValidator(new QDoubleValidator);
-            Vrb = new QLineEdit(frmCc); Vrb->setGeometry(140,0,70,21); Vrb->setReadOnly(true);
-            labels[1]->setGeometry(220,0,30,16);
-            Vsp->setToolTip(MIPSnm + "," + SetCmd);
-            connect(Vsp,SIGNAL(editingFinished()),this,SLOT(VspChange()));
-        }
-    }
-    if(Ctype == "CheckBox")
-    {
-        frmCc = new QFrame(p); frmCc->setGeometry(X,Y,241,21);
-        chkBox = new QCheckBox(frmCc); chkBox->setGeometry(0,0,200,21);
-        chkBox->setText(Title);
-        connect(chkBox,SIGNAL(checkStateChanged(Qt::CheckState)),this,SLOT(chkBoxStateChanged(Qt::CheckState)));
-    }
-    if(Ctype == "Button")
-    {
-        pbButton = new QPushButton(Title,p);
-        pbButton->setGeometry(X,Y,150,32);
-        pbButton->setAutoDefault(false);
-        connect(pbButton,SIGNAL(pressed()),this,SLOT(pbButtonPressed()));
-    }
-    if(Ctype == "ComboBox")
-    {
-        frmCc = new QFrame(p); frmCc->setGeometry(X,Y,241,21);
-        labels[0] = new QLabel(Title,frmCc); labels[0]->setGeometry(0,0,59,16);
-        comboBox = new QComboBox(frmCc); comboBox->setGeometry(70,0,70,21);
-        labels[1] = new QLabel(UnitsText,frmCc); labels[1]->setGeometry(150,0,30,16);
-        //connect(comboBox,SIGNAL(currentIndexChanged(QString)),this,SLOT(comboBoxChanged(QString)));
-        connect(comboBox,SIGNAL(currentIndexChanged(int)),this,SLOT(comboBoxChanged(int)));
-    }
-    if(frmCc!=NULL)
-    {
-        frmCc->installEventFilter(this);
-        frmCc->setMouseTracking(true);
-    }
-    if(labels[0]!=NULL)
-    {
-        labels[0]->installEventFilter(this);
-        labels[0]->setMouseTracking(true);
-    }
-    if(pbButton!=NULL)
-    {
-        pbButton->installEventFilter(this);
-        pbButton->setMouseTracking(true);
-    }
-    if(Vsp!=NULL)
-    {
-        Vsp->installEventFilter(this);
-        Vsp->setMouseTracking(true);
-    }
-}
-
-void Ccontrol::Update(void)
-{
-    QString res;
-
-    if(++updateCount > SKIPCOUNT) updateCount = 1;
-    if(comms == NULL) return;
-    comms->rb.clear();
-    if(Ctype == "LineEdit")
-    {
-        if(!GetCmd.isEmpty())
-        {
-            if((updateCount != 1) && !firstUpdate) return;
-            firstUpdate = false;
-            res = comms->SendMess(GetCmd + "\n");
-            if(res == "") return;
-            if(!Vsp->hasFocus()) Vsp->setText(res);
-        }
-        if(!ReadbackCmd.isEmpty())
-        {
-            res = comms->SendMess(ReadbackCmd + "\n");
-            if(res == "") return;
-            Vrb->setText(res);
-        }
-    }
-    if(Ctype == "CheckBox")
-    {
-        // If there is a readback string then this is the update command. The
-        // will contain the check and unchecked responses that are , delimited.
-        if(!ReadbackCmd.isEmpty())
-        {
-            QStringList resList = ReadbackCmd.split(",");
-            if(resList.count() >= 3)
-            {
-                if((updateCount != 1)  && !firstUpdate) return;
-                firstUpdate = false;
-                if(resList.count() == 3) res =  comms->SendMess(resList[0] + "\n");
-                if(resList.count() == 4) res =  comms->SendMess(resList[0] + "," + resList[1] + "\n");
-                chkBox->blockSignals(true);
-                if(res == resList[resList.count() - 2]) chkBox->setChecked(true);
-                else if(res == resList[resList.count() - 1]) chkBox->setChecked(false);
-                chkBox->blockSignals(false);
-            }
-            frmCc->repaint();
-        }
-    }
-    if(Ctype == "ComboBox")
-    {
-        if(!GetCmd.isEmpty())
-        {
-            if((updateCount != 1)  && !firstUpdate) return;
-            firstUpdate = false;
-            res = comms->SendMess(GetCmd + "\n");
-            if(res == "") return;
-            int i = comboBox->findText(res.trimmed());
-            if(i < 0) return;
-            comboBox->setCurrentIndex(i);
-        }
-        frmCc->repaint();
-    }
-}
-
-QString Ccontrol::Report(void)
-{
-    QString res;
-
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    if(Ctype == "LineEdit")
-    {
-        if(!GetCmd.isEmpty() || !SetCmd.isEmpty())
-        {
-            res += "," + Vsp->text();
-            if(isShutdown) res += "," + ActiveValue;
-            else res += "," + Vsp->text();
-        }
-        if(!ReadbackCmd.isEmpty()) res += "," + Vrb->text();
-        return(res);
-    }
-    if(Ctype == "CheckBox")
-    {
-        if(!ReadbackCmd.isEmpty())
-        {
-            QStringList resList = ReadbackCmd.split("_");
-            if(resList.count() == 3)
-            {
-                if(chkBox->isChecked()) return resList[1];
-                else return resList[2];
-            }
-        }
-        if(chkBox->isChecked()) return(res + "," + "TRUE");
-        else return(res + "," + "FALSE");
-    }
-    if(Ctype == "ComboBox")
-    {
-       return(res + "," + comboBox->currentText());
-    }
-    return("");
-}
-
-bool Ccontrol::SetValues(QString strVals)
-{
-    QStringList resList;
-    QString res;
-
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    if(Ctype == "LineEdit")
-    {
-        if(!strVals.startsWith(res)) return false;
-        resList = strVals.split(",");
-        if(resList.count() < 2) return false;
-        if(resList[0] != res) return false;
-        if(SetCmd.isEmpty()) return false;
-        if(isShutdown) ActiveValue = resList[1];
-        else
-        {
-            Vsp->setText(resList[1]);
-            Vsp->setModified(true);
-            emit Vsp->editingFinished();
-        }
-        return true;
-    }
-    if(Ctype == "CheckBox")
-    {
-        if(!strVals.startsWith(res)) return false;
-        resList = strVals.split(",");
-        if(resList.count() < 2) return false;
-        if(resList[0] != res) return false;
-        if(!ReadbackCmd.isEmpty())
-        {
-            QStringList resCmd = ReadbackCmd.split(",");
-            if(resCmd.count() == 3)
-            {
-                bool returnstate = true;
-                //chkBox->setUpdatesEnabled(false);
-                if(resCmd[1] == resList[1]) chkBox->setChecked(true);
-                else if(resCmd[2] == resList[1]) chkBox->setChecked(false);
-                else returnstate = false;
-                //chkBox->setUpdatesEnabled(true);
-                return returnstate;
-            }
-        }
-        bool returnstate = true;
-        //chkBox->setUpdatesEnabled(false);
-        if(resList[1] == "TRUE") chkBox->setChecked(true);
-        else if(resList[1] == "FALSE") chkBox->setChecked(false);
-        else returnstate = false;
-        //chkBox->setUpdatesEnabled(true);
-        return returnstate;
-    }
-    if(Ctype == "ComboBox")
-    {
-        if(!strVals.startsWith(res)) return false;
-        resList = strVals.split(",");
-        if(resList.count() < 2) return false;
-        if(resList[0] != res) return false;
-        int i = comboBox->findText(resList[1].trimmed());
-        if(i<0) return false;
-        comboBox->setCurrentIndex(i);
-        comboBoxChanged(i);
-        return true;
-    }
-    return false;
- }
-
-void Ccontrol::Shutdown(void)
-{
-    if(Ctype == "LineEdit")
-    {
-        if(ShutdownValue.isEmpty()) return;
-        if(isShutdown) return;
-        isShutdown = true;
-        ActiveValue = Vsp->text();
-        Vsp->setText(ShutdownValue);
-        Vsp->setModified(true);
-        emit Vsp->editingFinished();
-    }
-}
-
-void Ccontrol::Restore(void)
-{
-    if(Ctype == "LineEdit")
-    {
-        if(!isShutdown) return;
-        isShutdown = false;
-        Vsp->setText(ActiveValue);
-        Vsp->setModified(true);
-        emit Vsp->editingFinished();
-    }
-}
-
-void Ccontrol::SetList(QString strOptions)
-{
-    if(comboBox != NULL)
-    {
-        comboBox->clear();
-        QStringList resList = strOptions.split(",");
-        for(int i=0;i<resList.count();i++)
-        {
-            comboBox->addItem(resList[i]);
-        }
-    }
-}
-
-
-// The following commands are processed:
-// title            return the setpoint
-// title=val        sets the setpoint
-// title.readback   returns the readback voltage
-// title.script     sets or returns the script assiged to the change event
-// title.color      sets control background color
-// title.hide       allows hiding the control if true
-// title.getCmd     sets or returns the get command
-// title.setCmd     sets or returns the set command
-// title.rbCmd      sets or returns the readback command
-// title.mips       sets or returns the MIPS name
-// title.toolTip    sets the tooltip for the control
-// returns "?" if the command could not be processed
-QString Ccontrol::ProcessCommand(QString cmd)
-{
-    QString res;
-
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    QStringList resList = cmd.split("=");
-    if((resList.count()==2) && (resList[0] == res + ".script"))
-    {
-        scriptName = resList[1].trimmed();
-        return "";
-    }
-    if((resList.count()==2) && (resList[0] == res + ".scriptCall"))
-    {
-        scriptCall = resList[1].trimmed();
-        return "";
-    }
-    if((resList.count()==2) && (resList[0] == res + ".color"))
-    {
-        if(frmCc != nullptr) frmCc->setStyleSheet("background-color: " + resList[1].trimmed());
-        return "";
-    }
-    if((resList.count()==2) && (resList[0] == res + ".hide"))
-    {
-        if(frmCc != nullptr)
-        {
-            if(resList[1].toUpper() == "TRUE") frmCc->setVisible(false);
-            else if(resList[1].toUpper() == "FALSE") frmCc->setVisible(true);
-            else return "?";
-        }
-        return "";
-    }
-    if((resList.count()==2) && (resList[0] == res + ".getCmd"))
-    {
-        GetCmd = resList[1].trimmed();
-        return "";
-    }
-    if((resList.count()==2) && (resList[0] == res + ".setCmd"))
-    {
-        SetCmd = resList[1].trimmed();
-        return "";
-    }
-    if((resList.count()==2) && (resList[0] == res + ".rbCmd"))
-    {
-        ReadbackCmd = resList[1].trimmed();
-        return "";
-    }
-    if((resList.count()==2) && (resList[0] == res + ".mips"))
-    {
-        MIPSnm = resList[1].trimmed();
-        return "";
-    }
-    if(cmd.startsWith(res + ".toolTip"))
-    {
-        int startIndex = cmd.indexOf('=') + 1;
-        if(Ctype      == "LineEdit") Vsp->setToolTip(cmd.mid(startIndex));
-        else if(Ctype == "CheckBox") chkBox->setToolTip(cmd.mid(startIndex));
-        else if(Ctype == "Button")   pbButton->setToolTip(cmd.mid(startIndex));
-        else if(Ctype == "ComboBox") comboBox->setToolTip(cmd.mid(startIndex));
-        return "";
-    }
-    if(Ctype == "LineEdit")
-    {
-        if(!cmd.startsWith(res)) return "?";
-        if(cmd == res)
-        {
-            if(!SetCmd.isEmpty() || !GetCmd.isEmpty()) return Vsp->text();
-            if(!ReadbackCmd.isEmpty()) return Vrb->text();
-        }
-        if(cmd == res + ".getCmd") return GetCmd;
-        if(cmd == res + ".setCmd") return SetCmd;
-        if(cmd == res + ".rbCmd")  return ReadbackCmd;
-        if(cmd == res + ".mips")   return MIPSnm;
-        if(cmd == res + ".script") return scriptName;
-        if(cmd == res + ".readback")
-        {
-            if((!SetCmd.isEmpty() || !GetCmd.isEmpty()) && !ReadbackCmd.isEmpty()) return Vrb->text();
-            return "?";
-        }
-        QStringList resList = cmd.split("=");
-        if((resList.count()==2) && !SetCmd.isEmpty() && (resList[0] == res) && (Vsp != nullptr))
-        {
-           Vsp->setText(resList[1].trimmed());
-           Vsp->setModified(true);
-           emit Vsp->editingFinished();
-           return "";
-        }
-        return "?";
-    }
-    if(Ctype == "CheckBox")
-    {
-        if(!cmd.startsWith(res)) return "?";
-        if(cmd == res)
-        {
-            if(!ReadbackCmd.isEmpty())
-            {
-                QStringList resCmd = ReadbackCmd.split("_");
-                if(resCmd.count() == 3)
-                {
-                    if(chkBox->isChecked()) return resCmd[1];
-                    else return resCmd[2];
-                }
-            }
-            if(chkBox->isChecked()) return "TRUE";
-            else return "FALSE";
-        }
-        QStringList resList = cmd.split("=");
-        if((resList.count()==2) && !SetCmd.isEmpty() && (resList[0] == res))
-        {
-            if(!ReadbackCmd.isEmpty())
-            {
-                QStringList resCmd = ReadbackCmd.split("_");
-                if(resCmd.count() == 3)
-                {
-                    if(resCmd[1] == resList[1]) chkBox->setChecked(true);
-                    else if(resCmd[2] == resList[1]) chkBox->setChecked(false);
-                    else return "?";
-                    return "";
-                }
-            }
-            if(resList[1] == "TRUE") chkBox->setChecked(true);
-            else if(resList[1] == "FALSE") chkBox->setChecked(false);
-            else return "?";
-            return "";
-        }
-        if((resList.count()==2) && (resList[0] == res + ".color"))
-        {
-            frmCc->setStyleSheet("background-color: " + resList[1].trimmed());
-            return "";
-        }
-    }
-    if(Ctype == "Button")
-    {
-        if(!cmd.startsWith(res)) return "?";
-        if(cmd == res)
-        {
-            pbButtonPressed();
-            return "";
-        }
-    }
-    if(Ctype == "ComboBox")
-    {
-        if(!cmd.startsWith(res)) return "?";
-        if(cmd == res) return comboBox->currentText();
-        QStringList resList = cmd.split("=");
-        int i = comboBox->findText(resList[1].trimmed());
-        if((i < 0) || (resList[0] != res))  return "?";
-        comboBox->setCurrentIndex(i);
-        comboBoxChanged(i);
-        return "";
-    }
-    return "?";
-}
-
-void Ccontrol::VspChange(void)
-{
-   if(!Vsp->isModified()) return;
-   updateCount = 0;
-   QString res = SetCmd + "," + Vsp->text() + "\n";
-   if(comms != NULL) comms->SendCommand(res.toStdString().c_str());
-   Vsp->setModified(false);
-   if(!scriptName.isEmpty()) emit change(scriptName);
-}
-
-void Ccontrol::pbButtonPressed(void)
-{
-    pbButton->setFocus();
-    pbButton->setDown(false);
-    if(comms != NULL) comms->SendCommand(SetCmd + "\n");
-    if(!scriptName.isEmpty()) emit change(scriptName);
-}
-
-void Ccontrol::chkBoxStateChanged(Qt::CheckState state)
-{
-    chkBox->setFocus();
-    if(comms != NULL)
-    {
-        updateCount = 0;
-        if(state == Qt::Checked) comms->SendCommand(SetCmd + "\n");
-        else if(state == Qt::Unchecked) comms->SendCommand(GetCmd + "\n");
-    }
-    if(!scriptName.isEmpty()) emit change(scriptName);
-}
-
-void Ccontrol::comboBoxChanged(int i)
-{
-    updateCount = 0;
-    if(comms != NULL) comms->SendCommand(SetCmd +"," + comboBox->itemText(i) + "\n");
-    if(!scriptName.isEmpty()) emit change(scriptName);
-}
-
-// **********************************************************************************************
-// Cpanel   *************************************************************************************
-// **********************************************************************************************
-
-Cpanel::Cpanel(QWidget *parent, QString name, QString CPfileName, int x, int y, QList<Comms*> S, Properties *prop, ControlPanel *pcp)
-{
-    cp = new ControlPanel(0,CPfileName,S,prop,pcp);
-    p      = parent;
-    X      = x;
-    Y      = y;
-    Title = name;
-    connect(cp,SIGNAL(DialogClosed(QString)),this,SLOT(slotDialogClosed()));
-}
-
-void Cpanel::Show(void)
-{
-    pbButton = new QPushButton(Title,p);
-    pbButton->setGeometry(X,Y,150,32);
-    pbButton->setAutoDefault(false);
-    connect(pbButton,SIGNAL(pressed()),this,SLOT(pbButtonPressed()));
-    pbButton->installEventFilter(this);
-    pbButton->setMouseTracking(true);
-}
-
-void Cpanel::Update(void)
-{
-    if(cp->isVisible()) cp->Update();
-}
-
-bool Cpanel::eventFilter(QObject *obj, QEvent *event)
-{
-    if(moveWidget(obj, pbButton, pbButton , event)) return true;
-    return false;
-}
-
-QString Cpanel::ProcessCommand(QString cmd)
-{
-    QString res;
-
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    if(cmd == res)
-    {
-        pbButtonPressed();
-        return "";
-    }
-    res = Title + ".";
-    if(!cmd.startsWith(res)) return "?";
-    return cp->Command(cmd.mid(res.length()));
-}
-
-void Cpanel::pbButtonPressed(void)
-{
-    pbButton->setDown(false);
-    cp->show();
-    cp->raise();
-}
-
-void Cpanel::slotDialogClosed(void)
-{
-    cp->hide();
-}
-
-// *************************************************************************************************
-// Status Light  ***********************************************************************************
-// *************************************************************************************************
-
-StatusLight::StatusLight(QWidget *parent, QString name, int x, int y)
-{
-    p      = parent;
-    Title  = name;
-    X      = x;
-    Y      = y;
-    Status.clear();
-    Mode.clear();
-}
-
-void StatusLight::Show(void)
-{
-    Message = new QLabel(p); Message->setGeometry(X,Y,1,1);
-    label = new QLabel(Title,p); label->setGeometry(X,Y,1,1);
-    label->adjustSize();
-    label->setGeometry(X + 20 - (label->width()/2),Y,label->width(),label->height());
-    TL = new QLabel(p);
-    TL->setGeometry(X,Y + label->height(),40,96);
-    widget = new TrafficLightWidget(TL);
-    widget->resize(40, 96);
-    widget->show();
-    label->installEventFilter(this);
-    label->setMouseTracking(true);
-}
-
-bool StatusLight::eventFilter(QObject *obj, QEvent *event)
-{
-    if(moveWidget(obj, label, label , event))
-    {
-        X = label->x();
-        Y = label->y();
-        Message->setGeometry(X,Y,1,1);
-        label->setGeometry(X + 20 - (label->width()/2),Y,label->width(),label->height());
-        TL->setGeometry(X,Y + label->height(),40,96);
-        //Message->setGeometry(X + 20 - (Message->width()/2),Y + 96 + label->height() ,Message->width(),Message->height());
-        ShowMessage();
-        return true;
-    }
-    return false;
-}
-
-void StatusLight::ShowMessage(void)
-{
-    QString mes;
-
-    mes = Status;
-    if(!Mode.isEmpty()) mes = mes +"\n" + Mode;
-    Message->setText(mes);
-    Message->adjustSize();
-    Message->setGeometry(X + 20 - (Message->width()/2),Y + 96 + label->height() ,Message->width(),Message->height());
-}
-
-QString StatusLight::ProcessCommand(QString cmd)
-{
-    QString res;
-
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    if(!cmd.startsWith(res)) return "?";
-    if((res + ".message") == cmd.trimmed()) return Status;
-    if((res + ".mode") == cmd.trimmed()) return Mode;
-    if(cmd.trimmed() == res)
-    {
-        if(widget->greenLight()->isOn()) return "GREEN";
-        if(widget->redLight()->isOn()) return "RED";
-        if(widget->yellowLight()->isOn()) return "YELLOW";
-        return "NONE";
-    }
-    QStringList resList = cmd.split("=");
-    if(resList.count()==2)
-    {
-       if((res + ".message") == resList[0].trimmed())
-       {
-           Status = resList[1];
-           ShowMessage();
-           return "";
-       }
-       else if((res + ".mode") == resList[0].trimmed())
-       {
-           Mode = resList[1];
-           ShowMessage();
-           return "";
-       }
-       widget->greenLight()->turnOff();
-       widget->redLight()->turnOff();
-       widget->yellowLight()->turnOff();
-       if(resList[1].trimmed() == "GREEN") widget->greenLight()->turnOn();
-       if(resList[1].trimmed() == "RED") widget->redLight()->turnOn();
-       if(resList[1].trimmed() == "YELLOW") widget->yellowLight()->turnOn();
-       return "";
-    }
-    return "?";
-}
-
-// *************************************************************************************************
-// Text message  ***********************************************************************************
-// *************************************************************************************************
-
-TextMessage::TextMessage(QWidget *parent, QString name, int x, int y)
-{
-    p      = parent;
-    Title  = name;
-    X      = x;
-    Y      = y;
-    MessageText.clear();
-}
-
-void TextMessage::Show(void)
-{
-    Message = new QLabel(p); Message->setGeometry(X,Y,1,1);
-    label = new QLabel(Title,p); label->setGeometry(X,Y,1,1);
-    label->adjustSize();
-    TL = new QLabel(p);
-    TL->setGeometry(X,Y,1,1);
-    label->installEventFilter(this);
-    label->setMouseTracking(true);
-}
-
-bool TextMessage::eventFilter(QObject *obj, QEvent *event)
-{
-    if(moveWidget(obj, label, label , event)) return true;
-    return false;
-}
-
-void TextMessage::ShowMessage(void)
-{
-    Message->setText(MessageText);
-    Message->adjustSize();
-    Message->setGeometry(X + label->width(),Y,Message->width(),Message->height());
-}
-
-QString TextMessage::ProcessCommand(QString cmd)
-{
-    QString res;
-
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    if(!cmd.startsWith(res)) return "?";
-    if(cmd.trimmed() == res) return MessageText;
-    QStringList resList = cmd.split("=");
-    if(resList.count()==2)
-    {
-       if((res) == resList[0].trimmed())
-       {
-          MessageText = resList[1];
-          ShowMessage();
-          return "";
-       }
-    }
-    return "?";
-}
-
-// *************************************************************************************************
-// Table class implementation  *********************************************************************
-// *************************************************************************************************
-
-/*!
- * \class Table
- * \brief Implements a table widget with editable cells and headers.
- *
- * The Table class creates a QTableWidget with specified rows, columns, and dimensions.
- * It allows for editing of cell values and header labels, and provides methods to process commands
- * and report the table's content.
- */
-Table::Table(QWidget *parent, QString name, int rows, int columns, int width, int height, int x, int y)
-{
-    p       = parent;
-    Title   = name;
-    X       = x;
-    Y       = y;
-    Rows    = rows;
-    Columns = columns;
-    Width  = width;
-    Height = height;
-}
-
-/*!
- * \brief Show
- * Initializes and displays the QTableWidget with specified rows and columns.
- * Sets up headers and makes cells editable.
- */
-void Table::Show(void)
-{
-    QTable = new QTableWidget(Rows,Columns,p);
-    if(QTable == NULL) return;
-    QTable->setGeometry(X, Y, Width, Height);
-    QTable->setColumnCount(Columns);
-    //QTable->setHorizontalHeaderLabels(QStringList() << "Time, mS" << "Voltage" << "");
-
-    for(int c=0;c<Columns;c++)
-    {
-        QTableWidgetItem *item = new QTableWidgetItem;
-        if(c==0) item->setText("Time, mS");
-        else if(c==1) item->setText("Voltage");
-        else item->setText("");
-        QTable->setHorizontalHeaderItem(c,item);
-        QTable->setColumnWidth(c, 65);
-    }
-    for(int r=0;r<Rows;r++)
-    {
-        QTable->setRowHeight(r, 20);
-        for(int c=0;c<Columns;c++)
-        {
-            QTableWidgetItem *item = new QTableWidgetItem(QString("Row %1, Col %2").arg(r+1).arg(c+1));
-            item->setFlags(item->flags() | Qt::ItemIsEditable); // Make items editable
-            item->setText("");
-            QTable->setItem(r, c, item);
-        }
-    }
-    QString res;
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    QTable->setToolTip(res);
-    QTable->show();
-    connect(QTable,SIGNAL(cellChanged(int,int)),this,SLOT(tableChange(int,int)));
-}
-
-bool Table::eventFilter(QObject *obj, QEvent *event)
-{
-    if(moveWidget(obj, QTable, QTable , event)) return true;
-    return false;
-}
-
-// Valid commands:
-//  Header,column
-//  Header,column = new name
-//  Cell,row,column
-//  Cell,row,column = new value
-//  Rows
-//  Columns
-//  sort
-//  script
-//  scriptCall
-QString Table::ProcessCommand(QString cmd)
-{
-    QString res;
-
-    if(QTable == NULL) return "?";
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    if(!cmd.startsWith(res)) return "?";
-    QStringList cmdList = cmd.split("=");
-    QStringList args = cmdList[0].split(",");
-    if(cmdList.count() == 1)
-    {
-        if(cmdList[0] == res + ".sort")
-        {
-            QTable->sortItems(0, Qt::AscendingOrder);
-            return "";
-        }
-    }
-    if(cmdList.count() == 2)
-    {
-        if(cmdList[0] == res + ".script")
-        {
-            scriptName = cmdList[1].trimmed();
-            return "";
-        }
-        if(cmdList[0] == res + ".scriptCall")
-        {
-            scriptCall = cmdList[1].trimmed();
-            return "";
-        }
-    }
-    if(args.count() >= 1)
-    {
-        if((args[0] == res + ".Rows") && (args.count() == 1) && (cmdList.count() == 1)) return (QString::number(Rows));
-        if((args[0] == res + ".Columns") && (args.count() == 1) && (cmdList.count() == 1)) return (QString::number(Columns));
-        if(args.count() == 2)
-        {
-            if(args[0] == res + ".Header")
-            {
-                if(args[1].toInt() < 0 || args[1].toInt() >= Columns) return "?";
-                if(cmdList.count() == 1) return QTable->horizontalHeaderItem(args[1].toInt())->text();
-                if(cmdList.count() == 2)
-                {
-                    QTableWidgetItem *item = new QTableWidgetItem(cmdList[1]);
-                    QTable->setHorizontalHeaderItem(args[1].toInt(), item);
-                    return "";
-                }
-            }
-        }
-        if(args.count() == 3)
-        {
-            if(args[0] == res + ".Cell")
-            {
-                if(args[1].toInt() < 0 || args[1].toInt() >= Rows) return "?";
-                if(args[2].toInt() < 0 || args[2].toInt() >= Columns) return "?";
-                if(cmdList.count() == 1) return QTable->item(args[1].toInt(), args[2].toInt())->text();
-                if(cmdList.count() == 2)
-                {
-                    QTableWidgetItem *item = new QTableWidgetItem(cmdList[1]);
-                    item->setFlags(item->flags() | Qt::ItemIsEditable); // Make item editable
-                    QTable->setItem(args[1].toInt(), args[2].toInt(), item);
-                    return "";
-                }
-            }
-        }
-    }
-    return "?";
-}
-
-// This function will return a string with multiple \n termintaed lines.
-// These lines contain the table data:
-// Number of rows
-// Number of columns
-// Column titles
-// Cell data
-QString Table::Report(void)
-{
-    QString res,rpt="";
-
-    if(QTable == NULL) return "";
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    // Report rows
-    rpt += res + ".Rows," + QString::number(Rows) + "\n";
-    // Report columns
-    rpt += res + ".Columns," + QString::number(Columns) + "\n";
-    // Report column headers
-    for(int i=0;i<Columns;i++)
-    {
-        rpt += res + ".Header," + QString::number(i) + "," + QTable->horizontalHeaderItem(i)->text() + "\n";
-    }
-    // Report all cells, 1 cell per line
-    for(int r=0;r<Rows;r++)
-    {
-        for(int c=0;c<Columns;c++)
-        {
-            if(QTable->item(r, c) != NULL)
-            {
-                rpt += res + ".Cell," + QString::number(r) + "," + QString::number(c) + "," + QTable->item(r, c)->text() + "\n";
-            }
-        }
-    }
-    return rpt;
-}
-
-// This function processes a string containing lines that were
-// saved by the report function. the strVal will only contain
-// one line on each call.
-bool Table::SetValues(QString strVals)
-{
-    QStringList resList;
-    QString res;
-
-    //qDebug() << strVals;
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    if(!strVals.startsWith(res)) return false;
-    resList = strVals.split(",");
-    if(resList[0] == res + ".Rows")
-    {
-        if(resList.count() != 2) return false;
-        int newRows = resList[1].toInt();
-        if(newRows < 0 || newRows > 1000) return false; // Limit rows to 1000
-        QTable->setRowCount(newRows);
-        Rows = newRows;
-        return true;
-    }
-    if(resList[0] == res + ".Columns")
-    {
-        if(resList.count() != 2) return false;
-        int newCols = resList[1].toInt();
-        if(newCols < 0 || newCols > 100) return false; // Limit columns to 100
-        QTable->setColumnCount(newCols);
-        Columns = newCols;
-        return true;
-    }
-    if(resList[0] == res + ".Header")
-    {
-        if(resList.count() >= 5) return false;
-        int colIndex = resList[1].toInt();
-        if(colIndex < 0 || colIndex >= Columns) return false;
-        QString strHdr="";
-        for(int i=2;i<resList.count();i++)
-        {
-            if(i > 2) strHdr += ",";
-            strHdr += resList[i];
-        }
-        QTableWidgetItem *item = new QTableWidgetItem(strHdr);
-        QTable->setHorizontalHeaderItem(colIndex, item);
-        return true;
-    }
-    if(resList[0] == res + ".Cell")
-    {
-        if(resList.count() != 4) return false;
-        int rowIndex = resList[1].toInt();
-        int colIndex = resList[2].toInt();
-        if(rowIndex < 0 || rowIndex >= Rows || colIndex < 0 || colIndex >= Columns) return false;
-        QTableWidgetItem *item = new QTableWidgetItem(resList[3]);
-        item->setFlags(item->flags() | Qt::ItemIsEditable); // Make item editable
-        QTable->setItem(rowIndex, colIndex, item);
-        return true;
-    }
-    if((resList.count()==2) && (resList[0] == res + ".script"))
-    {
-        scriptName = resList[1].trimmed();
-        return "";
-    }
-    return false;
-}
-
-void Table::tableChange(int row, int column)
-{
-    Q_UNUSED(row);
-    Q_UNUSED(column);
-    if(!scriptName.isEmpty()) emit change(scriptName);
-}
-
-// *************************************************************************************************
-// Slider class implementation  *********************************************************************
-// *************************************************************************************************
-
-
-Slider::Slider(QWidget *parent, QString name, QString orentation, int min, int max, int width, int x, int y)
-{
-    p      = parent;
-    Title  = name;
-    X      = x;
-    Y      = y;
-    Orientation = orentation;
-    Min    = min;
-    Max    = max;
-    Width  = width;
-}
-
-void Slider::Show(void)
-{
-    if(Orientation.toUpper().contains("H"))
-    {
-        slider = new QSlider(Qt::Horizontal,p);
-        slider->setGeometry(X, Y, Width, 21);
-    }
-    else
-    {
-        slider = new QSlider(Qt::Vertical,p);
-        slider->setGeometry(X, Y, 21, Width);
-    }
-    if(slider == NULL) return;
-    slider->setMinimum(Min);
-    slider->setMaximum(Max);
-    slider->setValue(0);
-    QString res;
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    slider->setToolTip(Title);
-    slider->show();
-    connect(slider,SIGNAL(valueChanged(int)),this,SLOT(sliderChange(int)));
-}
-
-QString Slider::ProcessCommand(QString cmd)
-{
-    QString res;
-
-    if(slider == NULL) return "?";
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    if(!cmd.startsWith(res)) return "?";
-    QStringList cmdList = cmd.split("=");
-    if(cmdList.count() == 1)
-    {
-        if(cmdList[0] == res) return QString::number(slider->value());
-    }
-    if(cmdList.count() == 2)
-    {
-        if(cmdList[0] == res)
-        {
-            int val = cmdList[1].toInt();
-            if(val < Min || val > Max) return "?";
-            slider->setValue(val);
-            return "";
-        }
-        if(cmdList[0] == res + ".script")
-        {
-            scriptName = cmdList[1].trimmed();
-            return "";
-        }
-        if(cmdList[0] == res + ".scriptCall")
-        {
-            scriptCall = cmdList[1].trimmed();
-            return "";
-        }
-        if(cmdList[0] == res + ".toolTip")
-        {
-            slider->setToolTip(cmdList[1].trimmed());
-            return "";
-        }
-        if(cmdList[0] == res + ".color")
-        {
-            slider->setStyleSheet("background-color: " + cmdList[1].trimmed());
-            return "";
-        }
-    }
-    return "?";
-}
-
-QString Slider::Report(void)
-{
-    QString res;
-
-    if(slider == NULL) return "";
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    res += "," + QString::number(slider->value());
-    return res;
-}
-
-bool Slider::SetValues(QString strVals)
-{
-    QStringList resList;
-    QString res;
-    if(slider == NULL) return false;
-    res.clear();
-    if(p->objectName() != "") res = p->objectName() + ".";
-    res += Title;
-    if(!strVals.startsWith(res)) return false;
-    resList = strVals.split(",");
-    if(resList.count() != 2) return false;
-    if(resList[0] != res) return false;
-    int val = resList[1].toInt();
-    if(val < Min || val > Max) return false;
-    slider->setValue(val);
-    return true;
- }
-
-void Slider::sliderChange(int value)
-{
-    Q_UNUSED(value);
-    if(!scriptName.isEmpty()) emit change(scriptName);
 }

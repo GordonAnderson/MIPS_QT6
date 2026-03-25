@@ -1,6 +1,21 @@
+// =============================================================================
+// controlpanel.h
+//
+// ControlPanel — user-defined custom control panel for MIPS hardware.
+// Reads a .cfg configuration file and dynamically creates widgets (RF channels,
+// DC bias channels, timing generators, scripting, etc.) at positions specified
+// in the file. Supports multiple simultaneous MIPS systems identified by name.
+//
+// Depends on:  comms.h, Utilities.h, and the extracted widget headers
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — Phase 3 refactoring
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
 #ifndef CONTROLPANEL_H
 #define CONTROLPANEL_H
 
+// Project includes
 #include "comms.h"
 #include "mipscomms.h"
 #include "help.h"
@@ -20,9 +35,22 @@
 #include "modbus.h"
 #include "cmdlineapp.h"
 #include "zmqworker.h"
+#include "textlabel.h"
+#include "shutdown.h"
+#include "saveload.h"
+#include "DACchannel.h"
+#include "dcbgroups.h"
+#include "ESI.h"
+#include "ccontrol.h"
+#include "cpanel.h"
+#include "cpbutton.h"
+#include "statuslight.h"
+#include "textmessage.h"
+#include "table.h"
+#include "slider.h"
 
+// Qt includes
 #include <QDialog>
-#include <QDebug>
 #include <QLineEdit>
 #include <QGroupBox>
 #include <QLabel>
@@ -30,7 +58,6 @@
 #include <QCheckBox>
 #include <QRadioButton>
 #include <QComboBox>
-#include <QPushButton>
 #include <QProcess>
 #include <QKeyEvent>
 #include <QBoxLayout>
@@ -44,463 +71,47 @@ extern QString Version;
 extern QString MakePathUnique(QString path);  // Source is located in TimingGenerator.cpp
 extern QSemaphore UpdateSemaphore;
 
-#define SKIPCOUNT   1
-
 namespace Ui {
 class ControlPanel;
 }
 
-class ScriptingConsole;
-
-class TextLabel : public QWidget
-{
-    Q_OBJECT
-public:
-    TextLabel(QWidget *parent, QString name, int size, int x, int y);
-    void Show(void);
-    QWidget *p;
-    QString Title;
-    int     X,Y;
-    int     Size;
-    QLabel  *label;
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
-
-class Shutdown : public QWidget
-{
-    Q_OBJECT
-signals:
-    void ShutdownSystem(void);
-    void EnableSystem(void);
-public:
-    Shutdown(QWidget *parent, QString name, int x, int y);
-    void Show(void);
-    void SetState(bool ShutDown);
-    QWidget *p;
-    QString Title;
-    int     X,Y;
-    QPushButton *pbShutdown;
-private slots:
-    void pbPressed(void);
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
-
-class SaveLoad : public QWidget
-{
-    Q_OBJECT
-signals:
-    void Save(void);
-    void Load(void);
-public:
-    SaveLoad(QWidget *parent, QString nameSave, QString nameLoad, int x, int y);
-    void Show(void);
-    QWidget *p;
-    QString TitleSave;
-    QString TitleLoad;
-    int     X,Y;
-    QPushButton *pbSave;
-    QPushButton *pbLoad;
-private slots:
-    void pbSavePressed(void);
-    void pbLoadPressed(void);
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
-
-class DACchannel : public QWidget
-{
-    Q_OBJECT
-public:
-    DACchannel(QWidget *parent, QString name, QString MIPSname, int x, int y);
-    void Show(void);
-    void Update(void);
-    QString Report(void);
-    bool SetValues(QString strVals);
-    QString ProcessCommand(QString cmd);
-    QWidget *p;
-    QString Title;
-    int     X,Y;
-    QString MIPSnm;
-    int     Channel;
-    Comms   *comms;
-    float   b,m;
-    QString Units;
-    QString Format;
-    QFrame      *frmDAC;
-private:
-    QLineEdit   *Vdac;
-    QLabel      *labels[2];
-    bool         Updating;
-    bool         UpdateOff;
-private slots:
-    void VdacChange(void);
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
-
-class DCBiasGroups : public QWidget
-{
-    Q_OBJECT
-signals:
-    void disable(void);
-    void enable(void);
-public:
-    DCBiasGroups(QWidget *parent, int x, int y);
-    void Show(void);
-    QWidget *p;
-    int     X,Y;
-    QComboBox   *comboGroups;
-    bool SetValues(QString strVals);
-    QString Report(void);
-    QGroupBox   *gbDCBgroups;
-private:
-    QCheckBox   *DCBenaGroups;
-private slots:
-    void slotEnableChange(void);
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
-
-class ESI : public QWidget
-{
-    Q_OBJECT
-public:
-    ESI(QWidget *parent, QString name, QString MIPSname, int x, int y);
-    void Show(void);
-    void Update(void);
-    QString Report(void);
-    QString ProcessCommand(QString cmd);
-    bool SetValues(QString strVals);
-    void Shutdown(void);
-    void Restore(void);
-    QWidget *p;
-    QString Title;
-    int     X,Y;
-    QString MIPSnm;
-    int     Channel;
-    Comms   *comms;
-    bool    isShutdown;
-    QFrame      *frmESI;
-private:
-    QLineEdit   *ESIsp;
-    QLineEdit   *ESIrb;
-    QCheckBox   *ESIena;
-    QLabel      *labels[2];
-    bool        activeEnableState;
-private slots:
-    void ESIChange(void);
-    void ESIenaChange(void);
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
-
-class Ccontrol : public QWidget
-{
-    Q_OBJECT
-public:
-    Ccontrol(QWidget *parent, QString name, QString MIPSname,QString Type, QString Gcmd, QString Scmd, QString RBcmd, QString Units, int x, int y);
-    void    Show(void);
-    void    Update(void);
-    QString Report(void);
-    bool    SetValues(QString strVals);
-    void    SetList(QString strOptions);
-    void    Shutdown(void);
-    void    Restore(void);
-    QString ProcessCommand(QString cmd);
-    QWidget          *p;
-    QString          Title;
-    int              X,Y;
-    int              skipCount = SKIPCOUNT;
-    QString          MIPSnm;
-    QString          Ctype;
-    QString          Dtype;
-    QString          GetCmd;
-    QString          SetCmd;
-    QString          ReadbackCmd;
-    QString          UnitsText;
-    QString          ActiveValue;
-    QString          ShutdownValue;
-    Comms            *comms;
-    bool             isShutdown;
-    float            Step;
-    QFrame           *frmCc=NULL;
-    QPushButton      *pbButton=NULL;
-    QString          scriptName = "";
-    QString          scriptCall = "";
-private:
-    QLineEdit        *Vsp=NULL;
-    QLineEdit        *Vrb;
-    QCheckBox        *chkBox;
-    QComboBox        *comboBox;
-    QLabel           *labels[2]={NULL,NULL};
-    bool             Updating;
-    bool             UpdateOff;
-    bool             firstUpdate = true;
-    QRandomGenerator generator;
-    int              updateCount;
-signals:
-    void change(QString scriptName);
-private slots:
-    void VspChange(void);
-    void pbButtonPressed(void);
-    void chkBoxStateChanged(Qt::CheckState);
-    void comboBoxChanged(int);
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
-
-// Creates a new control panel and places a button on the parent control
-// panel that will show this new control panel.
-class Cpanel : public QWidget
-{
-    Q_OBJECT
-
-public:
-    explicit Cpanel(QWidget *parent, QString name, QString CPfileName, int x, int y, QList<Comms*> S, Properties *prop, ControlPanel *pcp);
-//    ~Cpanel();
-    void             Show(void);    // This will show the button, pressing the button will show the control panel
-    void             Update(void);
-    QString          ProcessCommand(QString cmd);
-    QString          Title;
-    int              X,Y;
-    QWidget          *p;
-    ControlPanel     *cp;
-    QPushButton      *pbButton;
-private slots:
-    void pbButtonPressed(void);
-    void slotDialogClosed(void);
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
-
-class CPbutton : public QWidget
-{
-    Q_OBJECT
-signals:
-    void CPselected(QString);
-public:
-    CPbutton(QWidget *parent, QString name, QString CPfilename, int x, int y);
-    void Show(void);
-    QString ProcessCommand(QString cmd);
-    QWidget *p;
-    QString Title;
-    QString FileName;
-    int     X,Y;
-    QPushButton *pbCPselect;
-private slots:
-    void pbCPselectPressed(void);
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
-
-class LightWidget : public QWidget
-{
-    Q_OBJECT
-    Q_PROPERTY(bool on READ isOn WRITE setOn)
-public:
-    LightWidget(const QColor &color, QWidget *parent = NULL)
-        : QWidget(parent), m_color(color), m_on(false) {}
-
-    bool isOn() const
-        { return m_on; }
-    void setOn(bool on)
-    {
-        if (on == m_on)
-            return;
-        m_on = on;
-        update();
-    }
-
-public slots:
-    void turnOff() { setOn(false); }
-    void turnOn() { setOn(true); }
-
-protected:
-    void paintEvent(QPaintEvent *) override
-    {
-        if (!m_on)
-        {
-            //return;
-            QColor offc;
-            if(m_color == Qt::red) offc = Qt::darkRed;
-            if(m_color == Qt::yellow) offc = Qt::darkYellow;
-            if(m_color == Qt::green) offc = Qt::darkGreen;
-            QPainter painter(this);
-            painter.setRenderHint(QPainter::Antialiasing);
-            painter.setBrush(offc);
-            painter.drawEllipse(0, 0, width(), height());
-            return;
-        }
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing);
-        painter.setBrush(m_color);
-        painter.drawEllipse(0, 0, width(), height());
-    }
-
-private:
-    QColor m_color;
-    bool m_on;
-};
-
-class TrafficLightWidget : public QWidget
-{
-public:
-    TrafficLightWidget(QWidget *parent = NULL)
-        : QWidget(parent)
-    {
-        QVBoxLayout *vbox = new QVBoxLayout(this);
-        m_red = new LightWidget(Qt::red);
-        vbox->addWidget(m_red);
-        m_yellow = new LightWidget(Qt::yellow);
-        vbox->addWidget(m_yellow);
-        m_green = new LightWidget(Qt::green);
-        vbox->addWidget(m_green);
-        QPalette pal = palette();
-        pal.setColor(QPalette::Window, Qt::gray);
-        setPalette(pal);
-        setAutoFillBackground(true);
-    }
-
-    LightWidget *redLight() const
-        { return m_red; }
-    LightWidget *yellowLight() const
-        { return m_yellow; }
-    LightWidget *greenLight() const
-        { return m_green; }
-
-private:
-    LightWidget *m_red;
-    LightWidget *m_yellow;
-    LightWidget *m_green;
-};
-
-class StatusLight : public QWidget
-{
-    Q_OBJECT
-public:
-    StatusLight(QWidget *parent, QString name, int x, int y);
-    void Show(void);
-    void ShowMessage(void);
-    QString ProcessCommand(QString cmd);
-    QWidget *p;
-    QString Title;
-    QString Status;
-    QString Mode;
-    int     X,Y;
-
-    QLabel *label;
-private:
-    QLabel *TL;
-    QLabel *Message;
-    TrafficLightWidget *widget;
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
-
-class TextMessage : public QWidget
-{
-    Q_OBJECT
-public:
-    TextMessage(QWidget *parent, QString name, int x, int y);
-    void Show(void);
-    void ShowMessage(void);
-    QString ProcessCommand(QString cmd);
-    QWidget *p;
-    QString Title;
-    QString MessageText;
-    int     X,Y;
-
-    QLabel *label;
-private:
-    QLabel *TL;
-    QLabel *Message;
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
-
-class Table : public QWidget
-{
-    Q_OBJECT
-public:
-    Table(QWidget *parent, QString name, int rows, int columns, int width, int height, int x, int y);
-    void Show(void);
-    QString Report(void);
-    bool SetValues(QString strVals);
-    QString ProcessCommand(QString cmd);
-    QWidget *p;
-    QString Title;
-    int     Width,Height;
-    int     X,Y;
-    int     Rows,Columns;
-    QString          scriptName = "";
-    QString          scriptCall = "";
-signals:
-    void change(QString scriptName);
-private:
-    QTableWidget *QTable;
-public slots:
-    void tableChange(int row, int column);
-protected:
-    bool eventFilter(QObject *obj, QEvent *event);
-};
-
-class Slider : public QWidget
-{
-    Q_OBJECT
-public:
-    Slider(QWidget *parent, QString name, QString orentation, int min, int max, int width, int x, int y);
-    void    Show(void);
-    QString Report(void);
-    bool    SetValues(QString strVals);
-    QString ProcessCommand(QString cmd);
-    QWidget          *p;
-    QString          Title;
-    int              X,Y;
-    QString          scriptName = "";
-    QString          scriptCall = "";
-    QString          Orientation;
-    int              Min;
-    int              Max;
-    int              Width;
-signals:
-    void change(QString scriptName);
-private:
-    QSlider        *slider;
-public slots:
-    void sliderChange(int value);
-};
-
+/*! \brief Name/value pair used for cfg-file DEFINE substitutions. */
 typedef struct
 {
    QString  Name;
    QString  Value;
 } Define;
 
+/*! \brief Named script text block read from the cfg file. */
 typedef struct
 {
    QString  Name;
    QString  ScriptText;
 } ScriptString;
 
+/*! \class ControlPanel
+ * \brief User-defined custom control panel dialog for MIPS hardware.
+ *
+ * Reads a .cfg configuration file and dynamically creates widgets (RF channels,
+ * DC bias, timing generators, scripting, etc.). Supports multiple simultaneous
+ * MIPS systems. Provides a rich scripting API callable from QJSEngine scripts.
+ */
 class ControlPanel : public QDialog
 {
     Q_OBJECT
 
-//    Q_PROPERTY(bool UpdateHalted WRITE UpdateHalted NOTIFY UpdateHalted)
 signals:
     void DialogClosed(QString NextCP);
 
 public:
-    explicit ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S, Properties *prop, ControlPanel *pcp = NULL);
+    explicit ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S, Properties *prop, ControlPanel *pcp = nullptr);
     ~ControlPanel();
     virtual void reject();
     void Update(void);
     void UpdateStateMachine(void);
     void InitMIPSsystems(QString initFilename);
     void LogDataFile(void);
-    QString findFile(QString filename, QString posiblePath);
+    QString findFile(QString filename, QString possiblePath);
     QList<Comms*> Systems;
     QStatusBar  *statusBar;
     DCBchannel  *FindDCBchannel(QString name);
@@ -509,8 +120,7 @@ public:
     QList<QWidget *> Containers;
     QList<QVariant> cpObjects;
     ControlPanel *parentCP;
-    //QWidget *Container;
-    Q_INVOKABLE bool SystemIsShutdown;  // Cannot access this from a javascript
+    Q_INVOKABLE bool SystemIsShutdown;  //!< Accessible from QJSEngine scripts.
 
 private:
     Comms   *FindCommPort(QString name, QList<Comms*> Systems);
@@ -519,6 +129,7 @@ private:
     Ui::ControlPanel *ui;
     TCPserver *tcp;
     void    msDelay(int ms);
+    void    loadConfig(QString fileName);
     QMenu   *contextMenu2Dplot;
     QAction *Comments;
     QAction *SaveCP;
@@ -556,7 +167,7 @@ private:
     QList<Ccontrol *>       Ccontrols;
     QList<QStringList *>    CSVdata;
     QList<Plot *>           plots;
-    Plot                    *activePlot = NULL;
+    Plot                    *activePlot = nullptr;
     QList<Device *>         devices;
     QList<CPbutton *>       CPbuttons;
     QList<ScriptString *>   scriptStr;
@@ -573,7 +184,7 @@ private:
     QList<extProcess *>     extProcs;
     ZmqReqRep               zmq;
     uint                    LogStartTime;
-    int                     skipCount = SKIPCOUNT;
+    int                     skipCount = 1;
     int                     LogPeriod;
     int                     UpdateHoldOff;
     int                     SerialWatchDog;
@@ -596,6 +207,7 @@ private:
     Help                    *help;
     Help                    *comments;
     QMap<QString, QVariant> m_storage;
+
 public slots:
     void pbSD(void);
     void pbSE(void);

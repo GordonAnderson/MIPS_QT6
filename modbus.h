@@ -1,11 +1,33 @@
 #ifndef MODBUS_H
 #define MODBUS_H
 
+// =============================================================================
+// modbus.h
+//
+// Modbus RTU interface classes for the MIPS host application.
+//
+// Provides two classes:
+//   ModBus     — owns the QModbusRtuSerialClient connection. Created once per
+//                control panel via the ModBus config command and shared by all
+//                ModChannel instances on that panel.
+//   ModChannel — a single read/write channel widget backed by a ModBus instance.
+//                Placed on a control panel via the ModChannel config command.
+//
+// Depends on:  Qt Modbus (QModbusRtuSerialClient)
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
+
 #include <QLineEdit>
 #include <QModbusRtuSerialClient>
 #include <QStandardItemModel>
 #include <QLabel>
 
+// ModBus — owns a single QModbusRtuSerialClient connection.
+// One instance is created per control panel and shared across all ModChannel
+// widgets on that panel.
 class ModBus : public QWidget
 {
     Q_OBJECT
@@ -16,6 +38,8 @@ public:
     QString Status;
 };
 
+// ModChannel — a single Modbus register channel displayed as a labeled
+// line-edit widget. Supports read, write, and ProcessCommand scripting access.
 class ModChannel : public QWidget
 {
     Q_OBJECT

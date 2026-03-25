@@ -1,3 +1,21 @@
+// =============================================================================
+// faims.h
+//
+// FAIMS (Field Asymmetric Ion Mobility Spectrometry) module for the MIPS
+// host application.
+//
+// Manages the FAIMS tab including RF/DC parameter updates, CV parking,
+// linear scan, step scan, auto-tune, curtain supply control, and
+// lock-mode switching. The PollLoop() method is called from the main
+// update timer to service trigger detection and time-based CV parking.
+//
+// Depends on:  ui_mips.h, mips.h, comms.h
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
+
 #ifndef FAIMS_H
 #define FAIMS_H
 
@@ -14,11 +32,10 @@
 #include <QFileInfo>
 #include <QFileDialog>
 
-// States
-#define WAITING 1
-#define SCANNING 2
+// CV parking state machine states
+enum FAIMSState { WAITING = 1, SCANNING = 2 };
 
-class FAIMS: public QDialog
+class FAIMS : public QDialog
 {
     Q_OBJECT
 
@@ -30,26 +47,26 @@ public:
     void Save(QString Filename);
     void Load(QString Filename);
     void SetVersionOptions(void);
-    int getHeaderIndex(QString Name);
+    int  getHeaderIndex(QString Name);
     QString getCSVtoken(QString Name, int index);
     void Log(QString Message);
     QString LogFileName;
 
     Ui::MIPS *fui;
-    Comms *comms;
-    bool CVparkingTriggered;
-    bool WaitingForLinearScanTrig;
-    bool WaitingForStepScanTrig;
+    Comms    *comms;
+    bool      CVparkingTriggered;
+    bool      WaitingForLinearScanTrig;
+    bool      WaitingForStepScanTrig;
     QStringList Parks;
-    int   CurrentPoint;
-    QString TargetCompound;
-    int State;
-    float TargetRT;
-    float TargetWindow;
-    float TargetCV;
-    float TargetBias;
+    int       CurrentPoint;
+    QString   TargetCompound;
+    int       State;
+    float     TargetRT;
+    float     TargetWindow;
+    float     TargetCV;
+    float     TargetBias;
     // Target file variables
-    QString Header;
+    QString     Header;
     QStringList Records;
 
 private slots:

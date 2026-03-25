@@ -1,169 +1,142 @@
+// =============================================================================
+// zmqworker.cpp
+//
+// Implements ZmqReqRep — a Qt wrapper around a ZMQ REQ-REP socket pair that
+// runs the blocking send/receive cycle on a dedicated QThread (ZmqWorker).
+//
+// Usage from the scripting system:
+//   mips.ZMQ("begin,tcp://localhost:5555")
+//   mips.ZMQ("Request,Hello server")
+//   mips.msDelay(1)
+//   mips.ZMQ("Reply")         // returns last received reply
+//   mips.ZMQ("Error")         // returns last error string
+//   mips.ZMQ("Stop")          // shuts down the worker thread
+//
+// ZMQ installation (required before building with UseZmQ defined):
+//   macOS:   brew install zmq cppzmq
+//   Windows: vcpkg install cppzmq:x64-windows
+//            (vcpkg installed in Users/gaa)
+//
+// .pro additions:
+//   macx   { INCLUDEPATH += /usr/local/include
+//             LIBS       += -L/usr/local/lib -lzmq }
+//   win32  { INCLUDEPATH += C:/vcpkg/installed/x64-windows/include
+//             LIBS       += -LC:/vcpkg/installed/x64-windows/lib -llibzmq-mt-4_3_4 }
+//
+// Depends on:  zmqworker.h, zmq.hpp
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
 #include "zmqworker.h"
 
-/*
-
-mips.ZMQ("begin,tcp://localhost:5555")
-mips.ZMQ("Request,Hello server, this is GAA")
-mips.msDelay(1)
-mips.ZMQ("Reply")
-
-1. Install zmq
-
-macOS (Homebrew)
-  brew install zmq cppzmq
-
-Windows (vcpkg)
-
-  The easiest way to get stable binaries on Windows is via vcpkg:
-
-  git clone [https://github.com/Microsoft/vcpkg.git](https://github.com/Microsoft/vcpkg.git)
-  .\vcpkg\bootstrap-vcpkg.bat
-  //.\vcpkg\vcpkg install zmq:x64-windows
-  .\vcpkg\vcpkg install cppzmq:x64-windows
-
-  vcpkg was install in Users/gaa
-
-2. Project File Configuration (.pro)
-
-  You must tell Qt where to find the headers and libraries. Adjust the paths based on
-  where you installed ZMQ.
-
-  # macOS Homebrew paths
-  macx
-  {
-    INCLUDEPATH += /usr/local/include
-    LIBS += -L/usr/local/lib -lzmq
-  }
-
-  # Windows vcpkg paths (example)
-  win32
-  {
-    INCLUDEPATH += C:/vcpkg/installed/x64-windows/include
-    LIBS += -LC:/vcpkg/installed/x64-windows/lib -llibzmq-mt-4_3_4
-  }
-
-*/
-
-ZmqReqRep::ZmqReqRep(QObject *parent):
-QObject(parent)
+// ZmqReqRep — constructor. Initialises timeout to 1 000 ms and clears all
+// state; call begin() to create the worker thread and connect to a server.
+ZmqReqRep::ZmqReqRep(QObject *parent) :
+    QObject(parent)
 {
-    mStimeout = 1000;
+    mStimeout    = 1000;
     workerThread = nullptr;
-    worker = nullptr;
+    worker       = nullptr;
     messageReceived.clear();
     messageError.clear();
     serverAddress.clear();
 }
 
+// ~ZmqReqRep — stops the worker thread and nulls the pointers.
 ZmqReqRep::~ZmqReqRep()
 {
     stop();
     workerThread = nullptr;
-    worker = nullptr;
-    qDebug() << "ZmqReqRep destroyed and worker thread stopped.";
+    worker       = nullptr;
 }
 
+// begin — creates and starts the worker thread connected to address.
+// Returns false if a thread is already running.
 bool ZmqReqRep::begin(QString address)
 {
-    if (workerThread && workerThread->isRunning()) return false;
+    if(workerThread && workerThread->isRunning()) return false;
 
     workerThread = new QThread(this);
     worker = new ZmqWorker();
     worker->serverAddress = address;
     worker->moveToThread(workerThread);
 
-    // Clean up thread when worker is deleted
-    connect(workerThread, &QThread::finished, worker, &QObject::deleteLater);
-
-    // Connect trigger to Worker
-    connect(this, &ZmqReqRep::requestTriggered, worker, &ZmqWorker::sendRequest);
-
-    // Connect Worker results back to class
-    connect(worker, &ZmqWorker::replyReceived, this, &ZmqReqRep::messageReceiver);
-    connect(worker, &ZmqWorker::errorOccurred, this, &ZmqReqRep::errorMessage);
+    connect(workerThread, &QThread::finished,       worker,       &QObject::deleteLater);
+    connect(this,         &ZmqReqRep::requestTriggered, worker,   &ZmqWorker::sendRequest);
+    connect(worker,       &ZmqWorker::replyReceived, this,        &ZmqReqRep::messageReceiver);
+    connect(worker,       &ZmqWorker::errorOccurred, this,        &ZmqReqRep::errorMessage);
 
     workerThread->start();
-
-    qDebug() << "ZmqReqRep initialized and worker thread started.";
     return true;
 }
 
+// stop — quits the worker thread and waits up to 3 seconds for it to finish.
+// Terminates forcibly if it does not stop in time.
 void ZmqReqRep::stop(void)
 {
-    if (workerThread && workerThread->isRunning()) {
-        // Step 1: Tell the thread's exec() loop to stop processing
+    if(workerThread && workerThread->isRunning())
+    {
         workerThread->quit();
-
-        // Step 2: Block current thread until workerThread has finished.
-        // This is crucial to prevent memory corruption or "thread still running" crashes.
-        if (!workerThread->wait(3000)) { // Wait up to 3 seconds
-            // If it still hasn't stopped, you might need to force it
+        if(!workerThread->wait(3000))
+        {
             workerThread->terminate();
             workerThread->wait();
         }
     }
 }
 
+// command — parses a ZMQ command string and dispatches accordingly.
+// Supported commands: BEGIN,<addr> | REQUEST,<msg> | REPLY | ERROR | STOP
 QString ZmqReqRep::command(QString cmd)
 {
     QStringList cmdList = cmd.trimmed().split(",");
+
     if(cmdList[0].toUpper() == "REQUEST")
     {
         messageReceived.clear();
         messageError.clear();
         int commaIndex = cmd.indexOf(',');
-        if(commaIndex !=-1)
+        if(commaIndex != -1)
         {
-            emit requestTriggered(cmd.mid(commaIndex + 1),mStimeout);
+            emit requestTriggered(cmd.mid(commaIndex + 1), mStimeout);
             return "";
         }
-        else return "?";
+        return "?";
     }
     if(cmdList.count() == 1)
     {
-        if(cmd.trimmed().toUpper() == "STOP")
-        {
-            stop();
-            return "";
-        }
-        else if(cmd.trimmed().toUpper() == "REPLY")
-        {
-            return messageReceived;
-        }
-        else if(cmd.trimmed().toUpper() == "ERROR")
-        {
-            return messageError;
-        }
+        if(cmd.trimmed().toUpper() == "STOP")  { stop(); return ""; }
+        if(cmd.trimmed().toUpper() == "REPLY") { return messageReceived; }
+        if(cmd.trimmed().toUpper() == "ERROR") { return messageError; }
     }
     if(cmdList.count() == 2)
     {
         if(cmdList[0].toUpper() == "BEGIN")
         {
-           serverAddress = cmdList[1].trimmed();
-           if(begin(serverAddress)) return "";
-           else return "?";
+            serverAddress = cmdList[1].trimmed();
+            return begin(serverAddress) ? "" : "?";
         }
     }
     return "?";
 }
 
+// sendMessage — convenience method that emits requestTriggered directly
+// without parsing a command string.
 void ZmqReqRep::sendMessage(QString msg)
 {
-    emit requestTriggered(msg,mStimeout);
+    emit requestTriggered(msg, mStimeout);
 }
 
+// messageReceiver — saves the most recent reply from the worker.
 void ZmqReqRep::messageReceiver(QString msg)
 {
-    // Save the message
-    qDebug() << "Received reply: " << msg;
     messageReceived = msg;
 }
 
+// errorMessage — saves the most recent error string from the worker.
 void ZmqReqRep::errorMessage(QString msg)
 {
-    // Save the message
-    qDebug() << "Error reply: " << msg;
     messageError = msg;
 }
-
-

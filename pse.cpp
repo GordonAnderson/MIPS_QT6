@@ -1,235 +1,252 @@
+// =============================================================================
+// pse.cpp
+//
+// Pulse sequence editor (PSE) classes for the MIPS host application.
+//
+// Depends on:  pse.h, ui_pse.h
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
+
 #include "pse.h"
 #include "ui_pse.h"
 
-#include <QDebug>
 #include <QMessageBox>
 #include <QFile>
 
-namespace Ui {
-class MIPS;
-}
+static const int PSG_DEFAULT_DELTA_T = 100; // Default time step (clock counts) when inserting a point at end
 
-QT_USE_NAMESPACE
+// ---------------------------------------------------------------------------
+// psgPoint serialisation operators
+// ---------------------------------------------------------------------------
 
-//static const char blankString[] = QT_TRANSLATE_NOOP("pseDialog", "N/A");
-
+// operator<< — serialises a psgPoint to a binary QDataStream.
 QDataStream &operator<<(QDataStream &out, const psgPoint &point)
 {
-    int i;
-
     out << point.Name << quint32(point.TimePoint);
-    for(i=0;i<16;i++) out << point.DigitalO[i];
-    for(i=0;i<16;i++) out << point.DCbias[i];
+    for(int i = 0; i < PSG_CHANNELS; i++) out << point.DigitalO[i];
+    for(int i = 0; i < PSG_CHANNELS; i++) out << point.DCbias[i];
     out << point.Loop << point.LoopName << quint32(point.LoopCount);
     return out;
 }
 
+// operator>> — deserialises a psgPoint from a binary QDataStream.
 QDataStream &operator>>(QDataStream &in, psgPoint &point)
 {
-    QString Name;
     quint32 TimePoint;
-    bool    DigitalO[16];
-    float   DCbias[16];
-    bool    Loop;
-    QString LoopName;
     quint32 LoopCount;
-    int     i;
 
-    in >> Name;
-    in >> TimePoint;
-    for(i=0;i<16;i++) in >> DigitalO[i];
-    for(i=0;i<16;i++) in >> DCbias[i];
-    in >> Loop >> LoopName >> LoopCount;
+    in >> point.Name >> TimePoint;
+    for(int i = 0; i < PSG_CHANNELS; i++) in >> point.DigitalO[i];
+    for(int i = 0; i < PSG_CHANNELS; i++) in >> point.DCbias[i];
+    in >> point.Loop >> point.LoopName >> LoopCount;
 
-    point.Name = Name;
     point.TimePoint = TimePoint;
-    for(i=0;i<16;i++) point.DigitalO[i] = DigitalO[i];
-    for(i=0;i<16;i++) point.DCbias[i] = DCbias[i];
-    point.Loop = Loop;
-    point.LoopName = LoopName;
     point.LoopCount = LoopCount;
-
     return in;
 }
 
+// ---------------------------------------------------------------------------
+// psgPoint
+// ---------------------------------------------------------------------------
+
+// psgPoint — constructor. Initialises all channels to zero/false and clears name fields.
 psgPoint::psgPoint()
 {
-    int  i;
-
-    for(i=0;i<16;i++)
+    for(int i = 0; i < PSG_CHANNELS; i++)
     {
         DigitalO[i] = false;
-        DCbias[i] = 0.0;
+        DCbias[i]   = 0.0;
     }
-    Loop = false;
+    Loop      = false;
     LoopCount = 0;
-    Name = "";
-    LoopName = "";
+    Name      = "";
+    LoopName  = "";
     TimePoint = 0;
 }
 
+// ---------------------------------------------------------------------------
+// pseDialog
+// ---------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Constructor — connects dynamically-named DIO checkboxes and DC bias line
+// edits, then displays the first pulse sequence point.
+// -----------------------------------------------------------------------------
 pseDialog::pseDialog(QList<psgPoint *> *psg, QWidget *parent) :
     QDialog(parent),
     ui(new Ui::pseDialog)
 {
     ui->setupUi(this);
-    // Make the dialog fixed size.
     this->setFixedSize(this->size());
 
-    p = psg;
-    activePoint = (*psg)[0];
+    p            = psg;
+    activePoint  = (*psg)[0];
     CurrentIndex = 0;
     UpdateDialog(activePoint);
 
-//    pseDialog::setProperty("font", QFont("Times New Roman", 5));
     QObjectList widgetList = ui->gbDigitalOut->children();
     foreach(QObject *w, widgetList)
     {
-       if(w->objectName().contains("chkDO"))
-       {
-           connect(((QCheckBox *)w),SIGNAL(clicked(bool)),this,SLOT(on_DIO_checked()));
-       }
+        if(w->objectName().contains("chkDO"))
+            connect(((QCheckBox *)w), &QCheckBox::clicked, this, &pseDialog::on_DIO_checked);
     }
-    ui->gbCurrentPoint->setTitle("Current time point: " + QString::number(CurrentIndex+1) + " of " + QString::number(p->size()));
+    ui->gbCurrentPoint->setTitle("Current time point: " + QString::number(CurrentIndex + 1) + " of " + QString::number(p->size()));
+
     widgetList = ui->gbDCbias->children();
     foreach(QObject *w, widgetList)
     {
-       if(w->objectName().contains("leDCB"))
-       {
-           connect(((QLineEdit *)w),SIGNAL(textEdited(QString)),this,SLOT(on_DCBIAS_edited()));
-       }
+        if(w->objectName().contains("leDCB"))
+            connect(((QLineEdit *)w), &QLineEdit::textEdited, this, &pseDialog::on_DCBIAS_edited);
     }
-    connect(ui->pbInsertPulse, SIGNAL(pressed()), this, SLOT(InsertPulse()));
-    connect(ui->pbInsertRamp, SIGNAL(pressed()), this, SLOT(MakeRamp()));
-    connect(ui->pbInsertCancel, SIGNAL(pressed()), this, SLOT(RampCancel()));
+    connect(ui->pbInsertPulse,   &QPushButton::pressed, this, &pseDialog::InsertPulse);
+    connect(ui->pbInsertRamp,    &QPushButton::pressed, this, &pseDialog::MakeRamp);
+    connect(ui->pbInsertCancel,  &QPushButton::pressed, this, &pseDialog::RampCancel);
     ui->gbInsertPulse->setVisible(false);
 }
 
+// ~pseDialog — destructor. Releases the UI form.
 pseDialog::~pseDialog()
 {
     delete ui;
 }
 
+// -----------------------------------------------------------------------------
+// on_DCBIAS_edited — updates the active point's DC bias value for the channel
+// whose line edit was changed. Channel index is encoded in the widget name.
+// -----------------------------------------------------------------------------
 void pseDialog::on_DCBIAS_edited()
 {
-    QObject* obj = sender();
-
+    QObject *obj = sender();
     int Index = QStringView{obj->objectName()}.mid(5).toInt() - 1;
     activePoint->DCbias[Index] = ((QLineEdit *)obj)->text().toFloat();
 }
 
+// -----------------------------------------------------------------------------
+// on_DIO_checked — updates the active point's digital output state for the
+// channel whose checkbox was toggled. Channel letter is encoded in widget name.
+// -----------------------------------------------------------------------------
 void pseDialog::on_DIO_checked()
 {
-    QObject* obj = sender();
-
-    int Index = (int)obj->objectName().mid(5,1).toStdString().c_str()[0] - (int)'A';
-    if(((QCheckBox *)obj)->isChecked()) activePoint->DigitalO[Index] = true;
-    else  activePoint->DigitalO[Index] = false;
+    QObject *obj = sender();
+    int Index = (int)obj->objectName().mid(5, 1).toStdString().c_str()[0] - (int)'A';
+    activePoint->DigitalO[Index] = ((QCheckBox *)obj)->isChecked();
 }
 
+// -----------------------------------------------------------------------------
+// UpdateDialog — refreshes all dialog controls from a psgPoint.
+// -----------------------------------------------------------------------------
 void pseDialog::UpdateDialog(psgPoint *point)
 {
     QList<psgPoint*>::iterator it;
-    int  Index;
-    QString temp;
+    int Index;
+    QString temp = point->LoopName;
 
-   temp = point->LoopName;
-   ui->comboLoop->clear();
-   ui->comboLoop->addItem("");
-   for(it = p->begin(); it != p->end(); ++it) if(*it == point) break;
-   else ui->comboLoop->addItem((*it)->Name);
-   Index = ui->comboLoop->findText(temp);
-   if( Index != -1) ui->comboLoop->setCurrentIndex(Index);
-   ui->leName->setText(point->Name);
-   ui->leClocks->setText(QString::number(point->TimePoint));
-   ui->leCycles->setText(QString::number(point->LoopCount));
-   if(point->Loop) ui->chkLoop->setChecked(true);
-   else ui->chkLoop->setChecked(false);
-   ui->comboLoop->setCurrentText(point->LoopName);
-   QObjectList widgetList = ui->gbDigitalOut->children();
-   foreach(QObject *w, widgetList)
-   {
-      if(w->objectName().contains("chkDO"))
-      {
-          Index = (int)w->objectName().mid(5,1).toStdString().c_str()[0] - (int)'A';
-          ((QCheckBox *)w)->setChecked(point->DigitalO[Index]);
-      }
-   }
-   widgetList = ui->gbDCbias->children();
-   foreach(QObject *w, widgetList)
-   {
-      if(w->objectName().contains("leDCB"))
-      {
-          Index = QStringView{w->objectName()}.mid(5).toInt() - 1;
-          QString textV;
-          textV = QString::asprintf("%.2f", point->DCbias[Index]);
-          ((QLineEdit *)w)->setText(textV);
-      }
-   }
+    ui->comboLoop->clear();
+    ui->comboLoop->addItem("");
+    for(it = p->begin(); it != p->end(); ++it)
+    {
+        if(*it == point) break;
+        ui->comboLoop->addItem((*it)->Name);
+    }
+    Index = ui->comboLoop->findText(temp);
+    if(Index != -1) ui->comboLoop->setCurrentIndex(Index);
+    ui->leName->setText(point->Name);
+    ui->leClocks->setText(QString::number(point->TimePoint));
+    ui->leCycles->setText(QString::number(point->LoopCount));
+    ui->chkLoop->setChecked(point->Loop);
+    ui->comboLoop->setCurrentText(point->LoopName);
+
+    QObjectList widgetList = ui->gbDigitalOut->children();
+    foreach(QObject *w, widgetList)
+    {
+        if(w->objectName().contains("chkDO"))
+        {
+            Index = (int)w->objectName().mid(5, 1).toStdString().c_str()[0] - (int)'A';
+            ((QCheckBox *)w)->setChecked(point->DigitalO[Index]);
+        }
+    }
+
+    widgetList = ui->gbDCbias->children();
+    foreach(QObject *w, widgetList)
+    {
+        if(w->objectName().contains("leDCB"))
+        {
+            Index = QStringView{w->objectName()}.mid(5).toInt() - 1;
+            ((QLineEdit *)w)->setText(QString::asprintf("%.2f", point->DCbias[Index]));
+        }
+    }
 }
 
+// on_pbNext_pressed — advances to the next time point and refreshes the dialog.
 void pseDialog::on_pbNext_pressed()
 {
     if(CurrentIndex < p->size() - 1) CurrentIndex++;
     activePoint = (*p)[CurrentIndex];
     UpdateDialog(activePoint);
-    ui->gbCurrentPoint->setTitle("Current time point: " + QString::number(CurrentIndex+1) + " of " + QString::number(p->size()));
+    ui->gbCurrentPoint->setTitle("Current time point: " + QString::number(CurrentIndex + 1) + " of " + QString::number(p->size()));
 }
 
+// on_pbPrevious_pressed — moves back to the previous time point and refreshes the dialog.
 void pseDialog::on_pbPrevious_pressed()
 {
-     if(CurrentIndex > 0) CurrentIndex--;
-     activePoint = (*p)[CurrentIndex];
-     UpdateDialog(activePoint);
-     ui->gbCurrentPoint->setTitle("Current time point: " + QString::number(CurrentIndex+1) + " of " + QString::number(p->size()));
+    if(CurrentIndex > 0) CurrentIndex--;
+    activePoint = (*p)[CurrentIndex];
+    UpdateDialog(activePoint);
+    ui->gbCurrentPoint->setTitle("Current time point: " + QString::number(CurrentIndex + 1) + " of " + QString::number(p->size()));
 }
 
-// Insert a new point after the current point
+// -----------------------------------------------------------------------------
+// on_pbInsert_pressed — inserts a new point after the current point.
+// Auto-generates a unique name by incrementing a trailing _N suffix.
+// -----------------------------------------------------------------------------
 void pseDialog::on_pbInsert_pressed()
 {
     psgPoint *point = new psgPoint;
     QList<psgPoint*>::iterator it;
-    int i,deltaT;
+    int i, deltaT;
 
     *point = *activePoint;
-    // Generate the new time point's name. If the previous timepoint name ends with a
-    // _number incement the number and see if the new name is unigue. If it is use it,
-    // else append a _1 to the previous name.
+
+    // Generate a unique name by incrementing a trailing _N suffix
     if((i = point->Name.lastIndexOf("_")) < 0)
     {
         point->Name += "_1";
     }
     else
     {
-        // Here if _ was found so we assume a number follows
-        point->Name = point->Name.mid(0,i+1) + QString::number(QStringView{point->Name}.mid(i+1).toInt()+1);
+        point->Name = point->Name.mid(0, i + 1) + QString::number(QStringView{point->Name}.mid(i + 1).toInt() + 1);
     }
-    // See if this name is unique
-    for(it = p->begin(); it != p->end(); ++it) if((*it)->Name == point->Name)
+    // Ensure the generated name is unique
+    for(it = p->begin(); it != p->end(); ++it)
     {
-        point->Name = activePoint->Name + "_1";
-        break;
+        if((*it)->Name == point->Name) { point->Name = activePoint->Name + "_1"; break; }
     }
+
     for(it = p->begin(); it != p->end(); ++it) if(*it == activePoint) break;
     int ctime = point->TimePoint;
-    if(CurrentIndex >= p->size() - 1) deltaT = 100;
-    else deltaT = ((*p)[CurrentIndex+1]->TimePoint - point->TimePoint)/2;
+    if(CurrentIndex >= p->size() - 1) deltaT = PSG_DEFAULT_DELTA_T;
+    else deltaT = ((*p)[CurrentIndex + 1]->TimePoint - point->TimePoint) / 2;
     it++;
     p->insert((QList<psgPoint*>::const_iterator)it, point);
     CurrentIndex++;
-    activePoint = point;
-    point->TimePoint = ctime + deltaT;
-    point->Loop = false;
-    point->LoopCount = 0;
-    point->LoopName = "";
+    activePoint          = point;
+    point->TimePoint     = ctime + deltaT;
+    point->Loop          = false;
+    point->LoopCount     = 0;
+    point->LoopName      = "";
     UpdateDialog(activePoint);
-    ui->gbCurrentPoint->setTitle("Current time point: " + QString::number(CurrentIndex+1) + " of " + QString::number(p->size()));
+    ui->gbCurrentPoint->setTitle("Current time point: " + QString::number(CurrentIndex + 1) + " of " + QString::number(p->size()));
 }
 
-// Delete the current point
+// -----------------------------------------------------------------------------
+// on_pbDelete_pressed — deletes the current point. Refuses if only one remains.
+// -----------------------------------------------------------------------------
 void pseDialog::on_pbDelete_pressed()
 {
-    QList<psgPoint*>::iterator it,itnext;
+    QList<psgPoint*>::iterator it, itnext;
 
     if(p->size() <= 1)
     {
@@ -237,44 +254,51 @@ void pseDialog::on_pbDelete_pressed()
         ui->pbDelete->setDown(false);
         return;
     }
-    it = p->begin();
     for(it = p->begin(); it != p->end(); ++it) if(*it == activePoint) break;
-    itnext =p->erase((QList<psgPoint*>::const_iterator)it);
+    itnext      = p->erase((QList<psgPoint*>::const_iterator)it);
     activePoint = *itnext;
-    CurrentIndex=0;
-    for(it = p->begin(); it != p->end(); ++it,++CurrentIndex) if(*it == activePoint) break;
+    CurrentIndex = 0;
+    for(it = p->begin(); it != p->end(); ++it, ++CurrentIndex) if(*it == activePoint) break;
     if(CurrentIndex >= p->size()) CurrentIndex = p->size() - 1;
     activePoint = (*p)[CurrentIndex];
     UpdateDialog(activePoint);
-    ui->gbCurrentPoint->setTitle("Current time point: " + QString::number(CurrentIndex+1) + " of " + QString::number(p->size()));
+    ui->gbCurrentPoint->setTitle("Current time point: " + QString::number(CurrentIndex + 1) + " of " + QString::number(p->size()));
 }
 
+// on_leName_textChanged — updates the active point's Name as the user types.
 void pseDialog::on_leName_textChanged(const QString &arg1)
 {
     activePoint->Name = arg1;
 }
 
+// on_leClocks_textChanged — updates the active point's TimePoint clock count.
 void pseDialog::on_leClocks_textChanged(const QString &arg1)
 {
-   activePoint->TimePoint = arg1.toInt();
+    activePoint->TimePoint = arg1.toInt();
 }
 
+// on_leCycles_textChanged — updates the active point's loop repeat count.
 void pseDialog::on_leCycles_textChanged(const QString &arg1)
 {
     activePoint->LoopCount = arg1.toInt();
 }
 
+// on_chkLoop_clicked — sets or clears the active point's Loop flag.
 void pseDialog::on_chkLoop_clicked(bool checked)
 {
-    if(checked) activePoint->Loop = true;
-    else activePoint->Loop = false;
+    activePoint->Loop = checked;
 }
 
+// on_comboLoop_currentIndexChanged — sets the active point's LoopName to the
+// selected combo box entry (the loop target time-point name).
 void pseDialog::on_comboLoop_currentIndexChanged(const QString &arg1)
 {
     activePoint->LoopName = arg1;
 }
 
+// -----------------------------------------------------------------------------
+// InsertPulse — shows the pulse/ramp insertion panel, hides the main controls.
+// -----------------------------------------------------------------------------
 void pseDialog::InsertPulse(void)
 {
     ui->gbInsertPulse->setVisible(true);
@@ -283,52 +307,56 @@ void pseDialog::InsertPulse(void)
     ui->gbDCbias->setVisible(false);
 }
 
+// -----------------------------------------------------------------------------
+// MakeRamp — generates a voltage ramp pulse on the selected DC bias channel.
+// Inserts intermediate time points for the rise, hold, and fall phases.
+// -----------------------------------------------------------------------------
 void pseDialog::MakeRamp(void)
 {
     float restingV, pulseV;
-    int   channel,width;
+    int   channel, width;
 
     channel = ui->lePulseChannel->text().toInt() - 1;
-    if((channel<0)||(channel>15))
+    if((channel < 0) || (channel > PSG_CHANNELS - 1))
     {
         QMessageBox::information(NULL, "Error!", "Invalid channel number!");
         return;
     }
-    // if the ramp up number of steps is 1 or less its a step function
     restingV = activePoint->DCbias[channel];
-    pulseV = ui->lePulseVoltage->text().toFloat();
-    width = ui->lePulseWidth->text().toInt();
-    // Subtract half the rise time from the pulse width
-    if(ui->leRampUp->text().toInt() > 1) width -= (ui->leRampStepSize->text().toInt() * ui->leRampUp->text().toInt())/2;
-    //  Subtract half the fall time from the pulse width
-    if(ui->leRampDwn->text().toInt() > 1) width -= (ui->leRampStepSize->text().toInt() * ui->leRampDwn->text().toInt())/2;
+    pulseV   = ui->lePulseVoltage->text().toFloat();
+    width    = ui->lePulseWidth->text().toInt();
+
+    // Subtract half the rise and fall times from the flat-top pulse width
+    if(ui->leRampUp->text().toInt() > 1)  width -= (ui->leRampStepSize->text().toInt() * ui->leRampUp->text().toInt()) / 2;
+    if(ui->leRampDwn->text().toInt() > 1) width -= (ui->leRampStepSize->text().toInt() * ui->leRampDwn->text().toInt()) / 2;
     if(width < 10)
     {
-        QMessageBox::information(NULL, "Error!", "For the defined rise and fall times pulse width must be at least " + QString::number(ui->lePulseWidth->text().toInt()-width+10));
+        QMessageBox::information(NULL, "Error!", "For the defined rise and fall times pulse width must be at least "
+                                                     + QString::number(ui->lePulseWidth->text().toInt() - width + 10));
         return;
     }
+
     if(ui->leRampUp->text().toInt() <= 1)
     {
         activePoint->DCbias[channel] = pulseV;
         on_pbInsert_pressed();
-        activePoint->TimePoint -= 100;
+        activePoint->TimePoint -= PSG_DEFAULT_DELTA_T;
     }
     else
     {
-        // Create the ramp
-        for(int i=0; i<ui->leRampUp->text().toInt(); i++)
+        for(int i = 0; i < ui->leRampUp->text().toInt(); i++)
         {
-            activePoint->DCbias[channel] += ((pulseV - restingV)/(ui->leRampUp->text().toInt()));
+            activePoint->DCbias[channel] += ((pulseV - restingV) / (ui->leRampUp->text().toInt()));
             activePoint->TimePoint += ui->leRampStepSize->text().toInt();
             UpdateDialog(activePoint);
             on_pbInsert_pressed();
-            activePoint->TimePoint -= 100;
+            activePoint->TimePoint -= PSG_DEFAULT_DELTA_T;
         }
     }
-    // Now we are at the requested voltage so hold for the pulse width
-    // time
-    activePoint->TimePoint += width - 100;
-    // Now ramp down
+
+    // Hold at pulse voltage for the flat-top width
+    activePoint->TimePoint += width - PSG_DEFAULT_DELTA_T;
+
     if(ui->leRampDwn->text().toInt() <= 1)
     {
         activePoint->DCbias[ui->lePulseChannel->text().toInt()] = restingV;
@@ -336,17 +364,17 @@ void pseDialog::MakeRamp(void)
     }
     else
     {
-        // Create the ramp
-        for(int i=0; i<ui->leRampDwn->text().toInt(); i++)
+        for(int i = 0; i < ui->leRampDwn->text().toInt(); i++)
         {
-            activePoint->DCbias[channel] -= ((pulseV - restingV)/(ui->leRampDwn->text().toInt()));
+            activePoint->DCbias[channel] -= ((pulseV - restingV) / (ui->leRampDwn->text().toInt()));
             activePoint->TimePoint += ui->leRampStepSize->text().toInt();
             UpdateDialog(activePoint);
             on_pbInsert_pressed();
-            activePoint->TimePoint -= 100;
+            activePoint->TimePoint -= PSG_DEFAULT_DELTA_T;
         }
-        activePoint->TimePoint += 100;
+        activePoint->TimePoint += PSG_DEFAULT_DELTA_T;
     }
+
     activePoint->DCbias[channel] = restingV;
     UpdateDialog(activePoint);
     ui->gbInsertPulse->setVisible(false);
@@ -355,6 +383,9 @@ void pseDialog::MakeRamp(void)
     ui->gbDCbias->setVisible(true);
 }
 
+// -----------------------------------------------------------------------------
+// RampCancel — cancels the pulse/ramp insertion and restores the main controls.
+// -----------------------------------------------------------------------------
 void pseDialog::RampCancel(void)
 {
     UpdateDialog(activePoint);

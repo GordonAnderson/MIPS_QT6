@@ -1,39 +1,82 @@
+// =============================================================================
+// dio.cpp
+//
+// Implements two classes for Digital I/O interaction:
+//
+//   DIO         — controls the Digital IO tab. Manages digital output
+//                 checkboxes, trigger output, frequency generator, and
+//                 remote navigation of the MIPS front panel display.
+//
+//   DIOchannel  — control panel widget for a single DIO channel. Renders
+//                 as a checkbox; channels A–P are read/write, channels above
+//                 P are read-only inputs.
+//
+// Hardware:    MIPS DIO module (commands: GDIO, SDIO, TRIGOUT, BURST,
+//              SSERIALNAV)
+// Depends on:  comms.h, Utilities.h
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Created:     2021
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
 #include "dio.h"
 #include "Utilities.h"
 
+// ASCII control codes sent to MIPS for front-panel remote navigation
+static const char NAV_SMALL_UP   = 30;
+static const char NAV_LARGE_UP   = 31;
+static const char NAV_SMALL_DOWN = 28;
+static const char NAV_LARGE_DOWN = 29;
+static const char NAV_SELECT     =  9;
+
+// Unicode arrow characters for the navigation push buttons
+static const QChar ARROW_UP_SMALL(0x25B4);
+static const QChar ARROW_UP_LARGE(0x25B2);
+static const QChar ARROW_DOWN_SMALL(0x25BE);
+static const QChar ARROW_DOWN_LARGE(0x25BC);
+
+// -----------------------------------------------------------------------------
+// DIO constructor — sets navigation button labels and connects all UI signals.
+// -----------------------------------------------------------------------------
 DIO::DIO(Ui::MIPS *w, Comms *c)
 {
     dui = w;
     comms = c;
 
-    dui->pbUPsmall->setText(QChar(0xB4, 0x25));
-    dui->pbUPlarge->setText(QChar(0xB2, 0x25));
-    dui->pbDOWNsmall->setText(QChar(0xBE, 0x25));
-    dui->pbDOWNlarge->setText(QChar(0xBC, 0x25));
+    dui->pbUPsmall->setText(ARROW_UP_SMALL);
+    dui->pbUPlarge->setText(ARROW_UP_LARGE);
+    dui->pbDOWNsmall->setText(ARROW_DOWN_SMALL);
+    dui->pbDOWNlarge->setText(ARROW_DOWN_LARGE);
+
     QObjectList widgetList = dui->gbDigitalOut->children();
     widgetList += dui->gbDigitalIn->children();
     foreach(QObject *w, widgetList)
     {
-       if(w->objectName().contains("chk"))
-       {
+        if(w->objectName().contains("chk"))
+        {
             connect(((QCheckBox *)w),SIGNAL(stateChanged(int)),this,SLOT(DOUpdated()));
-       }
+        }
     }
-    connect(dui->pbDIOupdate,SIGNAL(pressed()),this,SLOT(UpdateDIO()));
-    connect(dui->pbTrigHigh,SIGNAL(pressed()),this,SLOT(TrigHigh()));
-    connect(dui->pbTrigLow,SIGNAL(pressed()),this,SLOT(TrigLow()));
-    connect(dui->pbTrigPulse,SIGNAL(pressed()),this,SLOT(TrigPulse()));
-    connect(dui->pbRFgenerate,SIGNAL(pressed()),this,SLOT(RFgenerate()));
-    connect(dui->leSFREQ,SIGNAL(editingFinished()),this,SLOT(SetFreq()));
-    connect(dui->leSWIDTH,SIGNAL(editingFinished()),this,SLOT(SetWidth()));
-    connect(dui->chkRemoteNav,SIGNAL(checkStateChanged(Qt::CheckState)),this,SLOT(RemoteNavigation()));
-    connect(dui->pbUPsmall,SIGNAL(pressed()),this,SLOT(RemoteNavSmallUP()));
-    connect(dui->pbUPlarge,SIGNAL(pressed()),this,SLOT(RemoteNavLargeUP()));
-    connect(dui->pbDOWNsmall,SIGNAL(pressed()),this,SLOT(RemoteNavSmallDown()));
-    connect(dui->pbDOWNlarge,SIGNAL(pressed()),this,SLOT(RemoteNavLargeDown()));
-    connect(dui->pbSelect,SIGNAL(pressed()),this,SLOT(RemoteNavSelect()));
+    connect(dui->pbDIOupdate,   SIGNAL(pressed()),                        this, SLOT(UpdateDIO()));
+    connect(dui->pbTrigHigh,    SIGNAL(pressed()),                        this, SLOT(TrigHigh()));
+    connect(dui->pbTrigLow,     SIGNAL(pressed()),                        this, SLOT(TrigLow()));
+    connect(dui->pbTrigPulse,   SIGNAL(pressed()),                        this, SLOT(TrigPulse()));
+    connect(dui->pbRFgenerate,  SIGNAL(pressed()),                        this, SLOT(RFgenerate()));
+    connect(dui->leSFREQ,       SIGNAL(editingFinished()),                this, SLOT(SetFreq()));
+    connect(dui->leSWIDTH,      SIGNAL(editingFinished()),                this, SLOT(SetWidth()));
+    connect(dui->chkRemoteNav,  SIGNAL(checkStateChanged(Qt::CheckState)),this, SLOT(RemoteNavigation()));
+    connect(dui->pbUPsmall,     SIGNAL(pressed()),                        this, SLOT(RemoteNavSmallUP()));
+    connect(dui->pbUPlarge,     SIGNAL(pressed()),                        this, SLOT(RemoteNavLargeUP()));
+    connect(dui->pbDOWNsmall,   SIGNAL(pressed()),                        this, SLOT(RemoteNavSmallDown()));
+    connect(dui->pbDOWNlarge,   SIGNAL(pressed()),                        this, SLOT(RemoteNavLargeDown()));
+    connect(dui->pbSelect,      SIGNAL(pressed()),                        this, SLOT(RemoteNavSelect()));
 }
 
+// -----------------------------------------------------------------------------
+// Update — polls all digital output checkboxes and frequency generator fields
+// from hardware. Blocks checkbox signals during update to prevent feedback.
+// -----------------------------------------------------------------------------
 void DIO::Update(void)
 {
     QString res;
@@ -44,40 +87,42 @@ void DIO::Update(void)
     widgetList += dui->gbFreqGen->children();
     foreach(QObject *w, widgetList)
     {
-       if(w->objectName().contains("chk"))
-       {
+        if(w->objectName().contains("chk"))
+        {
             res = "G" + w->objectName().mid(4).replace("_",",") + "\n";
             bool oldState = ((QCheckBox *)w)->blockSignals(true);
             if(comms->SendMess(res).toInt()==1) ((QCheckBox *)w)->setChecked(true);
             else ((QCheckBox *)w)->setChecked(false);
             ((QCheckBox *)w)->blockSignals(oldState);
-       }
-       if(w->objectName().contains("le"))
-       {
+        }
+        if(w->objectName().contains("le"))
+        {
             res = "G" + w->objectName().mid(3).replace("_",",") + "\n";
             ((QLineEdit *)w)->setText(comms->SendMess(res));
-       }
+        }
     }
     widgetList = dui->gbDigitalIn->children();
     foreach(QObject *w, widgetList)
     {
-       if(w->objectName().contains("chk"))
-       {
+        if(w->objectName().contains("chk"))
+        {
             res = "G" + w->objectName().mid(4).replace("_",",") + "\n";
             if(comms->SendMess(res).toInt()==1) ((QCheckBox *)w)->setChecked(true);
             else ((QCheckBox *)w)->setChecked(false);
-       }
+        }
     }
     dui->tabMIPS->setEnabled(true);
     dui->statusBar->clearMessage();
 }
 
+// UpdateDIO — slot for the manual Update push-button. Delegates to Update().
 void DIO::UpdateDIO(void)
 {
     Update();
 }
 
-// Slot for Digital output check box selection
+// Slot for digital output checkbox state change — derives the MIPS set command
+// from the widget object name and sends the new 0/1 state.
 void DIO::DOUpdated(void)
 {
     QObject* obj = sender();
@@ -92,25 +137,24 @@ void DIO::DOUpdated(void)
     }
 }
 
-// Slot for Trigger high pushbutton
+// TrigHigh / TrigLow / TrigPulse — send the corresponding TRIGOUT command
+// to the connected MIPS unit.
 void DIO::TrigHigh(void)
 {
     comms->SendCommand("TRIGOUT,HIGH\n");
 }
 
-// Slot for Trigger low pushbutton
 void DIO::TrigLow(void)
 {
     comms->SendCommand("TRIGOUT,LOW\n");
 }
 
-// Slot for Trigger pulse pushbutton
 void DIO::TrigPulse(void)
 {
     comms->SendCommand("TRIGOUT,PULSE\n");
 }
 
-// Slot for RF generate pushbutton
+// RFgenerate — sends BURST,<count> using the value from the Burst field.
 void DIO::RFgenerate(void)
 {
     QString res;
@@ -119,6 +163,7 @@ void DIO::RFgenerate(void)
     comms->SendCommand(res.toStdString().c_str());
 }
 
+// SetFreq — slot for leSFREQ editingFinished. Sends the new frequency to MIPS.
 void DIO::SetFreq(void)
 {
     QString res;
@@ -129,6 +174,7 @@ void DIO::SetFreq(void)
     dui->leSFREQ->setModified(false);
 }
 
+// SetWidth — slot for leSWIDTH editingFinished. Sends the new pulse width to MIPS.
 void DIO::SetWidth(void)
 {
     QString res;
@@ -139,7 +185,8 @@ void DIO::SetWidth(void)
     dui->leSWIDTH->setModified(false);
 }
 
-
+// Save — writes the state of all chkS* digital output checkboxes to a
+// timestamped CSV settings file.
 void DIO::Save(QString Filename)
 {
     QString res;
@@ -148,7 +195,6 @@ void DIO::Save(QString Filename)
     QFile file(Filename);
     if(file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
-        // We're going to streaming text to the file
         QTextStream stream(&file);
         QDateTime dateTime = QDateTime::currentDateTime();
         stream << "# DIO settings, " + dateTime.toString() + "\n";
@@ -164,10 +210,11 @@ void DIO::Save(QString Filename)
             }
         }
         file.close();
-        dui->statusBar->showMessage("Settings saved to " + Filename,2000);
+        dui->statusBar->showMessage("Settings saved to " + Filename, 2000);
     }
 }
 
+// Load — reads a settings file and restores the digital output checkbox states.
 void DIO::Load(QString Filename)
 {
     QStringList resList;
@@ -177,8 +224,6 @@ void DIO::Load(QString Filename)
     QFile file(Filename);
     if(file.open(QIODevice::ReadOnly|QIODevice::Text))
     {
-        // We're going to streaming the file
-        // to the QString
         QTextStream stream(&file);
         QString line;
         do
@@ -193,125 +238,118 @@ void DIO::Load(QString Filename)
                     {
                         if(w->objectName() == resList[0])
                         {
-                            if(resList[1] == "true")
-                            {
-                                ((QCheckBox *)w)->setChecked(true);
-                            }
-                            else ((QCheckBox *)w)->setChecked(false);
+                            if(resList[1] == "true") ((QCheckBox *)w)->setChecked(true);
+                            else                     ((QCheckBox *)w)->setChecked(false);
                         }
                     }
                 }
-
             }
         } while(!line.isNull());
         file.close();
-        dui->statusBar->showMessage("Settings loaded from " + Filename,2000);
+        dui->statusBar->showMessage("Settings loaded from " + Filename, 2000);
     }
 }
 
-// Following slot function support remote navication of UI
+// -----------------------------------------------------------------------------
+// RemoteNavigation — enables or disables the front-panel navigation buttons
+// based on the Remote Nav checkbox. Sends SSERIALNAV,TRUE to activate serial
+// navigation mode on the MIPS controller.
+// -----------------------------------------------------------------------------
 void DIO::RemoteNavigation(void)
 {
-   if(dui->chkRemoteNav->isChecked())
-   {
-       if(comms->SendCommand("SSERIALNAV,TRUE\n"))
-       {
-           dui->pbUPsmall->setEnabled(true);
-           dui->pbUPlarge->setEnabled(true);
-           dui->pbDOWNsmall->setEnabled(true);
-           dui->pbDOWNlarge->setEnabled(true);
-           dui->pbSelect->setEnabled(true);
-           return;
-       }
-   }
-   dui->pbUPsmall->setEnabled(false);
-   dui->pbUPlarge->setEnabled(false);
-   dui->pbDOWNsmall->setEnabled(false);
-   dui->pbDOWNlarge->setEnabled(false);
-   dui->pbSelect->setEnabled(false);
+    if(dui->chkRemoteNav->isChecked())
+    {
+        if(comms->SendCommand("SSERIALNAV,TRUE\n"))
+        {
+            dui->pbUPsmall->setEnabled(true);
+            dui->pbUPlarge->setEnabled(true);
+            dui->pbDOWNsmall->setEnabled(true);
+            dui->pbDOWNlarge->setEnabled(true);
+            dui->pbSelect->setEnabled(true);
+            return;
+        }
+    }
+    dui->pbUPsmall->setEnabled(false);
+    dui->pbUPlarge->setEnabled(false);
+    dui->pbDOWNsmall->setEnabled(false);
+    dui->pbDOWNlarge->setEnabled(false);
+    dui->pbSelect->setEnabled(false);
 }
 
+// RemoteNavSmallUP / LargeUP / SmallDown / LargeDown / Select — send the
+// corresponding ASCII control code to the MIPS front-panel serial navigator.
 void DIO::RemoteNavSmallUP(void)
 {
-    char str[2];
-
-    str[0] = 30;
-    str[1] = 0;
+    char str[2] = { NAV_SMALL_UP, 0 };
     comms->SendString(QString::fromStdString(str));
 }
 
 void DIO::RemoteNavLargeUP(void)
 {
-    char str[2];
-
-    str[0] = 31;
-    str[1] = 0;
+    char str[2] = { NAV_LARGE_UP, 0 };
     comms->SendString(QString::fromStdString(str));
 }
 
 void DIO::RemoteNavSmallDown(void)
 {
-    char str[2];
-
-    str[0] = 28;
-    str[1] = 0;
+    char str[2] = { NAV_SMALL_DOWN, 0 };
     comms->SendString(QString::fromStdString(str));
 }
 
 void DIO::RemoteNavLargeDown(void)
 {
-    char str[2];
-
-    str[0] = 29;
-    str[1] = 0;
+    char str[2] = { NAV_LARGE_DOWN, 0 };
     comms->SendString(QString::fromStdString(str));
 }
 
 void DIO::RemoteNavSelect(void)
 {
-   char str[2];
-
-   str[0] = 9;
-   str[1] = 0;
-   comms->SendString(QString::fromStdString(str));
+    char str[2] = { NAV_SELECT, 0 };
+    comms->SendString(QString::fromStdString(str));
 }
 
-// *************************************************************************************************
-// DIO  ********************************************************************************************
-// *************************************************************************************************
+// =============================================================================
+// DIOchannel — control panel widget for a single DIO channel
+// =============================================================================
 
+// DIOchannel — constructor. Records position and identity information;
+// call Show() to create the visible checkbox widget.
 DIOchannel::DIOchannel(QWidget *parent, QString name, QString MIPSname, int x, int y) : QWidget(parent)
 {
-    p      = parent;
-    Title  = name;
-    MIPSnm = MIPSname;
-    X      = x;
-    Y      = y;
+    p       = parent;
+    Title   = name;
+    MIPSnm  = MIPSname;
+    X       = x;
+    Y       = y;
     Channel = "A";
-    comms  = NULL;
-    ReadOnly  = false;
+    comms   = NULL;
+    ReadOnly = false;
 }
 
+// Show — creates the checkbox widget on the parent control panel.
+// Channels above "P" are automatically set read-only (input-only channels).
 void DIOchannel::Show(void)
 {
-    frmDIO = new QFrame(p); frmDIO->setGeometry(X,Y,170,21);
-    DIO = new QCheckBox(frmDIO); DIO->setGeometry(0,0,170,21);
+    frmDIO = new QFrame(p); frmDIO->setGeometry(X, Y, 170, 21);
+    DIO    = new QCheckBox(frmDIO); DIO->setGeometry(0, 0, 170, 21);
     DIO->setText(Title);
     DIO->setToolTip(MIPSnm + " DIO channel " + Channel);
     if(Channel > "P") ReadOnly = true;
-    connect(DIO,SIGNAL(clicked(bool)),this,SLOT(DIOChange(bool)));
+    connect(DIO, SIGNAL(clicked(bool)), this, SLOT(DIOChange(bool)));
     frmDIO->installEventFilter(this);
     frmDIO->setMouseTracking(true);
     DIO->installEventFilter(this);
     DIO->setMouseTracking(true);
 }
 
+// eventFilter — delegates drag-to-move to moveWidget().
 bool DIOchannel::eventFilter(QObject *obj, QEvent *event)
 {
-    if(moveWidget(obj, frmDIO, DIO , event)) return true;
+    if(moveWidget(obj, frmDIO, DIO, event)) return true;
     return false;
 }
 
+// Report — returns a "title,1|0" CSV string with the current checkbox state.
 QString DIOchannel::Report(void)
 {
     QString res;
@@ -322,10 +360,12 @@ QString DIOchannel::Report(void)
     title += Title;
     res = title + ",";
     if(DIO->isChecked()) res += "1";
-    else res += "0";
+    else                 res += "0";
     return(res);
 }
 
+// SetValues — parses a "title,1|0" CSV string and applies the state to the
+// checkbox. Returns false if the title does not match.
 bool DIOchannel::SetValues(QString strVals)
 {
     QStringList resList;
@@ -338,12 +378,18 @@ bool DIOchannel::SetValues(QString strVals)
     resList = strVals.split(",");
     if(resList.count() < 2) return false;
     if(resList[1].contains("1")) DIO->setChecked(true);
-    else DIO->setChecked(false);
+    else                         DIO->setChecked(false);
     if(resList[1].contains("1")) emit DIO->checkStateChanged(Qt::Checked);
-    else emit DIO->checkStateChanged(Qt::Unchecked);
+    else                         emit DIO->checkStateChanged(Qt::Unchecked);
     return true;
 }
 
+// ProcessCommand — handles scripting API commands for this widget.
+// Supported commands:
+//   title      — returns "1" if checked, "0" if unchecked
+//   title=1    — sets the channel high
+//   title=0    — sets the channel low
+// Returns "?" if the command is not recognised.
 QString DIOchannel::ProcessCommand(QString cmd)
 {
     QString title;
@@ -358,20 +404,20 @@ QString DIOchannel::ProcessCommand(QString cmd)
         return "0";
     }
     QStringList resList = cmd.split("=");
-    if(resList.count()==2)
+    if(resList.count() == 2)
     {
-       if(resList[1] == "1") DIO->setChecked(true);
-       else if(resList[1] == "0") DIO->setChecked(false);
-       else return "?";
-       //if(resList[1] == "1") emit DIO->stateChanged(1);
-       //else  emit DIO->stateChanged(0);
-       if(resList[1] == "1") DIOChange(1);
-       else DIOChange(0);
-       return "";
+        if(resList[1] == "1")      DIO->setChecked(true);
+        else if(resList[1] == "0") DIO->setChecked(false);
+        else return "?";
+        if(resList[1] == "1") DIOChange(1);
+        else                  DIOChange(0);
+        return "";
     }
     return "?";
 }
 
+// Update — queries GDIO,channel from MIPS and syncs the checkbox. Signals
+// are blocked during the update to prevent DIOChange from firing.
 void DIOchannel::Update(void)
 {
     QString res;
@@ -380,26 +426,28 @@ void DIOchannel::Update(void)
     comms->rb.clear();
     res = comms->SendMess("GDIO," + Channel + "\n");
     bool oldState = DIO->blockSignals(true);
-    if(res.contains("1")) DIO->setChecked(true);
+    if(res.contains("1"))      DIO->setChecked(true);
     else if(res.contains("0")) DIO->setChecked(false);
     DIO->blockSignals(oldState);
 }
 
-void DIOchannel::DIOChange(bool  state)
+// DIOChange — sends the new channel state to hardware. If the channel is
+// read-only, reverts the checkbox to its previous state without sending.
+void DIOchannel::DIOChange(bool state)
 {
-   QString res;
+    QString res;
 
-   DIO->setFocus();
-   if(ReadOnly)
-   {
-      bool oldState = DIO->blockSignals(true);
-      if(state) DIO->setChecked(false);
-      else DIO->setChecked(true);
-      DIO->blockSignals(oldState);
-      return;
-   }
-   if(comms == NULL) return;
-   if(DIO->checkState()) res ="SDIO," + Channel + ",1\n";
-   else  res ="SDIO," + Channel + ",0\n";
-   comms->SendCommand(res.toStdString().c_str());
+    DIO->setFocus();
+    if(ReadOnly)
+    {
+        bool oldState = DIO->blockSignals(true);
+        if(state) DIO->setChecked(false);
+        else      DIO->setChecked(true);
+        DIO->blockSignals(oldState);
+        return;
+    }
+    if(comms == NULL) return;
+    if(DIO->checkState()) res = "SDIO," + Channel + ",1\n";
+    else                  res = "SDIO," + Channel + ",0\n";
+    comms->SendCommand(res.toStdString().c_str());
 }

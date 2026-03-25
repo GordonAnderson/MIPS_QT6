@@ -21,6 +21,19 @@ qt_add_executable(MIPS WIN32 MACOSX_BUNDLE
     compressor.cpp compressor.h compressor.ui
     console.cpp console.h
     controlpanel.cpp controlpanel.h controlpanel.ui
+    textlabel.cpp textlabel.h
+    shutdown.cpp shutdown.h
+    saveload.cpp saveload.h
+    cpbutton.cpp cpbutton.h
+    dacchannel.cpp dacchannel.h
+    dcbgroups.cpp dcbgroups.h
+    esi.cpp esi.h
+    ccontrol.cpp ccontrol.h
+    cpanel.cpp cpanel.h
+    statuslight.cpp statuslight.h
+    textmessage.cpp textmessage.h
+    table.cpp table.h
+    slider.cpp slider.h
     dcbias.cpp dcbias.h
     device.cpp device.h
     dio.cpp dio.h
@@ -29,6 +42,8 @@ qt_add_executable(MIPS WIN32 MACOSX_BUNDLE
     help.cpp help.h help.ui
     main.cpp
     mips.cpp mips.h mips.ui
+    connection.cpp
+    fileops.cpp
     mipscomms.cpp mipscomms.h mipscomms.ui
     modbus.cpp modbus.h
     plot.cpp plot.h plot.ui
@@ -45,6 +60,9 @@ qt_add_executable(MIPS WIN32 MACOSX_BUNDLE
     settingsdialog.cpp settingsdialog.h settingsdialog.ui
     tcpserver.cpp tcpserver.h
     timinggenerator.cpp timinggenerator.h timinggenerator.ui
+    acquiredata.cpp
+    eventcontrol.cpp
+    timingcontrol.cpp
     twave.cpp twave.h
 )
 target_link_libraries(MIPS PRIVATE

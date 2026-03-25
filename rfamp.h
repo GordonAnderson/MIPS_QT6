@@ -1,3 +1,22 @@
+// =============================================================================
+// rfamp.h
+//
+// RF amplifier control panel widget for the MIPS host application.
+//
+// Implements a dockable control panel widget for an RF amplifier module.
+// Supports RF settings (frequency, drive, setpoint), mass filter parameters
+// (Ro, k, resolution, m/z), DC power supply control, and scripting access
+// via ProcessCommand().
+//
+// Hardware:    MIPS RF amplifier module (commands: SRFAFREQ, SRFADRV,
+//              SRFAENA, RFAQUPDATE, SDCPWR, etc.)
+// Depends on:  comms.h, Utilities.h, ui_rfamp.h
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
+
 #ifndef RFAMP_H
 #define RFAMP_H
 
@@ -10,7 +29,6 @@
 #include <QApplication>
 #include <QFileInfo>
 #include <QKeyEvent>
-
 
 #include "comms.h"
 
@@ -48,6 +66,7 @@ private:
 private slots:
     void Updated(void);
     void slotUpdate(void);
+
 protected:
     bool eventFilter(QObject *obj, QEvent *event);
 };

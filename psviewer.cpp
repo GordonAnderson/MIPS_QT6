@@ -1,61 +1,79 @@
+// =============================================================================
+// psviewer.cpp
+//
+// Pulse sequence viewer dialog for the MIPS host application.
+//
+// Depends on:  pse.h, qcustomplot.h, ui_psviewer.h
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
+
 #include "psviewer.h"
 #include "ui_psviewer.h"
 #include "qcustomplot.h"
 
+static const int DC_BIAS_CHANNELS   = 16; // Number of DC bias channels per PSG point
+static const int BRACKET_Y_STEP     = 25; // Vertical spacing between stacked loop brackets
+
+// -----------------------------------------------------------------------------
+// Constructor — builds the plot, annotates loop brackets, connects zoom/plot
+// selection controls.
+// -----------------------------------------------------------------------------
 psviewer::psviewer(QList<psgPoint *> *P, QWidget *parent) :
     QDialog(parent),
     ui(new Ui::psviewer)
 {
     ui->setupUi(this);
 
-    psg = P;
+    psg     = P;
     plotnum = 0;
-    // Find the minimum and maximum Y values from table
+
+    // Find the Y axis range across all DC bias values
     minY = 0;
     maxY = 5;
-    for(int i=0; i<psg->size(); i++)
+    for(int i = 0; i < psg->size(); i++)
     {
-        for(int j=0; j<16; j++)
+        for(int j = 0; j < DC_BIAS_CHANNELS; j++)
         {
             if((*psg)[i]->DCbias[j] < minY) minY = (*psg)[i]->DCbias[j];
             if((*psg)[i]->DCbias[j] > maxY) maxY = (*psg)[i]->DCbias[j];
         }
     }
-    // Find the maximum number of clock counts
+
+    // X axis spans from 0 to the last time point
     minCycles = 0;
     maxCycles = (*psg)[psg->size()-1]->TimePoint;
-    // Fill the plot selection combobox with all the channels, digital and analog
+
+    // Populate the channel selection combobox
     ui->comboPlotItem->clear();
     ui->comboPlotItem->addItem("");
-    for(int i=0; i<16; i++)
+    for(int i = 0; i < DC_BIAS_CHANNELS; i++)
     {
-        ui->comboPlotItem->addItem("CH " + QString::number(i+1));
+        ui->comboPlotItem->addItem("CH " + QString::number(i + 1));
     }
 
-    // Setup the plot used to display the pulse sequence
-    // give the axes some labels:
+    // Configure plot axes
     ui->PSV->xAxis->setLabel("Clock cycles");
     ui->PSV->yAxis->setLabel("Voltage");
-    // set axes ranges, so we see all data:
     ui->PSV->xAxis->setRange(minCycles, maxCycles);
     ui->PSV->yAxis->setRange(minY, maxY);
     ui->PSV->replot();
-    // Look for loops in the sequence and label with brackets if found
+
+    // Annotate loop brackets — scan for Loop entries and find their matching start
     int BracketPos = 1;
-    for(int i=0; i<psg->size(); i++)
+    for(int i = 0; i < psg->size(); i++)
     {
         if((*psg)[i]->Loop)
         {
-            // Here with the closing side of the loop, now find the start
-            for(int j=0; j<psg->size(); j++)
+            for(int j = 0; j < psg->size(); j++)
             {
                 if((*psg)[i]->LoopName == (*psg)[j]->Name)
                 {
-                    // Here with the start and stop of a loop, draw the bracket
                     QCPItemBracket *bracket = new QCPItemBracket(ui->PSV);
                     bracket->left->setCoords((*psg)[j]->TimePoint, BracketPos);
                     bracket->right->setCoords((*psg)[i]->TimePoint, BracketPos);
-                    // Add label with number of loops
                     QCPItemText *LoopText = new QCPItemText(ui->PSV);
                     LoopText->position->setParentAnchor(bracket->center);
                     LoopText->position->setCoords(0, -5);
@@ -63,65 +81,59 @@ psviewer::psviewer(QList<psgPoint *> *P, QWidget *parent) :
                     if((*psg)[i]->LoopCount == 0) LoopText->setText("Loop forever");
                     else LoopText->setText("Loop " + QString::number((*psg)[i]->LoopCount) + " times");
                     LoopText->setFont(QFont(font().family(), 10));
-                    BracketPos += 25;
+                    BracketPos += BRACKET_Y_STEP;
                 }
             }
         }
     }
-    connect(ui->chkZoomX,SIGNAL(clicked(bool)),this,SLOT(SetZoom()));
-    connect(ui->chkZoomY,SIGNAL(clicked(bool)),this,SLOT(SetZoom()));
-    connect(ui->comboPlotItem,SIGNAL(currentIndexChanged(int)),this,SLOT(PlotSelectedItem()));
 
+    connect(ui->chkZoomX,      &QCheckBox::clicked,              this, &psviewer::SetZoom);
+    connect(ui->chkZoomY,      &QCheckBox::clicked,              this, &psviewer::SetZoom);
+    connect(ui->comboPlotItem, &QComboBox::currentIndexChanged,  this, &psviewer::PlotSelectedItem);
 }
 
+// ~psviewer — destructor. Releases the UI form.
 psviewer::~psviewer()
 {
     delete ui;
 }
 
+// -----------------------------------------------------------------------------
+// PlotDCBchannel — plots a single DC bias channel across the full time range.
+// Each call adds a new graph with a distinct colour (up to 5 channels).
+// -----------------------------------------------------------------------------
 void psviewer::PlotDCBchannel(int channel)
 {
     QVector<double> x(maxCycles), y(maxCycles);
-    for(int j=0; j<maxCycles; j++)
+    for(int j = 0; j < maxCycles; j++)
     {
         x[j] = j;
         y[j] = 0;
     }
-    // Set the defined points in the vector, these are change points
-    for(int i=0; i<psg->size(); i++)
+    // Apply change points: each PSG entry sets the value from its time point forward
+    for(int i = 0; i < psg->size(); i++)
     {
-        for(int j=(*psg)[i]->TimePoint; j<maxCycles; j++)
+        for(int j = (*psg)[i]->TimePoint; j < maxCycles; j++)
         {
             y[j] = (*psg)[i]->DCbias[channel];
         }
     }
+
     ui->PSV->legend->setVisible(true);
     ui->PSV->addGraph();
-    switch (plotnum)
-    {
-       case 0:
-        ui->PSV->graph(plotnum)->setPen(QPen(Qt::red));
-        break;
-       case 1:
-        ui->PSV->graph(plotnum)->setPen(QPen(Qt::blue));
-        break;
-       case 2:
-        ui->PSV->graph(plotnum)->setPen(QPen(Qt::green));
-        break;
-       case 3:
-        ui->PSV->graph(plotnum)->setPen(QPen(Qt::yellow));
-        break;
-       case 4:
-        ui->PSV->graph(plotnum)->setPen(QPen(Qt::cyan));
-        break;
-       default:
-        break;
-    }
-    ui->PSV->graph(plotnum)->setName("CH " + QString::number(channel +1));
+
+    static const Qt::GlobalColor plotColors[] = { Qt::red, Qt::blue, Qt::green, Qt::yellow, Qt::cyan };
+    if(plotnum < (int)(sizeof(plotColors) / sizeof(plotColors[0])))
+        ui->PSV->graph(plotnum)->setPen(QPen(plotColors[plotnum]));
+
+    ui->PSV->graph(plotnum)->setName("CH " + QString::number(channel + 1));
     ui->PSV->graph(plotnum++)->setData(x, y);
     ui->PSV->replot();
 }
 
+// -----------------------------------------------------------------------------
+// SetZoom — updates the plot interaction mode based on the zoom checkboxes.
+// -----------------------------------------------------------------------------
 void psviewer::SetZoom(void)
 {
     if(ui->chkZoomX->isChecked() && ui->chkZoomY->isChecked())
@@ -148,10 +160,13 @@ void psviewer::SetZoom(void)
     }
 }
 
+// -----------------------------------------------------------------------------
+// PlotSelectedItem — plots the channel selected in the combobox.
+// Index 0 is the blank placeholder; channel indices are 0-based.
+// -----------------------------------------------------------------------------
 void psviewer::PlotSelectedItem(void)
 {
     int index = ui->comboPlotItem->currentIndex();
     if(index == 0) return;
-    index--;
-    PlotDCBchannel(index);
+    PlotDCBchannel(index - 1);
 }

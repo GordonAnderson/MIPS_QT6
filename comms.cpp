@@ -1,44 +1,95 @@
-/*! \file comms.cpp
- * \brief This file implements the Comms class which handles communication with MIPS.
- *
- * The Comms class provides methods to connect to MIPS, send and receive messages,
- * and manage the communication protocol. It supports both serial and network connections.
- */
-#include <QTime>
+// =============================================================================
+// comms.cpp
+//
+// Comms — serial-port and TCP-socket communication layer for MIPS/AMPS devices.
+// Handles connection, command send/receive (ACK/NAK + timeout retry), ADC
+// streaming, async message buffering, and binary file transfer.
+//
+// Depends on:  comms.h
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — Phase 3 refactoring
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
 #include <QElapsedTimer>
 #include <QtSerialPort/QtSerialPort>
 #include <QStringView>
 #include <qeventloop.h>
 #include "comms.h"
 
-/*! \brief Comms constructor initializes the communication settings.
- * This constructor sets up the serial port or TCP socket for communication with MIPS.
- * It connects various signals and slots to handle incoming data and connection events.
- * @param settings Pointer to the SettingsDialog containing configuration settings.
- * @param Host The hostname or IP address of the MIPS device.
- * @param statusbar Pointer to the QStatusBar for displaying status messages.
+/*! \brief Comms::Comms
+ * Initialises the serial port or TCP socket for communication with MIPS.
+ * Connects all signals required for incoming data and connection-state events.
  */
 Comms::Comms(SettingsDialog *settings, QString Host, QStatusBar *statusbar)
+    : QObject(nullptr)
 {
     p = settings->settings();
     sb = statusbar;
     client_connected = false;
     host = Host;
-    properties = NULL;
+    properties = nullptr;
     serial = new QSerialPort(this);
     keepAliveTimer = new QTimer;
     reconnectTimer = new QTimer;
-    connect(&client, SIGNAL(readyRead()), this, SLOT(readData2RingBuffer()));
-    connect(serial, SIGNAL(readyRead()), this, SLOT(readData2RingBuffer()));
-    connect(&client, SIGNAL(connected()),this, SLOT(connected()));
-    connect(&client, SIGNAL(disconnected()),this, SLOT(disconnected()));
-    connect(&client, SIGNAL(aboutToClose()),this, SLOT(slotAboutToClose()));
-    connect(keepAliveTimer, SIGNAL(timeout()), this, SLOT(slotKeepAlive()));
-    connect(reconnectTimer, SIGNAL(timeout()), this, SLOT(slotReconnect()));
-    connect(&pollTimer, SIGNAL(timeout()), this, SLOT(pollLoop()));
-    //pollTimer.start(100);
+    connect(&client, &QTcpSocket::readyRead, this, &Comms::readData2RingBuffer);
+    connect(serial, &QSerialPort::readyRead, this, &Comms::readData2RingBuffer);
+    connect(&client, &QTcpSocket::connected, this, &Comms::connected);
+    connect(&client, &QTcpSocket::disconnected, this, &Comms::disconnected);
+    connect(&client, &QIODevice::aboutToClose, this, &Comms::slotAboutToClose);
+    connect(keepAliveTimer, &QTimer::timeout, this, &Comms::slotKeepAlive);
+    connect(reconnectTimer, &QTimer::timeout, this, &Comms::slotReconnect);
+    connect(&pollTimer, &QTimer::timeout, this, &Comms::pollLoop);
 }
 
+/*! \brief Comms::serialPort
+ * Returns the underlying QSerialPort pointer. Used by program.cpp for bootloader
+ * operations that require direct port manipulation (baud rate, DTR, open/close).
+ */
+QSerialPort* Comms::serialPort() const
+{
+    return serial;
+}
+
+/*! \brief Comms::version
+ * Returns the connected MIPS firmware version as major/minor integers.
+ * Call after GetMIPSnameAndVersion() has been executed.
+ */
+void Comms::version(int &maj, int &min) const
+{
+    maj = major;
+    min = minor;
+}
+
+/*! \brief Comms::setProperties
+ * Sets the Properties logger used for diagnostics. Call before ConnectToMIPS().
+ */
+void Comms::setProperties(Properties *prop)
+{
+    properties = prop;
+}
+
+/*! \brief Comms::setHost
+ * Sets the TCP hostname or IP address used when connecting over the network.
+ * Call before ConnectToMIPS().
+ */
+void Comms::setHost(const QString &h)
+{
+    host = h;
+}
+
+/*! \brief Comms::setSettings
+ * Updates the port/connection settings (port name, baud rate, etc.).
+ * Call before ConnectToMIPS() when settings may have changed.
+ */
+void Comms::setSettings(const SettingsDialog::Settings &s)
+{
+    p = s;
+}
+
+/*! \brief Comms::pollLoop
+ * Timer-driven poll: manually triggers readyRead on the serial port if bytes are waiting.
+ */
 void Comms::pollLoop(void)
 {
    if(serial->isOpen())
@@ -47,11 +98,17 @@ void Comms::pollLoop(void)
    }
 }
 
+/*! \brief Comms::getchar
+ * Returns the next byte from the ring buffer, or 0 if empty.
+ */
 char Comms::getchar(void)
 {
     return rb.getch();
 }
 
+/*! \brief Comms::CalculateCRC
+ * Computes an 8-bit CRC of the given byte array using the 0x1D generator polynomial.
+ */
 int Comms::CalculateCRC(QByteArray fdata)
 {
     unsigned char generator = 0x1D;
@@ -80,32 +137,43 @@ int Comms::CalculateCRC(QByteArray fdata)
 // function does not block. After a vector is received a signal is sent and
 // then the system is reset for the next vector. After all vectors are read
 // the comms are reset to normal command processing
+/*! \brief Comms::GetADCbuffer
+ * Arms ADC streaming mode. Redirects incoming data to the ADC state machine
+ * until all vectors for the given buffer have been received.
+ */
 void Comms::GetADCbuffer(quint16 *ADCbuffer, int NumSamples)
 {
-    if(ADCbuffer == NULL) return;
+    if(ADCbuffer == nullptr) return;
     // Save the pointer and maximum length parameters
     ADCbuf = ADCbuffer;
     ADClen = NumSamples;
     ADCstate = WaitingForHeader;
     // Redirect the input data processing to ADC buffer processing
-    disconnect(&client, SIGNAL(readyRead()), 0, 0);
-    disconnect(serial, SIGNAL(readyRead()), 0, 0);
-    connect(&client, SIGNAL(readyRead()), this, SLOT(readData2ADCBuffer()));
-    connect(serial, SIGNAL(readyRead()), this, SLOT(readData2ADCBuffer()));
+    disconnect(&client, &QTcpSocket::readyRead, nullptr, nullptr);
+    disconnect(serial, &QSerialPort::readyRead, nullptr, nullptr);
+    connect(&client, &QTcpSocket::readyRead, this, &Comms::readData2ADCBuffer);
+    connect(serial, &QSerialPort::readyRead, this, &Comms::readData2ADCBuffer);
 }
 
 // Release the ADC buffer collection mode and return the processing routine
 // for incoming data to the ringbuffers
+/*! \brief Comms::ADCrelease
+ * Releases ADC streaming mode and restores normal ring-buffer data processing.
+ */
 void Comms::ADCrelease(void)
 {
     // Connect the data read signal back to the ring buffers
-    disconnect(&client, SIGNAL(readyRead()), 0, 0);
-    disconnect(serial, SIGNAL(readyRead()), 0, 0);
-    connect(&client, SIGNAL(readyRead()), this, SLOT(readData2RingBuffer()));
-    connect(serial, SIGNAL(readyRead()), this, SLOT(readData2RingBuffer()));
-    ADCbuf = NULL;
+    disconnect(&client, &QTcpSocket::readyRead, nullptr, nullptr);
+    disconnect(serial, &QSerialPort::readyRead, nullptr, nullptr);
+    connect(&client, &QTcpSocket::readyRead, this, &Comms::readData2RingBuffer);
+    connect(serial, &QSerialPort::readyRead, this, &Comms::readData2RingBuffer);
+    ADCbuf = nullptr;
 }
 
+/*! \brief Comms::readData2ADCBuffer
+ * Slot: reads incoming bytes and feeds them through the ADC binary framing
+ * state machine. Emits ADCvectorReady per vector and ADCrecordingDone when finished.
+ */
 void Comms::readData2ADCBuffer(void)
 {
     int i;
@@ -115,7 +183,7 @@ void Comms::readData2ADCBuffer(void)
     static int Vlength=0,Vnum=0;
     static bool Vlast;
 
-    if(ADCbuf == NULL) return;
+    if(ADCbuf == nullptr) return;
     if(client.isOpen()) data = client.readAll();
     if(serial->isOpen()) data = serial->readAll();
     for(i=0;i<data.size();i++)
@@ -134,7 +202,7 @@ void Comms::readData2ADCBuffer(void)
             break;
           case ReadingHeader:
             // Read, 24 bit length, 16 bit vector num, 8 bit last vector flag 0xFF if last
-            if(b == NULL) break;
+            if(b == nullptr) break;
             if(DataPtr == 0) b[0] = data[i];
             if(DataPtr == 1) b[1] = data[i];
             if(DataPtr == 2) { b[2] = data[i]; b = (quint8 *)&Vnum; }
@@ -156,7 +224,7 @@ void Comms::readData2ADCBuffer(void)
             break;
           case ReadingData:
             // Read the data block
-            if(b == NULL) break;
+            if(b == nullptr) break;
             b[DataPtr++] = data[i];
             if(DataPtr >= (Vlength * 2))
             {
@@ -189,6 +257,10 @@ void Comms::readData2ADCBuffer(void)
 }
 
 
+/*! \brief Comms::GetMIPSfile
+ * Downloads a file from the MIPS SD card and saves it locally.
+ * Verifies the transfer with a CRC check.
+ */
 void Comms::GetMIPSfile(QString MIPSfile, QString LocalFile)
 {
     bool ok = false;
@@ -222,13 +294,13 @@ void Comms::GetMIPSfile(QString MIPSfile, QString LocalFile)
         if(FileData.length() != 2 * FileSize.toInt())
         {
             // Here if file data block is not the proper size
-            QMessageBox::critical(this, tr("File Error"), "Data block size not correct!");
+            QMessageBox::critical(nullptr, tr("File Error"), "Data block size not correct!");
             return;
         }
         // Read the CRC
         waitforline(500);
         QString FileCRC = getline();
-        // Convert data to byte array and callculate CRC
+        // Convert data to byte array and calculate CRC
         QByteArray fdata;
         fdata.resize(FileSize.toInt());
         for(int i=0; i<FileSize.toInt(); i++)
@@ -242,16 +314,20 @@ void Comms::GetMIPSfile(QString MIPSfile, QString LocalFile)
             file.open(QIODevice::WriteOnly);
             file.write(fdata);
             file.close();
-            QMessageBox::information(this, tr("File saved"), "File from MIPS read and saved successfully!");
+            QMessageBox::information(nullptr, tr("File saved"), "File from MIPS read and saved successfully!");
         }
         else
         {
             // Here with file CRC error, raise error message
-            QMessageBox::critical(this, tr("File Error"), "CRC error!");
+            QMessageBox::critical(nullptr, tr("File Error"), "CRC error!");
         }
     }
 }
 
+/*! \brief Comms::PutMIPSfile
+ * Uploads a local file to the MIPS SD card in 1 KB chunks.
+ * Appends a CRC for integrity verification.
+ */
 void Comms::PutMIPSfile(QString MIPSfile, QString LocalFile)
 {
     QByteArray fdata;
@@ -292,7 +368,7 @@ void Comms::PutMIPSfile(QString MIPSfile, QString LocalFile)
                if((res = getline()) == "")
                 {
                     // Here if we timed out, display error and exit
-                    QMessageBox::critical(this, tr("Data read error"), "Timedout waiting for data from MIPS!");
+                    QMessageBox::critical(nullptr, tr("Data read error"), "Timedout waiting for data from MIPS!");
                     return;
                 }
             }
@@ -300,10 +376,13 @@ void Comms::PutMIPSfile(QString MIPSfile, QString LocalFile)
         }
         SendString("\n");
         SendString(QString().number(CalculateCRC(fdata)) + "\n");
-        QMessageBox::information(this, tr("File saved"), "File sent to MIPS!");
+        QMessageBox::information(nullptr, tr("File saved"), "File sent to MIPS!");
     }
 }
 
+/*! \brief Comms::GetEEPROM
+ * Reads the EEPROM of the named board module and saves the data locally.
+ */
 void Comms::GetEEPROM(QString FileName, QString Board, int Addr)
 {
     bool ok = false;
@@ -322,13 +401,13 @@ void Comms::GetEEPROM(QString FileName, QString Board, int Addr)
         if(FileData.length() != 2 * FileSize.toInt())
         {
             // Here if file data block is not the proper size
-            QMessageBox::critical(this, tr("File Error"), "Data block size not correct!");
+            QMessageBox::critical(nullptr, tr("File Error"), "Data block size not correct!");
             return;
         }
         // Read the CRC
         waitforline(500);
         QString FileCRC = getline();
-        // Convert data to byte array and callculate CRC
+        // Convert data to byte array and calculate CRC
         QByteArray fdata;
         fdata.resize(FileSize.toInt());
         for(int i=0; i<FileSize.toInt(); i++)
@@ -342,16 +421,19 @@ void Comms::GetEEPROM(QString FileName, QString Board, int Addr)
             file.open(QIODevice::WriteOnly);
             file.write(fdata);
             file.close();
-            QMessageBox::information(this, tr("File saved"), "EEPROM from MIPS read and saved successfully!");
+            QMessageBox::information(nullptr, tr("File saved"), "EEPROM from MIPS read and saved successfully!");
         }
         else
         {
             // Here with file CRC error, raise error message
-            QMessageBox::critical(this, tr("File Error"), "CRC error!");
+            QMessageBox::critical(nullptr, tr("File Error"), "CRC error!");
         }
     }
 }
 
+/*! \brief Comms::GetARBFLASH
+ * Reads the ARB module FLASH memory and saves it to a local file.
+ */
 void Comms::GetARBFLASH(QString FileName)
 {
     bool ok = false;
@@ -369,13 +451,13 @@ void Comms::GetARBFLASH(QString FileName)
         if(FileData.length() != 2 * FileSize.toInt())
         {
             // Here if file data block is not the proper size
-            QMessageBox::critical(this, tr("File Error"), "Data block size not correct!");
+            QMessageBox::critical(nullptr, tr("File Error"), "Data block size not correct!");
             return;
         }
         // Read the CRC
         waitforline(500);
         QString FileCRC = getline();
-        // Convert data to byte array and callculate CRC
+        // Convert data to byte array and calculate CRC
         QByteArray fdata;
         fdata.resize(FileSize.toInt());
         for(int i=0; i<FileSize.toInt(); i++)
@@ -389,16 +471,19 @@ void Comms::GetARBFLASH(QString FileName)
             file.open(QIODevice::WriteOnly);
             file.write(fdata);
             file.close();
-            QMessageBox::information(this, tr("File saved"), "FLASH from ARB read and saved successfully!");
+            QMessageBox::information(nullptr, tr("File saved"), "FLASH from ARB read and saved successfully!");
         }
         else
         {
             // Here with file CRC error, raise error message
-            QMessageBox::critical(this, tr("File Error"), "CRC error!");
+            QMessageBox::critical(nullptr, tr("File Error"), "CRC error!");
         }
     }
 }
 
+/*! \brief Comms::PutARBFLASH
+ * Writes a local file to the ARB module FLASH memory.
+ */
 void Comms::PutARBFLASH(QString FileName)
 {
     //QString FileData;
@@ -421,10 +506,13 @@ void Comms::PutARBFLASH(QString FileName)
         // Send the data to ARB
         SendString(dblock + "\n");
         SendString(QString().number(CalculateCRC(fdata)) + "\n");
-        QMessageBox::information(this, tr("FLASH write"), "ARB module FLASH Written!");
+        QMessageBox::information(nullptr, tr("FLASH write"), "ARB module FLASH Written!");
     }
 }
 
+/*! \brief Comms::PutEEPROM
+ * Writes a local file to the EEPROM of the named board module.
+ */
 void Comms::PutEEPROM(QString FileName, QString Board, int Addr)
 {
     //QString FileData;
@@ -443,16 +531,18 @@ void Comms::PutEEPROM(QString FileName, QString Board, int Addr)
         {
              dblock += QString().asprintf("%02x",(unsigned char)fdata[i]);
         }
-        //SendCommand("\n");
         SendString(QString().number(file.size()) + "\n");
         file.close();
         // Send the data to MIPS
         SendString(dblock + "\n");
         SendString(QString().number(CalculateCRC(fdata)) + "\n");
-        QMessageBox::information(this, tr("EEPROM write"), "MIPS module's EEPROM Written!");
+        QMessageBox::information(nullptr, tr("EEPROM write"), "MIPS module's EEPROM Written!");
     }
 }
 
+/*! \brief Comms::ARBupload
+ * Uploads a local file to the ARB module at the given flash address in 512-byte chunks.
+ */
 void Comms::ARBupload(QString Faddress, QString FileName)
 {
     QByteArray fdata;
@@ -486,14 +576,13 @@ void Comms::ARBupload(QString Faddress, QString FileName)
                 if(client.isOpen()) client.waitForBytesWritten();
                 msDelay(10);
             }
-//            SendString(dblock.mid(i,len));
             if(len == 512)
             {
                 waitforline(2000);
                 if((res = getline()) == "")
                 {
                     // Here if we timed out, display error and exit
-                    QMessageBox::critical(this, tr("Data read error"), "Timedout waiting for data from ARB!");
+                    QMessageBox::critical(nullptr, tr("Data read error"), "Timedout waiting for data from ARB!");
                     return;
                 }
             }
@@ -501,21 +590,28 @@ void Comms::ARBupload(QString Faddress, QString FileName)
         }
         SendString("\n");
         SendString(QString().number(CalculateCRC(fdata)) + "\n");
-        QMessageBox::information(this, tr("File saved"), "File uploaded to ARB FLASH!");
+        QMessageBox::information(nullptr, tr("File saved"), "File uploaded to ARB FLASH!");
     }
 }
 
+/*! \brief Comms::SendString (named overload)
+ * Sends a raw string to MIPS only if the name matches this instance's MIPSname.
+ */
 bool Comms::SendString(QString name, QString message)
 {
     if((name == MIPSname) || (name == "")) return SendString(message);
     return false;
 }
 
+/*! \brief Comms::SendString
+ * Writes a raw string to the open serial port or TCP socket without
+ * waiting for a response. Long strings (>100 chars) are sent in 100-byte chunks.
+ */
 bool Comms::SendString(QString message)
 {
     if(serialBusy)
     {
-        if(properties != NULL) properties->Log("SendString is busy!");
+        if(properties != nullptr) properties->Log("SendString is busy!");
         return false;
     }
     serialBusy = true;
@@ -533,7 +629,7 @@ bool Comms::SendString(QString message)
         if(message.length() > 100) for(int i=0;i<message.length();i++)
         {
             m = message.at(i);
-            serial->write(m.toStdString().c_str());
+            serial->write(m.toLocal8Bit());
             if(((i+1) % 100) == 0)
             {
                 if(serial->isOpen()) serial->waitForBytesWritten();
@@ -541,28 +637,27 @@ bool Comms::SendString(QString message)
                 msDelay(10);
             }
         }
-        else serial->write(message.toStdString().c_str());
+        else serial->write(message.toLocal8Bit());
     }
-    if (client.isOpen()) client.write(message.toStdString().c_str());
+    if (client.isOpen()) client.write(message.toLocal8Bit());
     serialBusy = false;
     return true;
 }
 
-/*! \brief enableAsyncMessages enables or disables asynchronous message processing.
- * This function sets up a ring buffer for asynchronous messages if enabled.
- * If disabled, it deletes the existing ring buffer to free up resources.
- * @param enable If true, enables asynchronous message processing; otherwise, disables it.
+/*! \brief Comms::enableAsyncMessages
+ * Enables or disables asynchronous (unsolicited) message buffering. When enabled,
+ * allocates a secondary ring buffer; when disabled, releases it.
  */
 void Comms::enableAsyncMessages(bool enable)
 {
     if(enable)
     {
-        if(mrb == NULL) mrb = new RingBuffer;
+        if(mrb == nullptr) mrb = new RingBuffer;
     }
     else
     {
         delete mrb;
-        mrb = NULL;
+        mrb = nullptr;
     }
 }
 
@@ -575,7 +670,7 @@ void Comms::processAsyncMessages(void)
 {
     bool acknak = false;
 
-    if(mrb == NULL) return;
+    if(mrb == nullptr) return;
     while(true)
     {
         waitforline(-1);
@@ -595,12 +690,15 @@ void Comms::processAsyncMessages(void)
  */
 QString Comms::getAsyncMessage(void)
 {
-    if(mrb == NULL) return "";
+    if(mrb == nullptr) return "";
     QString res = mrb->getline();
     if(res == "") return "";
     return res;
 }
 
+/*! \brief Comms::SendCommand (named overload)
+ * Sends a command to MIPS only if the name matches this instance's MIPSname.
+ */
 bool Comms::SendCommand(QString name, QString message)
 {
     if((name == MIPSname) || (name == "")) return(SendCommand(message));
@@ -619,7 +717,7 @@ bool Comms::SendCommand(QString message)
 
     if(serialBusy)
     {
-        if(properties != NULL) properties->Log("SendCommand is busy!");
+        if(properties != nullptr) properties->Log("SendCommand is busy!");
         return false;
     }
     serialBusy = true;
@@ -641,7 +739,7 @@ bool Comms::SendCommand(QString message)
             if(message.length() > 100) for(int j=0;j<message.length();j++)
             {
                 m = message.at(j);
-                serial->write(m.toStdString().c_str());
+                serial->write(m.toLocal8Bit());
                 if(((j+1) % 100) == 0)
                 {
                     if(serial->isOpen()) serial->waitForBytesWritten();
@@ -649,15 +747,15 @@ bool Comms::SendCommand(QString message)
                     msDelay(10);
                 }
             }
-            else serial->write(message.toStdString().c_str());
+            else serial->write(message.toLocal8Bit());
         }
-        if (client.isOpen()) client.write(message.toStdString().c_str());
+        if (client.isOpen()) client.write(message.toLocal8Bit());
         if(message.length() > 100) waitforline(3000);
         else waitforline(1000);
         while(rb.numLines() >= 1)
         {
             res = rb.getline(&hasacknak);
-            if((mrb != NULL) && (hasacknak == false))
+            if((mrb != nullptr) && (hasacknak == false))
             {
                 // If there is a message ring buffer, put the response into it
                 mrb->putString(res + "\n");
@@ -668,23 +766,25 @@ bool Comms::SendCommand(QString message)
             if(res == "?")
             {
                 res = message + " :NAK";
-                if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + ", " + res.toStdString().c_str(),2000);
-                else sb->showMessage(res.toStdString().c_str(),2000);
+                if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + ", " + res.toLocal8Bit(),2000);
+                else sb->showMessage(res.toLocal8Bit(),2000);
                 serialBusy = false;
                 return false;
             }
             break;
         }
     }
-    // Here if the message transaction timmed out
-    //reopenSerialPort();
+    // Here if the message transaction timed out
     res = message + " :Timeout";
-    if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + ", " + res.toStdString().c_str(),2000);
-    else sb->showMessage(res.toStdString().c_str(),2000);
+    if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + ", " + res.toLocal8Bit(),2000);
+    else sb->showMessage(res.toLocal8Bit(),2000);
     serialBusy = false;
     return true;
 }
 
+/*! \brief Comms::SendMessage (named overload)
+ * Sends a message to MIPS and returns the response, only if name matches MIPSname.
+ */
 QString Comms::SendMessage(QString name, QString message)
 {
     if((name == MIPSname) || (name == "")) return SendMessage(message);
@@ -692,6 +792,9 @@ QString Comms::SendMessage(QString name, QString message)
 }
 
 
+/*! \brief Comms::SendMess (named overload)
+ * Convenience alias for SendMessage(name, message).
+ */
 QString Comms::SendMess(QString name, QString message)
 {
     if((name == MIPSname) || (name == "")) return SendMessage(message);
@@ -741,7 +844,7 @@ QString Comms::SendMessage(QString message)
 
     if(serialBusy)
     {
-        if(properties != NULL) properties->Log("SendMessage is busy!");
+        if(properties != nullptr) properties->Log("SendMessage is busy!");
         return "";
     }
     serialBusy = true;
@@ -763,7 +866,7 @@ QString Comms::SendMessage(QString message)
             if(message.length() > 100) for(int j=0;j<message.length();j++)
             {
                 m = message.at(j);
-                serial->write(m.toStdString().c_str());
+                serial->write(m.toLocal8Bit());
                 if(((j+1) % 100) == 0)
                 {
                     if(serial->isOpen()) serial->waitForBytesWritten();
@@ -771,37 +874,37 @@ QString Comms::SendMessage(QString message)
                     msDelay(10);
                 }
             }
-            else serial->write(message.toStdString().c_str());
+            else serial->write(message.toLocal8Bit());
         }
-        if (client.isOpen()) client.write(message.toStdString().c_str());
+        if (client.isOpen()) client.write(message.toLocal8Bit());
         if(message.length() > 100) waitforline(3000);
         else waitforline(1000);
         while(rb.numLines() >= 1)
         {
             res = rb.getline(&hasacknak);
-            if((mrb != NULL) && (hasacknak == false))
+            if((mrb != nullptr) && (hasacknak == false))
             {
                 // If there is a message ring buffer, put the response into it
                 mrb->putString(res + "\n");
                 waitforline(100);
                 continue; // Continue to read more lines if available
             }
-            //res = rb.getline();
-            serialBusy = false;
+                serialBusy = false;
             if(res != "") return res;
-            return res;  // added 11/10/23
         }
     }
-    // Here if the message transaction timmed out
-    //reopenSerialPort();
+    // Here if the message transaction timed out
     res = message + " :Timeout";
-    if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + ", " + res.toStdString().c_str(),2000);
-    else sb->showMessage(res.toStdString().c_str(),2000);
+    if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + ", " + res.toLocal8Bit(),2000);
+    else sb->showMessage(res.toLocal8Bit(),2000);
     res = "";
     serialBusy = false;
     return res;
 }
 
+/*! \brief Comms::SendMess
+ * Convenience alias for SendMessage(message).
+ */
 QString Comms::SendMess(QString message)
 {
     return SendMessage(message);
@@ -812,6 +915,10 @@ QString Comms::SendMess(QString message)
 // on version number.
 // The function also looks in the app dir for a file that contains initalization
 // commands and sends them to the MIPS system. The file name is "MIPS name".ini
+/*! \brief Comms::GetMIPSnameAndVersion
+ * Queries MIPS for its name and firmware version. Sets time/date if firmware
+ * supports it. Sends any commands found in the app-directory .ini file.
+ */
 void Comms::GetMIPSnameAndVersion(void)
 {
     MIPSname = SendMessage("GNAME\n");
@@ -868,6 +975,10 @@ void Comms::GetMIPSnameAndVersion(void)
 }
 
 // Open connection to MIPS and read its name.
+/*! \brief Comms::ConnectToMIPS
+ * Opens a serial or TCP connection to MIPS and reads the device name and version.
+ * Returns true if the connection was established successfully.
+ */
 bool Comms::ConnectToMIPS()
 {
     QElapsedTimer timer;
@@ -906,6 +1017,9 @@ bool Comms::ConnectToMIPS()
     return true;
 }
 
+/*! \brief Comms::DisconnectFromMIPS
+ * Closes the active TCP or serial connection and stops keep-alive timers.
+ */
 void Comms::DisconnectFromMIPS()
 {
     if(client.isOpen())
@@ -917,12 +1031,16 @@ void Comms::DisconnectFromMIPS()
     closeSerialPort();
 }
 
+/*! \brief Comms::isAMPS
+ * Opens the given serial port at the specified baud rate and checks whether
+ * the connected device responds as an AMPS unit. Returns true if so.
+ */
 bool Comms::isAMPS(QString port, QString baud)
 {
     QString res;
 
     if(serial->isOpen()) return false;  // If the port is open then return false
-    disconnect(serial, SIGNAL(error(QSerialPort::SerialPortError)),0,0);
+    disconnect(serial, &QSerialPort::errorOccurred, nullptr, nullptr);
     // Init the port parameters
     p.name = port;
     serial->setPortName(p.name);
@@ -963,12 +1081,16 @@ bool Comms::isAMPS(QString port, QString baud)
     return false;
 }
 
+/*! \brief Comms::isMIPS
+ * Opens the given serial port at 115200 baud and checks whether the device
+ * responds as a MIPS unit. Returns true if so.
+ */
 bool Comms::isMIPS(QString port)
 {
     QString res;
 
     if(serial->isOpen()) return false;  // If the port is open then return false
-    disconnect(serial, SIGNAL(error(QSerialPort::SerialPortError)),0,0);
+    disconnect(serial, &QSerialPort::errorOccurred, nullptr, nullptr);
     // Init the port parameters
     p.name = port;
     serial->setPortName(p.name);
@@ -1008,15 +1130,18 @@ bool Comms::isMIPS(QString port)
     return false;
 }
 
+/*! \brief Comms::msDelay
+ * Blocking delay of the specified number of milliseconds.
+ */
 void Comms::msDelay(int ms)
 {
     QThread::msleep(ms);
-//    QElapsedTimer timer;
 
-//    timer.start();
-//    while(timer.elapsed() < ms) readData2RingBuffer(); //QApplication::processEvents();
 }
 
+/*! \brief Comms::reopenSerialPort
+ * Closes and reopens the serial port with a 250 ms pause between operations.
+ */
 void Comms::reopenSerialPort(void)
 {
     if(!serial->isOpen()) return;
@@ -1026,6 +1151,9 @@ void Comms::reopenSerialPort(void)
     serial->setDataTerminalReady(true);
 }
 
+/*! \brief Comms::reopenPort
+ * Attempts to re-establish the connection (TCP or serial) after a drop.
+ */
 void Comms::reopenPort(void)
 {
     QElapsedTimer timer;
@@ -1056,9 +1184,13 @@ void Comms::reopenPort(void)
     }
 }
 
+/*! \brief Comms::openSerialPort
+ * Configures and opens the serial port using the stored settings.
+ * Returns true on success; shows an error dialog on failure.
+ */
 bool Comms::openSerialPort()
 {
-    connect(serial, SIGNAL(errorOccurred(QSerialPort::SerialPortError)), this,SLOT(handleError(QSerialPort::SerialPortError)));
+    connect(serial, &QSerialPort::errorOccurred, this, &Comms::handleError);
     serial->setPortName(p.name);
     #if defined(Q_OS_MAC)
         serial->setPortName("cu." + p.name);
@@ -1070,21 +1202,21 @@ bool Comms::openSerialPort()
     serial->setFlowControl(p.flowControl);
     if (serial->open(QIODevice::ReadWrite))
     {
-        //sb->showMessage(QString("Connected to %1 : %2, %3, %4, %5, %6")
-        //                    .arg(p.name).arg(p.stringBaudRate).arg(p.stringDataBits)
-        //                    .arg(p.stringParity).arg(p.stringStopBits).arg(p.stringFlowControl));
         sb->showMessage(QString("Connected to %1 : %2, %3, %4, %5, %6")
                             .arg(p.name,p.stringBaudRate,p.stringDataBits,p.stringParity,p.stringStopBits,p.stringFlowControl));
         return true;
     }
     else
     {
-        QMessageBox::critical(this, QString("Error"), serial->errorString());
+        QMessageBox::critical(nullptr, QString("Error"), serial->errorString());
         sb->showMessage(tr("Open error: ") + serial->errorString());
     }
     return false;
 }
 
+/*! \brief Comms::closeSerialPort
+ * Closes the serial port and disconnects the error-occurred signal handler.
+ */
 void Comms::closeSerialPort()
 {
     if (serial->isOpen()) serial->close();
@@ -1093,9 +1225,13 @@ void Comms::closeSerialPort()
     serial->close();
     if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + " Closed!",2000);
     else sb->showMessage("Closed!",2000);
-    disconnect(serial, SIGNAL(errorOccurred(QSerialPort::SerialPortError)),0,0);
+    disconnect(serial, &QSerialPort::errorOccurred, nullptr, nullptr);
 }
 
+/*! \brief Comms::handleError
+ * Slot: handles serial port errors. On ResourceError, closes the port and
+ * starts the reconnect timer if AutoRestore is enabled in properties.
+ */
 void Comms::handleError(QSerialPort::SerialPortError error)
 {
     if (error == QSerialPort::ResourceError)
@@ -1104,7 +1240,7 @@ void Comms::handleError(QSerialPort::SerialPortError error)
         closeSerialPort();
         if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + tr(" Critical Error, port closing: ") + serial->errorString());
         else sb->showMessage(tr("Critical Error, port closing: ") + serial->errorString());
-        if(properties != NULL)
+        if(properties != nullptr)
         {
             if(properties->AutoRestore)
             {
@@ -1115,6 +1251,9 @@ void Comms::handleError(QSerialPort::SerialPortError error)
     }
 }
 
+/*! \brief Comms::writeData
+ * Writes a byte array to the open TCP socket or serial port in 100-byte chunks.
+ */
 void Comms::writeData(const QByteArray &data)
 {
     if(client.isOpen())
@@ -1128,7 +1267,6 @@ void Comms::writeData(const QByteArray &data)
                 msDelay(10);
             }
         }
-        //client.write(data);
     }
     if(serial->isOpen())
     {
@@ -1141,11 +1279,14 @@ void Comms::writeData(const QByteArray &data)
                 msDelay(10);
             }
         }
-        //serial->write(data);
     }
 }
 
-void Comms::readAvaliableData2RingBuffer(void)
+/*! \brief Comms::readAvailableData2RingBuffer
+ * Reads all currently available bytes from the open connection into the ring
+ * buffer and emits DataReady. Does not block.
+ */
+void Comms::readAvailableData2RingBuffer(void)
 {
     int i;
 
@@ -1169,6 +1310,11 @@ void Comms::readAvaliableData2RingBuffer(void)
     }
 }
 
+/*! \brief Comms::readData2RingBuffer
+ * Slot: reads incoming bytes into the ring buffer. Waits briefly if no bytes
+ * are available. Emits lineAvailable when a complete line is present, and
+ * DataReady after every read.
+ */
 void Comms::readData2RingBuffer(void)
 {
     int i;
@@ -1185,10 +1331,13 @@ void Comms::readData2RingBuffer(void)
         QByteArray data = serial->readAll();
         for(i=0;i<data.size();i++) rb.putch(data[i]);
     }
-    if(rb.numLines() > 0) emit lineAvalible();
+    if(rb.numLines() > 0) emit lineAvailable();
     emit DataReady();
 }
 
+/*! \brief Comms::connected
+ * Slot: called when the TCP socket establishes a connection.
+ */
 void Comms::connected(void)
 {
     if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + tr(" MIPS connected"));
@@ -1196,6 +1345,9 @@ void Comms::connected(void)
     client_connected = true;
 }
 
+/*! \brief Comms::isConnected
+ * Returns true if a TCP or serial connection is currently active.
+ */
 bool Comms::isConnected(void)
 {
     if(client_connected) return true;
@@ -1203,17 +1355,26 @@ bool Comms::isConnected(void)
     return false;
 }
 
+/*! \brief Comms::disconnected
+ * Slot: called when the TCP socket connection is lost.
+ */
 void Comms::disconnected(void)
 {
     if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + " Disconnect signaled!",2000);
     else sb->showMessage("Disconnect signaled!!",2000);
 }
 
+/*! \brief Comms::getline
+ * Returns the next complete line from the ring buffer.
+ */
 QString Comms::getline(void)
 {
     return(rb.getline());
 }
 
+/*! \brief Comms::readall
+ * Drains and returns all bytes currently in the ring buffer.
+ */
 QByteArray Comms::readall(void)
 {
     QByteArray data;
@@ -1227,22 +1388,32 @@ QByteArray Comms::readall(void)
     }
 }
 
+/*! \brief Comms::slotAboutToClose
+ * Slot: called when the TCP socket is about to close. Reserved for cleanup.
+ */
 void Comms::slotAboutToClose(void)
 {
 }
 
+/*! \brief Comms::slotKeepAlive
+ * Slot: sends a newline to keep the TCP connection alive.
+ */
 void Comms::slotKeepAlive(void)
 {
    SendString("\n");
 }
 
+/*! \brief Comms::slotReconnect
+ * Slot: attempts to reopen the serial port after a drop, stopping the
+ * reconnect timer on success.
+ */
 void Comms::slotReconnect(void)
 {
     if(!serial->isOpen())
     {
         serial->open(QIODevice::ReadWrite);
         serial->setDataTerminalReady(true);
-        connect(serial, SIGNAL(errorOccurred(QSerialPort::SerialPortError)), this,SLOT(handleError(QSerialPort::SerialPortError)));
+        connect(serial, &QSerialPort::errorOccurred, this, &Comms::handleError);
     }
     if(serial->isOpen())
     {

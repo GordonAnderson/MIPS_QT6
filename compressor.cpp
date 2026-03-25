@@ -1,16 +1,39 @@
+// =============================================================================
+// compressor.cpp
+//
+// Compressor dialog class for the MIPS host application.
+//
+// Widget object name conventions drive command mapping at runtime:
+//   leS*       — line edit setpoint: command = "S" + name.mid(3)
+//   leG*       — line edit readback: command = "G" + name.mid(3)
+//   lel*_N     — line edit from a multi-value list response, index N
+//   chk*_ON_OFF — checkbox: sends ON when checked, OFF when unchecked
+//   rb*_VAL    — radio button: sends VAL when selected
+//
+// Hardware:    MIPS ARB compressor module (commands: TARBTRG, SARBCORDER, etc.)
+// Depends on:  comms.h, ui_compressor.h
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
+
 #include "compressor.h"
 #include "ui_compressor.h"
 
+// -----------------------------------------------------------------------------
+// Constructor — connects all dynamically-named widgets to the Updated slot.
+// -----------------------------------------------------------------------------
 Compressor::Compressor(QWidget *parent, QString name, QString MIPSname):
     QDialog(parent),
     ui(new Ui::Compressor)
 {
     ui->setupUi(this);
-    Updating = false;
+    Updating  = false;
     UpdateOff = false;
-    comms = NULL;
-    Title  = name;
-    MIPSnm = MIPSname;
+    comms     = NULL;
+    Title     = name;
+    MIPSnm    = MIPSname;
 
     QWidget::setWindowTitle(Title);
     QObjectList widgetList = ui->frmCompressor->children();
@@ -19,18 +42,26 @@ Compressor::Compressor(QWidget *parent, QString name, QString MIPSname):
     widgetList += ui->gbARBtiming->children();
     foreach(QObject *w, widgetList)
     {
-       if(w->objectName().contains("leS")) connect(((QLineEdit *)w),SIGNAL(editingFinished()),this,SLOT(Updated()));
-       else if(w->objectName().contains("chk")) connect(((QCheckBox *)w),SIGNAL(toggled(bool)),this,SLOT(Updated()));
-       else if(w->objectName().contains("rb")) connect(((QRadioButton *)w),SIGNAL(clicked(bool)),this,SLOT(Updated()));
+        if(w->objectName().contains("leS"))
+            connect(((QLineEdit *)w), &QLineEdit::returnPressed, this, &Compressor::Updated);
+        else if(w->objectName().contains("chk"))
+            connect(((QCheckBox *)w), &QCheckBox::toggled, this, &Compressor::Updated);
+        else if(w->objectName().contains("rb"))
+            connect(((QRadioButton *)w), &QRadioButton::clicked, this, &Compressor::Updated);
     }
-    connect(ui->pbARBforceTrigger,SIGNAL(pressed()),this,SLOT(pbARBforceTriggerSlot()));
+    connect(ui->pbARBforceTrigger, &QPushButton::pressed, this, &Compressor::pbARBforceTriggerSlot);
 }
 
+// ~Compressor — destructor. Releases the UI form.
 Compressor::~Compressor()
 {
     delete ui;
 }
 
+// -----------------------------------------------------------------------------
+// Update — polls all compressor widgets from MIPS and refreshes the UI.
+// Skips widgets that currently have focus to avoid overwriting user input.
+// -----------------------------------------------------------------------------
 void Compressor::Update(void)
 {
     QStringList resList;
@@ -38,10 +69,9 @@ void Compressor::Update(void)
     QString CurrentList;
     int i;
 
-    if(comms==NULL) return;
+    if(comms == NULL) return;
     if(UpdateOff) return;
     Updating = true;
-    // Update all input boxes for the selected tab
     QObjectList widgetList = ui->frmCompressor->children();
     widgetList += ui->gbARBmode->children();
     widgetList += ui->gbARBswitch->children();
@@ -59,7 +89,8 @@ void Compressor::Update(void)
         }
         else if(w->objectName().startsWith("chk"))
         {
-            // Checkbox names encode the command and response for check and uncheck
+            // Checkbox names encode the command and on/off response values:
+            // chk<CMD>_<ON_VAL>_<OFF_VAL>
             resList = w->objectName().split("_");
             if(resList.count() == 3)
             {
@@ -67,11 +98,12 @@ void Compressor::Update(void)
                 res = comms->SendMess(res);
                 if(res == resList[1]) ((QCheckBox *)w)->setChecked(true);
                 if(res == resList[2]) ((QCheckBox *)w)->setChecked(false);
-                //if(res.contains("?")) comms->waitforline(100);   // removed 7/26/25, not sure what this is for?
             }
         }
         else if(w->objectName().startsWith("rb"))
         {
+            // Radio button names encode the command and the value for this button:
+            // rb<CMD>_<VAL>
             resList = w->objectName().split("_");
             if(resList.count() == 2)
             {
@@ -82,7 +114,8 @@ void Compressor::Update(void)
         }
         else if(w->objectName().startsWith("lel"))
         {
-            // This is a list of parameters from a command common to several line edit boxes
+            // Multi-value list line edits: lel<CMD>_<INDEX>
+            // Sends the command once and caches the response for subsequent indices.
             resList = w->objectName().split("_");
             if(resList.count() == 2)
             {
@@ -97,13 +130,17 @@ void Compressor::Update(void)
     Updating = false;
 }
 
+// -----------------------------------------------------------------------------
+// Updated — slot called when any setpoint widget changes. Sends the new value
+// to MIPS using the command encoded in the widget's object name.
+// -----------------------------------------------------------------------------
 void Compressor::Updated(void)
 {
     QObject*    obj = sender();
     QString     res;
     QStringList resList;
 
-    if(comms==NULL) return;
+    if(comms == NULL) return;
     if(Updating) return;
     if(obj->objectName().startsWith("leS"))
     {
@@ -131,43 +168,50 @@ void Compressor::Updated(void)
     }
 }
 
+// -----------------------------------------------------------------------------
+// Report — serialises all widget values for method file save.
+// -----------------------------------------------------------------------------
 QString Compressor::Report(void)
 {
-   QString res;
-   QStringList resList;
+    QString res;
+    QStringList resList;
 
-   res.clear();
-   QObjectList widgetList = ui->frmCompressor->children();
-   widgetList += ui->gbARBmode->children();
-   widgetList += ui->gbARBswitch->children();
-   widgetList += ui->gbARBtiming->children();
-   foreach(QObject *w, widgetList)
-   {
-       if(w->objectName().startsWith("leS"))
-       {
-           res += Title + "," + w->objectName() + "," + ((QLineEdit *)w)->text() + "\n";
-       }
-       if(w->objectName().startsWith("chkS"))
-       {
-           resList = w->objectName().split("_");
-           if(resList.count() == 3)
-           {
-               if(((QCheckBox *)w)->isChecked()) res += Title + "," + resList[0] + "," + resList[1] + "\n";
-               else res += Title + "," + resList[0] + "," + resList[2] + "\n";
-           }
-       }
-       if(w->objectName().startsWith("rbS"))
-       {
-           resList = w->objectName().split("_");
-           if(resList.count() == 2) if(((QRadioButton *)w)->isChecked()) res += Title + "," + resList[0] + "," + resList[1] + "\n";
-       }
-   }
-   return res;
+    res.clear();
+    QObjectList widgetList = ui->frmCompressor->children();
+    widgetList += ui->gbARBmode->children();
+    widgetList += ui->gbARBswitch->children();
+    widgetList += ui->gbARBtiming->children();
+    foreach(QObject *w, widgetList)
+    {
+        if(w->objectName().startsWith("leS"))
+        {
+            res += Title + "," + w->objectName() + "," + ((QLineEdit *)w)->text() + "\n";
+        }
+        if(w->objectName().startsWith("chkS"))
+        {
+            resList = w->objectName().split("_");
+            if(resList.count() == 3)
+            {
+                if(((QCheckBox *)w)->isChecked()) res += Title + "," + resList[0] + "," + resList[1] + "\n";
+                else res += Title + "," + resList[0] + "," + resList[2] + "\n";
+            }
+        }
+        if(w->objectName().startsWith("rbS"))
+        {
+            resList = w->objectName().split("_");
+            if(resList.count() == 2)
+                if(((QRadioButton *)w)->isChecked()) res += Title + "," + resList[0] + "," + resList[1] + "\n";
+        }
+    }
+    return res;
 }
 
+// -----------------------------------------------------------------------------
+// SetValues — restores a single widget value from a method file line.
+// -----------------------------------------------------------------------------
 bool Compressor::SetValues(QString strVals)
 {
-    QStringList resList,ctrlList;
+    QStringList resList, ctrlList;
 
     if(!strVals.startsWith(Title)) return false;
     resList = strVals.split(",");
@@ -193,8 +237,8 @@ bool Compressor::SetValues(QString strVals)
                 ctrlList = w->objectName().split("_");
                 if(ctrlList.count() >= 3)
                 {
-                    if((ctrlList[0] == resList[1]) && (ctrlList[1] == resList[2])) {((QCheckBox *)w)->setChecked(true); return(true);}
-                    if((ctrlList[0] == resList[1]) && (ctrlList[2] == resList[2])) {((QCheckBox *)w)->setChecked(true); return(true);}
+                    if((ctrlList[0] == resList[1]) && (ctrlList[1] == resList[2])) { ((QCheckBox *)w)->setChecked(true);  return true; }
+                    if((ctrlList[0] == resList[1]) && (ctrlList[2] == resList[2])) { ((QCheckBox *)w)->setChecked(false); return true; }
                     emit ((QCheckBox *)w)->clicked();
                 }
             }
@@ -212,12 +256,19 @@ bool Compressor::SetValues(QString strVals)
     return false;
 }
 
+// -----------------------------------------------------------------------------
+// pbARBforceTriggerSlot — sends the force trigger command to MIPS.
+// -----------------------------------------------------------------------------
 void Compressor::pbARBforceTriggerSlot(void)
 {
-    if(comms==NULL) return;
+    if(comms == NULL) return;
     comms->SendCommand("TARBTRG\n");
 }
 
+// -----------------------------------------------------------------------------
+// ProcessCommand — scripting interface for reading and writing compressor
+// parameters by name.
+// -----------------------------------------------------------------------------
 QString Compressor::ProcessCommand(QString cmd)
 {
     QLineEdit    *le    = NULL;
@@ -227,24 +278,24 @@ QString Compressor::ProcessCommand(QString cmd)
 
     if(!cmd.startsWith(Title)) return "?";
     QStringList resList = cmd.split("=");
-    if(resList[0].trimmed() == Title + ".Order") le = ui->leSARBCORDER;
-    else if(resList[0].trimmed() == Title + ".Table") le = ui->leSARBCTBL;
-    else if(resList[0].trimmed() == Title + ".Compress time") le = ui->leSARBCTC;
-    else if(resList[0].trimmed() == Title + ".Trigger delay") le = ui->leSARBCTD;
-    else if(resList[0].trimmed() == Title + ".Normal time") le = ui->leSARBCTN;
+    if(resList[0].trimmed() == Title + ".Order")            le = ui->leSARBCORDER;
+    else if(resList[0].trimmed() == Title + ".Table")       le = ui->leSARBCTBL;
+    else if(resList[0].trimmed() == Title + ".Compress time")     le = ui->leSARBCTC;
+    else if(resList[0].trimmed() == Title + ".Trigger delay")     le = ui->leSARBCTD;
+    else if(resList[0].trimmed() == Title + ".Normal time")       le = ui->leSARBCTN;
     else if(resList[0].trimmed() == Title + ".Non compress time") le = ui->leSARBCTNC;
-    else if(resList[0].trimmed() == Title + ".Compress") rb = ui->rbSARBCMODE_Compress;
-    else if(resList[0].trimmed() == Title + ".Normal") rb = ui->rbSARBCMODE_Normal;
-    else if(resList[0].trimmed() == Title + ".Close") rb = ui->rbSARBCSW_Close;
-    else if(resList[0].trimmed() == Title + ".Open") rb = ui->rbSARBCSW_Open;
-    else if(resList[0].trimmed() == Title + ".Trigger") pb = ui->pbARBforceTrigger;
+    else if(resList[0].trimmed() == Title + ".Compress")    rb = ui->rbSARBCMODE_Compress;
+    else if(resList[0].trimmed() == Title + ".Normal")      rb = ui->rbSARBCMODE_Normal;
+    else if(resList[0].trimmed() == Title + ".Close")       rb = ui->rbSARBCSW_Close;
+    else if(resList[0].trimmed() == Title + ".Open")        rb = ui->rbSARBCSW_Open;
+    else if(resList[0].trimmed() == Title + ".Trigger")     pb = ui->pbARBforceTrigger;
     if(le != NULL)
     {
-       if(resList.count() == 1) return le->text();
-       le->setText(resList[1]);
-       le->setModified(true);
-       emit le->editingFinished();
-       return "";
+        if(resList.count() == 1) return le->text();
+        le->setText(resList[1]);
+        le->setModified(true);
+        emit le->editingFinished();
+        return "";
     }
     if(rb != NULL)
     {
@@ -252,18 +303,18 @@ QString Compressor::ProcessCommand(QString cmd)
         {
             if(rb->isChecked()) return "TRUE"; else return "FALSE";
         }
-        if(resList[1].trimmed() == "TRUE") rb->setChecked(true);
+        if(resList[1].trimmed() == "TRUE")  rb->setChecked(true);
         if(resList[1].trimmed() == "FALSE") rb->setChecked(false);
         emit rb->clicked();
         return "";
     }
     if(combo != NULL)
     {
-       if(resList.count() == 1) return combo->currentText();
-       int i = combo->findText(resList[1].trimmed());
-       if(i<0) return "?";
-       combo->setCurrentIndex(i);
-       return "";
+        if(resList.count() == 1) return combo->currentText();
+        int i = combo->findText(resList[1].trimmed());
+        if(i < 0) return "?";
+        combo->setCurrentIndex(i);
+        return "";
     }
     if(pb != NULL)
     {

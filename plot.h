@@ -1,3 +1,16 @@
+// =============================================================================
+// plot.h
+//
+// Class declarations for Plot and PlotData, plus the PlotGraph / DataPoint /
+// SGcoeff data structures and the free-standing binary/CSV helper functions.
+// See plot.cpp for full documentation.
+//
+// Author:      Gordon Anderson, GAA Custom Electronics, LLC
+// Created:     2021
+// Revised:     March 2026 — documented for host app v2.22
+//
+// Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
+// =============================================================================
 #ifndef PLOT_H
 #define PLOT_H
 
@@ -7,35 +20,42 @@
 #include <QDebug>
 #include <QKeyEvent>
 #include <QList>
-#include <memory>
 #include "qcustomplot.h"
 
 namespace Ui {
 class Plot;
 }
 
+// Savitzky-Golay filter coefficient table entry
 typedef struct
 {
-   int    np;
-   float  h;
-   QList<float> an;
+    int          np;  // number of points in the filter window
+    float        h;   // normalisation divisor
+    QList<float> an;  // convolution coefficients
 } SGcoeff;
 
-// This structure contains one set of data points for a graph
+// One data point in a scan: X axis value and one Y value per graph channel
 typedef struct
 {
-    int point;
-    float X;
-    QList<float *> Y;
+    int           point;  // sequential point index
+    float         X;      // X axis value
+    QList<float*> Y;      // Y values (heap-allocated); one entry per graph channel
 } DataPoint;
 
-// This structure contains one set of graphs
+// One complete scan: a vector of DataPoints accumulated over NumScans coadds
 typedef struct
 {
-    int NumScans;           // Number of coadds, only Y values are coadded
-    QList<DataPoint *> Vec;
+    int                NumScans;  // coadd count; Y values are divided by this when painted
+    QList<DataPoint*>  Vec;
 } PlotGraph;
 
+// -----------------------------------------------------------------------------
+// Plot — QDialog-based plot window driven by PlotCommand() string API.
+// Supports 1 or 2 line graphs, optional dual heatmap views, Savitzky-Golay
+// smoothing, zoom history undo, binary/CSV save/load, and clipboard capture.
+// All commands processed by PlotCommand() are appended to the Comments block
+// so a saved .plot file can fully recreate the session on Load().
+// -----------------------------------------------------------------------------
 class Plot : public QDialog
 {
     Q_OBJECT
@@ -116,6 +136,11 @@ protected:
     bool eventFilter(QObject *obj, QEvent *event);
 };
 
+// -----------------------------------------------------------------------------
+// PlotData — draggable embedded widget that wraps a Plot dialog inside a
+// QVBoxLayout. Used by the scripting system to embed plots in control panels.
+// ProcessCommand() and SetValues() forward commands to Plot::PlotCommand().
+// -----------------------------------------------------------------------------
 class PlotData : public QWidget
 {
     Q_OBJECT
@@ -135,7 +160,7 @@ private:
     Plot *plot;
 private slots:
 protected:
-    //bool eventFilter(QObject *obj, QEvent *event);
+           //bool eventFilter(QObject *obj, QEvent *event);
 };
 
 // Prototypes
