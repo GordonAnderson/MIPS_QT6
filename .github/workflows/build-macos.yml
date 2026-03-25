@@ -48,6 +48,17 @@ jobs:
           ls -la build/
           ls -la build/MIPS.app/ 2>/dev/null || echo "No .app bundle found"
 
+      - name: Check macdeployqt        ← add here
+        run: |
+          which macdeployqt || echo "macdeployqt not found"
+          which macdeployqt6 || echo "macdeployqt6 not found"
+          ls $Qt6_DIR/bin/ | grep deploy || echo "no deploy tool found"
+
+      - name: Deploy Qt frameworks     ← and here
+        run: |
+          macdeployqt6 MIPS.app || macdeployqt MIPS.app
+        working-directory: build
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
