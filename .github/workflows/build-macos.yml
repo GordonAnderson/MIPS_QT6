@@ -33,7 +33,9 @@ jobs:
           sed -i '' 's|/opt/homebrew/Cellar/cppzmq/[^/]*/include|/opt/homebrew/include|g' MIPS.pro
 
       - name: Create build directory
-        run: mkdir build
+        run: |
+          rm -f .qmake.stash
+          mkdir build
         
       - name: Build
         run: |
