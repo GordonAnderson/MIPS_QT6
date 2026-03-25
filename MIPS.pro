@@ -3,7 +3,6 @@
 # Project created by QtCreator 2015-06-27T10:54:52
 #
 #-------------------------------------------------
-
 QT       += core
 QT       += gui
 QT       += serialport
@@ -13,17 +12,12 @@ lessThan(QT_MAJOR_VERSION, 6):    QT += script
 #greaterThan(QT_MAJOR_VERSION, 5): QT += core5compat
 greaterThan(QT_MAJOR_VERSION, 5): QT += qml
 QT       += serialbus serialport widgets
-
 win32:RC_ICONS += GAACElogo.ico
 ICON = GAACElogo.icns
-
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
-
 TARGET = MIPS
 TEMPLATE = app
-
-CONFIG += static
-
+CONFIG += shared
 SOURCES += main.cpp connection.cpp fileops.cpp\
     Utilities.cpp \
     dcbgroups.cpp \
@@ -63,9 +57,7 @@ SOURCES += main.cpp connection.cpp fileops.cpp\
     zmqworker.cpp \
     TextLabel.cpp Shutdown.cpp SaveLoad.cpp CPbutton.cpp DACchannel.cpp ESI.cpp \
     Ccontrol.cpp Cpanel.cpp StatusLight.cpp TextMessage.cpp Table.cpp Slider.cpp
-
-
-HEADERS  += mips.h connection.h fileops.h\
+HEADERS  += mips.h \
     Utilities.h \
     console.h \
     dcbgroups.h \
@@ -95,7 +87,7 @@ HEADERS  += mips.h connection.h fileops.h\
     scriptingconsole.h \
     rfamp.h \
     tcpserver.h \
-    timinggenerator.h acquiredata.h timingcontrol.h eventcontrol.h \
+    timinggenerator.h \
     compressor.h \
     properties.h \
     plot.h \
@@ -103,7 +95,6 @@ HEADERS  += mips.h connection.h fileops.h\
     zmqworker.h \
     TextLabel.h Shutdown.h SaveLoad.h CPbutton.h DACchannel.h ESI.h \
     Ccontrol.h Cpanel.h StatusLight.h TextMessage.h Table.h Slider.h
-
 FORMS    += mips.ui \
     settingsdialog.ui \
     pse.ui \
@@ -119,45 +110,29 @@ FORMS    += mips.ui \
     compressor.ui \
     properties.ui \
     plot.ui
-
 RESOURCES += \
     files.qrc
-
 #QMAKE_APPLE_DEVICE_ARCHS = x86_64 arm64
 QMAKE_APPLE_DEVICE_ARCHS = arm64
 
 # macOS Homebrew paths
 macx {
-INCLUDEPATH += /opt/homebrew/Cellar/cppzmq/4.11.0/include
-INCLUDEPATH += /opt/homebrew/Cellar/zeromq/4.3.5_2/include
-LIBS += -L/opt/homebrew/Cellar/zeromq/4.3.5_2/lib -lzmq
+    INCLUDEPATH += /opt/homebrew/include
+    LIBS += -L/opt/homebrew/lib -lzmq
+}
+
+# Windows vcpkg paths
+win32 {
+    INCLUDEPATH += C:/vcpkg/installed/x64-windows/include
+    LIBS += -LC:/vcpkg/installed/x64-windows/lib -llibzmq-mt-4_3_5
 }
 
 # These two commands allow memory leak testing
 #QMAKE_CXXFLAGS += -fsanitize=address -fno-omit-frame-pointer
 #QMAKE_LFLAGS += -fsanitize=address
-
 CONFIG+=sdk_no_version_check
 #QMAKE_LFLAGS_WINDOWS = /SUBSYSTEM:WINDOWS,5.01
 #QMAKE_CXXFLAGS *= "-Xpreprocessor -fopenmp"
-#QMAKE_MAC_SDK = macosx10.12
-#MAKE_MAC_SDK = macosx
-#!host_build:QMAKE_MAC_SDK = macosx
-
-
 #QMAKE_MAC_SDK = macosx15.2
-
 DISTFILES += \
     Revision.md
-
-macx {
-    # This command runs after the main executable is linked
-    # It packages the frameworks and signs them for local use
-    QMAKE_POST_LINK += macdeployqt $$OUT_PWD/$${TARGET}.app -qmldir=$$PWD -codesign=-
-}
-
-
-
-
-
-
