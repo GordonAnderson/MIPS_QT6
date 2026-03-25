@@ -19,6 +19,9 @@ interacting with your MIPS systems:
 
 This application was developed using the Qt Creator version 13.0.2 and is written in Qt cpp 6.7.1.
 
+This project is licensed under the GNU General Public License v3.0 
+- see the LICENSE file for details.
+
 You can find documentation files on MIPS and install files on our google drive here:
 https://drive.google.com/drive/folders/0B3IchPRNYqYIcjZhdGFVMVR1VzQ?resourcekey=0-qTdIhau9LysBytglIla-yg&usp=drive_link
 

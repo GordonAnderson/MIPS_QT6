@@ -1,0 +1,61 @@
+name: Build macOS
+
+on:
+  workflow_dispatch:  # only runs when manually triggered
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install zeromq cppzmq
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.1'
+          modules: 'qtserialport qtserialbus'
+
+      - name: Fix ZMQ paths in .pro file
+        run: |
+          sed -i '' 's|/opt/homebrew/Cellar/zeromq/[^/]*/include|/opt/homebrew/include|g' MIPS.pro
+          sed -i '' 's|/opt/homebrew/Cellar/zeromq/[^/]*/lib|/opt/homebrew/lib|g' MIPS.pro
+          sed -i '' 's|/opt/homebrew/Cellar/cppzmq/[^/]*/include|/opt/homebrew/include|g' MIPS.pro
+
+      - name: Create build directory
+        run: |
+          rm -f .qmake.stash
+          mkdir build
+        
+      - name: Build
+        run: |
+          qmake ../MIPS.pro CONFIG+=release
+          make -j$(sysctl -n hw.ncpu)
+        working-directory: build
+
+      - name: Check build output        ← add this here
+        run: |
+          ls -la build/
+          ls -la build/MIPS.app/ 2>/dev/null || echo "No .app bundle found"
+
+      - name: Check macdeployqt        ← add here
+        run: |
+          which macdeployqt || echo "macdeployqt not found"
+          which macdeployqt6 || echo "macdeployqt6 not found"
+          ls $Qt6_DIR/bin/ | grep deploy || echo "no deploy tool found"
+
+      - name: Deploy Qt frameworks     ← and here
+        run: |
+          macdeployqt6 MIPS.app || macdeployqt MIPS.app
+        working-directory: build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MIPS-macOS
+          path: build/MIPS.app

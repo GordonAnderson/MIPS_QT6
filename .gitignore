@@ -1,6 +1,7 @@
 # Qt Creator local machine config — never commit these
 *.pro.user
 *.pro.user.*
+.qmake.stash
 
 # Build output
 build*/
