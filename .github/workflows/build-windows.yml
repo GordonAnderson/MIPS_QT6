@@ -2,9 +2,9 @@ name: Build Windows
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
   release:
     types: [ created ]
 
@@ -19,6 +19,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup MSVC compiler
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -31,34 +36,24 @@ jobs:
           C:/vcpkg/bootstrap-vcpkg.bat
           C:/vcpkg/vcpkg.exe install zeromq:x64-windows
 
-      - name: Fix ZMQ paths in .pro file
-        shell: pwsh
-        run: |
-          (Get-Content MIPS.pro) -replace 
-            'C:/Users/Gordon/vcpkg/installed/x64-windows', 
-            'C:/vcpkg/installed/x64-windows' | 
-          Set-Content MIPS.pro
-
       - name: Create build directory
-        run: |
-          del /f .qmake.stash 2>nul
-          mkdir build
         shell: cmd
+        run: |
+          if exist .qmake.stash del .qmake.stash
+          if not exist build mkdir build
 
       - name: Build
         shell: cmd
+        working-directory: build
         run: |
-          call "%Qt6_DIR%\..\..\..\..\bin\qtenv2.bat"
-          cd build
           qmake ..\MIPS.pro CONFIG+=release
           nmake
-        working-directory: .
 
       - name: Deploy Qt frameworks
         shell: cmd
+        working-directory: build
         run: |
-          windeployqt MIPS.exe
-        working-directory: build\release
+          windeployqt release\MIPS.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
