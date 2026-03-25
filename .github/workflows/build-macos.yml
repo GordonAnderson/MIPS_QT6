@@ -43,6 +43,11 @@ jobs:
           make -j$(sysctl -n hw.ncpu)
         working-directory: build
 
+      - name: Check build output        ← add this here
+        run: |
+          ls -la build/
+          ls -la build/MIPS.app/ 2>/dev/null || echo "No .app bundle found"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
