@@ -121,9 +121,14 @@ QMAKE_APPLE_DEVICE_ARCHS = arm64
 
 # macOS Homebrew paths
 macx {
-INCLUDEPATH += /opt/homebrew/Cellar/cppzmq/4.11.0/include
-INCLUDEPATH += /opt/homebrew/Cellar/zeromq/4.3.5_2/include
-LIBS += -L/opt/homebrew/Cellar/zeromq/4.3.5_2/lib -lzmq
+INCLUDEPATH += /opt/homebrew/include
+LIBS += -L/opt/homebrew/lib -lzmq
+}
+
+# Windows vcpkg paths
+win32 {
+INCLUDEPATH += C:/vcpkg/installed/x64-windows/include
+LIBS += -LC:/vcpkg/installed/x64-windows/lib -llibzmq-mt-4_3_5
 }
 
 # These two commands allow memory leak testing
