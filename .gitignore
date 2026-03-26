@@ -22,3 +22,7 @@ Thumbs.db
 
 # Internal working documents
 CLAUDE.md
+
+# Windows temp files
+*.TMP
+~$*
