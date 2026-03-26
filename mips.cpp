@@ -32,6 +32,7 @@
 #include "controlpanel.h"
 #include "scriptingconsole.h"
 #include "properties.h"
+#include "aboutdialog.h"
 
 #include <QMessageBox>
 #include <QtSerialPort/QSerialPort>
@@ -47,7 +48,7 @@
 #include <QInputDialog>
 #include <QElapsedTimer>
 
-QString Version = "MIPS, Version 2.23 March 20,2026";
+QString Version = QString("MIPS, Version %1 , %2").arg(APP_VERSION).arg(__DATE__);
 
 /*! \brief MIPS::MIPS
  * Constructor. Creates and wires all subsystem objects, connects all UI signals,
@@ -68,7 +69,7 @@ MIPS::MIPS(QWidget *parent, QString CPfilename) :
     ui->comboSystems->setVisible(false);
     ui->lblSystems->setVisible(false);
 
-    MIPS::setWindowTitle(Version);
+    setWindowTitle(Version);
 
     properties = new Properties;
     plots.clear();
@@ -313,10 +314,9 @@ void MIPS::GeneralHelp(void)
  */
 void MIPS::DisplayAboutMessage(void)
 {
-    QMessageBox::information(
-        this,
-        tr("Application Named"),
-        tr("MIPS interface application, written by Gordon Anderson. This application allows communications with the MIPS system supporting monitoring and control as well as pulse sequence generation.") );
+
+    AboutDialog dlg(this);
+    dlg.exec();
 }
 
 /*! \brief MIPS::DisplayProperties

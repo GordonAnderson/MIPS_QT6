@@ -12,6 +12,7 @@ lessThan(QT_MAJOR_VERSION, 6):    QT += script
 #greaterThan(QT_MAJOR_VERSION, 5): QT += core5compat
 greaterThan(QT_MAJOR_VERSION, 5): QT += qml
 QT       += serialbus serialport widgets
+DEFINES += APP_VERSION=\"2.23\"
 win32:RC_ICONS += GAACElogo.ico
 ICON = GAACElogo.icns
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
@@ -20,6 +21,7 @@ TEMPLATE = app
 CONFIG += shared
 SOURCES += main.cpp connection.cpp fileops.cpp\
     Utilities.cpp \
+    aboutdialog.cpp \
     dcbgroups.cpp \
     mips.cpp \
     console.cpp \
@@ -59,6 +61,7 @@ SOURCES += main.cpp connection.cpp fileops.cpp\
     Ccontrol.cpp Cpanel.cpp StatusLight.cpp TextMessage.cpp Table.cpp Slider.cpp
 HEADERS  += mips.h \
     Utilities.h \
+    aboutdialog.h \
     console.h \
     dcbgroups.h \
     modbus.h \
@@ -97,6 +100,7 @@ HEADERS  += mips.h \
     Ccontrol.h Cpanel.h StatusLight.h TextMessage.h Table.h Slider.h
 FORMS    += mips.ui \
     settingsdialog.ui \
+    aboutdialog.ui \
     pse.ui \
     help.ui \
     arbwaveformedit.ui \

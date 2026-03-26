@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>AboutDialog</class>
+ <widget class="QDialog" name="AboutDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>440</width>
+    <height>360</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>About MIPS</string>
+  </property>
+  <property name="sizeGripEnabled">
+   <bool>false</bool>
+  </property>
+
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="spacing"><number>0</number></property>
+   <property name="leftMargin"><number>0</number></property>
+   <property name="topMargin"><number>0</number></property>
+   <property name="rightMargin"><number>0</number></property>
+   <property name="bottomMargin"><number>0</number></property>
+
+   <!-- ═══ Header band — dark blue, logo + title ═══════════════════════ -->
+   <item>
+    <widget class="QFrame" name="frmHeader">
+     <property name="minimumHeight"><number>108</number></property>
+     <property name="maximumHeight"><number>108</number></property>
+     <property name="frameShape"><enum>QFrame::NoFrame</enum></property>
+     <property name="styleSheet">
+      <string notr="true">QFrame#frmHeader { background-color: #1F4E79; }</string>
+     </property>
+
+     <layout class="QHBoxLayout" name="hdrLayout">
+      <property name="leftMargin"><number>20</number></property>
+      <property name="rightMargin"><number>20</number></property>
+      <property name="topMargin"><number>14</number></property>
+      <property name="bottomMargin"><number>14</number></property>
+      <property name="spacing"><number>16</number></property>
+
+      <!-- Logo (pixmap set in .cpp) -->
+      <item>
+       <widget class="QLabel" name="lblLogo">
+        <property name="minimumSize"><size><width>64</width><height>64</height></size></property>
+        <property name="maximumSize"><size><width>64</width><height>64</height></size></property>
+        <property name="alignment"><set>Qt::AlignCenter</set></property>
+        <property name="styleSheet"><string notr="true">background: transparent;</string></property>
+       </widget>
+      </item>
+
+      <!-- App name / tagline / version stacked vertically -->
+      <item>
+       <layout class="QVBoxLayout" name="titleLayout">
+        <property name="spacing"><number>4</number></property>
+
+        <item>
+         <widget class="QLabel" name="lblAppName">
+          <property name="text"><string>MIPS QT6</string></property>
+          <property name="styleSheet">
+           <string notr="true">color:#FFFFFF; font-size:22pt; font-weight:bold; background:transparent;</string>
+          </property>
+         </widget>
+        </item>
+
+        <item>
+         <widget class="QLabel" name="lblTagline">
+          <property name="text"><string>Modular Intelligent Power System — Host Application</string></property>
+          <property name="styleSheet">
+           <string notr="true">color:#ADD8F7; font-size:9pt; background:transparent;</string>
+          </property>
+         </widget>
+        </item>
+
+        <!-- Version text is set in .cpp from APP_VERSION macro -->
+        <item>
+         <widget class="QLabel" name="lblVersion">
+          <property name="text"><string>Version —</string></property>
+          <property name="styleSheet">
+           <string notr="true">color:#ADD8F7; font-size:9pt; background:transparent;</string>
+          </property>
+         </widget>
+        </item>
+
+       </layout>
+      </item>
+
+      <item>
+       <spacer name="hdrSpacer">
+        <property name="orientation"><enum>Qt::Horizontal</enum></property>
+        <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+       </spacer>
+      </item>
+
+     </layout>
+    </widget>
+   </item>
+
+   <!-- ═══ Body — white, copyright / build / links ═══════════════════════ -->
+   <item>
+    <widget class="QFrame" name="frmBody">
+     <property name="frameShape"><enum>QFrame::NoFrame</enum></property>
+     <property name="styleSheet">
+      <string notr="true">
+       QFrame#frmBody  { background-color: #FFFFFF; }
+       QLabel          { font-size: 9pt; color: #222222; background: transparent; }
+      </string>
+     </property>
+
+     <layout class="QVBoxLayout" name="bodyLayout">
+      <property name="leftMargin"><number>24</number></property>
+      <property name="rightMargin"><number>24</number></property>
+      <property name="topMargin"><number>16</number></property>
+      <property name="bottomMargin"><number>8</number></property>
+      <property name="spacing"><number>7</number></property>
+
+      <!-- Copyright -->
+      <item>
+       <widget class="QLabel" name="lblCopyright">
+        <property name="text"><string>© 2026 GAA Custom Electronics, LLC — All rights reserved.</string></property>
+       </widget>
+      </item>
+
+      <!-- Author / contact -->
+      <item>
+       <widget class="QLabel" name="lblAuthor">
+        <property name="text"><string>Author: Gordon Anderson   |   gaa@gaa-ce.com   |   www.GAACustom.com</string></property>
+       </widget>
+      </item>
+
+      <!-- Separator -->
+      <item>
+       <widget class="QFrame" name="line1">
+        <property name="frameShape"><enum>QFrame::HLine</enum></property>
+        <property name="frameShadow"><enum>QFrame::Sunken</enum></property>
+        <property name="styleSheet"><string notr="true">color: #DDDDDD;</string></property>
+       </widget>
+      </item>
+
+      <!-- Build info (set in .cpp) -->
+      <item>
+       <widget class="QLabel" name="lblBuildInfo">
+        <property name="text"><string>Built with Qt —</string></property>
+        <property name="styleSheet">
+         <string notr="true">color: #666666; font-size: 8pt;</string>
+        </property>
+       </widget>
+      </item>
+
+      <item>
+       <spacer name="bodySpacer1">
+        <property name="orientation"><enum>Qt::Vertical</enum></property>
+        <property name="sizeHint" stdset="0"><size><width>20</width><height>6</height></size></property>
+       </spacer>
+      </item>
+
+      <!-- GitHub -->
+      <item>
+       <widget class="QLabel" name="lblGitHubTitle">
+        <property name="text"><string>Source code:</string></property>
+        <property name="styleSheet"><string notr="true">font-weight: bold;</string></property>
+       </widget>
+      </item>
+
+      <item>
+       <widget class="QLabel" name="lblGitHub">
+        <property name="text"><string/></property>
+        <property name="openExternalLinks"><bool>true</bool></property>
+        <property name="textFormat"><enum>Qt::RichText</enum></property>
+       </widget>
+      </item>
+
+      <item>
+       <spacer name="bodySpacer2">
+        <property name="orientation"><enum>Qt::Vertical</enum></property>
+        <property name="sizeHint" stdset="0"><size><width>20</width><height>4</height></size></property>
+       </spacer>
+      </item>
+
+      <!-- Google Drive docs -->
+      <item>
+       <widget class="QLabel" name="lblDocsTitle">
+        <property name="text"><string>Documentation &amp; install files:</string></property>
+        <property name="styleSheet"><string notr="true">font-weight: bold;</string></property>
+       </widget>
+      </item>
+
+      <item>
+       <widget class="QLabel" name="lblDocs">
+        <property name="text"><string/></property>
+        <property name="openExternalLinks"><bool>true</bool></property>
+        <property name="textFormat"><enum>Qt::RichText</enum></property>
+       </widget>
+      </item>
+
+      <!-- Push footer to bottom -->
+      <item>
+       <spacer name="bodySpacer3">
+        <property name="orientation"><enum>Qt::Vertical</enum></property>
+        <property name="sizeHint" stdset="0"><size><width>20</width><height>10</height></size></property>
+       </spacer>
+      </item>
+
+     </layout>
+    </widget>
+   </item>
+
+   <!-- ═══ Footer — light grey, Close button ══════════════════════════════ -->
+   <item>
+    <widget class="QFrame" name="frmFooter">
+     <property name="maximumHeight"><number>50</number></property>
+     <property name="frameShape"><enum>QFrame::NoFrame</enum></property>
+     <property name="styleSheet">
+      <string notr="true">
+       QFrame#frmFooter { background-color: #F2F2F2; border-top: 1px solid #CCCCCC; }
+      </string>
+     </property>
+
+     <layout class="QHBoxLayout" name="footerLayout">
+      <property name="leftMargin"><number>16</number></property>
+      <property name="rightMargin"><number>16</number></property>
+      <property name="topMargin"><number>8</number></property>
+      <property name="bottomMargin"><number>8</number></property>
+
+      <item>
+       <spacer name="footerSpacer">
+        <property name="orientation"><enum>Qt::Horizontal</enum></property>
+        <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+       </spacer>
+      </item>
+
+      <item>
+       <widget class="QPushButton" name="pbClose">
+        <property name="text"><string>Close</string></property>
+        <property name="minimumSize"><size><width>88</width><height>28</height></size></property>
+        <property name="default"><bool>true</bool></property>
+        <property name="styleSheet">
+         <string notr="true">
+          QPushButton          { background-color:#2E75B6; color:white; border:none; border-radius:4px; font-size:9pt; padding:4px 16px; }
+          QPushButton:hover    { background-color:#1F5C99; }
+          QPushButton:pressed  { background-color:#1F4E79; }
+         </string>
+        </property>
+       </widget>
+      </item>
+
+     </layout>
+    </widget>
+   </item>
+
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
