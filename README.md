@@ -28,7 +28,7 @@ host computer and one or more MIPS controllers.
 ## Screenshots
 
 | Main window — System tab | Custom control panel |
-|---|---|
+|--|---|
 | ![MIPS home screen](MIPS_home_screen.png) | ![Custom control panel](controlpanel.png) |
 
 ---
