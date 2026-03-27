@@ -140,3 +140,17 @@ CONFIG+=sdk_no_version_check
 #QMAKE_MAC_SDK = macosx15.2
 DISTFILES += \
     Revision.md
+    
+macx {
+    copyBossac.commands = mkdir -p $$OUT_PWD/$${TARGET}.app/Contents/MacOS && \
+                          cp $$PWD/tools/bossac $$OUT_PWD/$${TARGET}.app/Contents/MacOS/bossac && \
+                          chmod +x $$OUT_PWD/$${TARGET}.app/Contents/MacOS/bossac
+    QMAKE_EXTRA_TARGETS += copyBossac
+    POST_TARGETDEPS += copyBossac
+}
+
+win32 {
+    copyBossac.commands = copy /Y $$shell_path($$PWD/tools/bossac.exe) $$shell_path($$OUT_PWD/release/bossac.exe)
+    QMAKE_EXTRA_TARGETS += copyBossac
+    POST_TARGETDEPS += copyBossac
+}
