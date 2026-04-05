@@ -57,6 +57,9 @@ public:
     bool AutoFileName;
     bool AutoConnect;
     bool AutoRestore;
+    bool ScrollEdit;
+    bool ControlPanelEdit;
+    bool LassoZoom;
 
     // Numeric settings
     int   MinMIPS;
@@ -77,5 +80,8 @@ private slots:
     void slotOK(void);
     void slotLogFile(void);
 };
+
+// This makes the pointer visible to any file that includes Properties.h
+extern Properties *pProps;
 
 #endif // PROPERTIES_H

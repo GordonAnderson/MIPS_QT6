@@ -53,15 +53,18 @@ public:
     QCheckBox *chkAutoRestore;
     QLabel *label_5;
     QLineEdit *leSysFontSize;
+    QCheckBox *chkEnableScrollChange;
+    QCheckBox *chkEnableControlEdit;
+    QCheckBox *chkEnableLasso;
 
     void setupUi(QDialog *Properties)
     {
         if (Properties->objectName().isEmpty())
             Properties->setObjectName("Properties");
-        Properties->resize(538, 457);
+        Properties->resize(538, 544);
         pbOK = new QPushButton(Properties);
         pbOK->setObjectName("pbOK");
-        pbOK->setGeometry(QRect(410, 410, 113, 32));
+        pbOK->setGeometry(QRect(420, 510, 113, 32));
         pbOK->setAutoDefault(false);
         groupBox = new QGroupBox(Properties);
         groupBox->setObjectName("groupBox");
@@ -154,6 +157,15 @@ public:
         leSysFontSize = new QLineEdit(Properties);
         leSysFontSize->setObjectName("leSysFontSize");
         leSysFontSize->setGeometry(QRect(205, 420, 66, 21));
+        chkEnableScrollChange = new QCheckBox(Properties);
+        chkEnableScrollChange->setObjectName("chkEnableScrollChange");
+        chkEnableScrollChange->setGeometry(QRect(10, 450, 301, 20));
+        chkEnableControlEdit = new QCheckBox(Properties);
+        chkEnableControlEdit->setObjectName("chkEnableControlEdit");
+        chkEnableControlEdit->setGeometry(QRect(10, 480, 351, 20));
+        chkEnableLasso = new QCheckBox(Properties);
+        chkEnableLasso->setObjectName("chkEnableLasso");
+        chkEnableLasso->setGeometry(QRect(10, 510, 351, 20));
 
         retranslateUi(Properties);
 
@@ -194,6 +206,9 @@ public:
         leSysFontSize->setToolTip(QCoreApplication::translate("Properties", "This will change the system font size but you will have to stop and restart the application to apply changes to the main MIPS dilog", nullptr));
 #endif // QT_CONFIG(tooltip)
         leSysFontSize->setText(QCoreApplication::translate("Properties", "10", nullptr));
+        chkEnableScrollChange->setText(QCoreApplication::translate("Properties", "Enable scroll value change", nullptr));
+        chkEnableControlEdit->setText(QCoreApplication::translate("Properties", "Enable control panel widget position editing", nullptr));
+        chkEnableLasso->setText(QCoreApplication::translate("Properties", "Enable plot lasso zooming", nullptr));
     } // retranslateUi
 
 };
