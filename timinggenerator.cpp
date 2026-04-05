@@ -149,10 +149,10 @@ TimingGenerator::TimingGenerator(QWidget *parent, QString name, QString MIPSname
     ui->comboEventSignal->addItem("","");
 
     connect(ui->comboSelectEvent, &QComboBox::currentIndexChanged, this, [this](int){ slotEventChange(); });
-    connect(ui->leEventStart, &QLineEdit::returnPressed, this, &TimingGenerator::slotEventUpdated);
-    connect(ui->leEventWidth, &QLineEdit::returnPressed, this, &TimingGenerator::slotEventUpdated);
-    connect(ui->leEventValue, &QLineEdit::returnPressed, this, &TimingGenerator::slotEventUpdated);
-    connect(ui->leEventValueOff, &QLineEdit::returnPressed, this, &TimingGenerator::slotEventUpdated);
+    connect(ui->leEventStart, &QLineEdit::editingFinished, this, &TimingGenerator::slotEventUpdated);
+    connect(ui->leEventWidth, &QLineEdit::editingFinished, this, &TimingGenerator::slotEventUpdated);
+    connect(ui->leEventValue, &QLineEdit::editingFinished, this, &TimingGenerator::slotEventUpdated);
+    connect(ui->leEventValueOff, &QLineEdit::editingFinished, this, &TimingGenerator::slotEventUpdated);
     connect(ui->comboEventSignal, &QComboBox::currentIndexChanged, this, [this](int){ slotEventUpdated(); });
     connect(ui->pbGenerate, &QPushButton::pressed, this, &TimingGenerator::slotGenerate);
     connect(ui->pbClearEvents, &QPushButton::pressed, this, &TimingGenerator::slotClearEvents);

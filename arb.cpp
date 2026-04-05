@@ -54,8 +54,12 @@ ARB::ARB(Ui::MIPS *w, Comms *c)
     widgetList             += aui->gbARBtiming->children();
     foreach(QObject *w, widgetList)
     {
-        if(w->objectName().contains("leS"))
-            connect(qobject_cast<QLineEdit *>(w), &QLineEdit::returnPressed, this, &ARB::ARBUpdated);
+        QLineEdit *le = qobject_cast<QLineEdit *>(w);
+        if(le && le->objectName().contains("leS"))
+        {
+            connect(le, &QLineEdit::returnPressed,   this, [le]() {le->setModified(true);});
+            connect(le, &QLineEdit::editingFinished, this, &ARB::ARBUpdated);
+        }
     }
 
     // Connect all leS* fields in the Twave and dual-output group boxes to ARBUpdatedParms
@@ -63,8 +67,12 @@ ARB::ARB(Ui::MIPS *w, Comms *c)
     widgetList += aui->gbDualOutput->children();
     foreach(QObject *w, widgetList)
     {
-        if(w->objectName().contains("leS"))
-            connect(qobject_cast<QLineEdit *>(w), &QLineEdit::returnPressed, this, &ARB::ARBUpdatedParms);
+        QLineEdit *le = qobject_cast<QLineEdit *>(w);
+        if(le && le->objectName().contains("leS"))
+        {
+            connect(le, &QLineEdit::returnPressed,   this, [le]() {le->setModified(true);});
+            connect(le, &QLineEdit::editingFinished, this, &ARB::ARBUpdatedParms);
+        }
     }
 
     connect(aui->pbSetChannel,          &QPushButton::pressed,              this, &ARB::SetARBchannel);
@@ -554,8 +562,12 @@ void ARBchannel::Show(void)
 
     foreach(QObject *w, gbARB->children())
     {
-        if(w->objectName().startsWith("le"))
-            connect(qobject_cast<QLineEdit *>(w), &QLineEdit::returnPressed, this, &ARBchannel::leChange);
+        QLineEdit *le = qobject_cast<QLineEdit *>(w);
+        if(le && le->objectName().contains("leS"))
+        {
+            connect(le, &QLineEdit::returnPressed,   this, [le]() {le->setModified(true);});
+            connect(le, &QLineEdit::editingFinished, this, &ARBchannel::leChange);
+        }
     }
     connect(Waveform,     &QComboBox::currentIndexChanged,  this, &ARBchannel::wfChange);
     connect(EditWaveform, &QPushButton::pressed,            this, &ARBchannel::wfEdit);

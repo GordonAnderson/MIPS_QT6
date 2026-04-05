@@ -56,7 +56,8 @@ void ESI::Show(void)
     labels[1] = new QLabel("V", frmESI);
     labels[1]->setGeometry(220, 0, 21, 16);
 
-    connect(ESIsp,  &QLineEdit::returnPressed,          this, &ESI::ESIChange);
+    connect(ESIsp,  &QLineEdit::returnPressed,          this, [this]() {ESIsp->setModified(true);});
+    connect(ESIsp,  &QLineEdit::editingFinished,        this, &ESI::ESIChange);
     connect(ESIena, &QCheckBox::checkStateChanged,      this, &ESI::ESIenaChange);
 
     frmESI->installEventFilter(this);
@@ -121,7 +122,7 @@ bool ESI::SetValues(QString strVals)
     }
     ESIsp->setText(resList[2]);
     ESIsp->setModified(true);
-    emit ESIsp->returnPressed();
+    emit ESIsp->editingFinished();
     return true;
 }
 
@@ -155,7 +156,7 @@ QString ESI::ProcessCommand(QString cmd)
         {
             ESIsp->setText(resList[1]);
             ESIsp->setModified(true);
-            emit ESIsp->returnPressed();
+            emit ESIsp->editingFinished();
             return "";
         }
         if (resList[0] == res + ".ena")

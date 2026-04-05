@@ -102,7 +102,8 @@ void Ccontrol::Show(void)
                 else                              Vsp->setGeometry(70, 0, 70, 21);
                 if (Dtype.toUpper() == "DOUBLE") Vsp->setValidator(new QDoubleValidator);
                 Vsp->setToolTip(MIPSnm + "," + SetCmd);
-                connect(Vsp, &QLineEdit::returnPressed, this, &Ccontrol::VspChange);
+                connect(Vsp, &QLineEdit::returnPressed,   this, [this]() {Vsp->setModified(true);});
+                connect(Vsp, &QLineEdit::editingFinished, this, &Ccontrol::VspChange);
             }
             labels[1]->setGeometry(150, 0, 30, 16);
         }
@@ -116,7 +117,8 @@ void Ccontrol::Show(void)
             Vrb->setReadOnly(true);
             labels[1]->setGeometry(220, 0, 30, 16);
             Vsp->setToolTip(MIPSnm + "," + SetCmd);
-            connect(Vsp, &QLineEdit::returnPressed, this, &Ccontrol::VspChange);
+            connect(Vsp, &QLineEdit::returnPressed,   this, [this]() {Vsp->setModified(true);});
+            connect(Vsp, &QLineEdit::editingFinished, this, &Ccontrol::VspChange);
         }
     }
     if (Ctype == "CheckBox")
@@ -296,7 +298,7 @@ bool Ccontrol::SetValues(QString strVals)
         {
             Vsp->setText(resList[1]);
             Vsp->setModified(true);
-            emit Vsp->returnPressed();
+            emit Vsp->editingFinished();
         }
         return true;
     }
@@ -351,7 +353,7 @@ void Ccontrol::Shutdown(void)
         ActiveValue = Vsp->text();
         Vsp->setText(ShutdownValue);
         Vsp->setModified(true);
-        emit Vsp->returnPressed();
+        emit Vsp->editingFinished();
     }
 }
 
@@ -364,7 +366,7 @@ void Ccontrol::Restore(void)
         isShutdown = false;
         Vsp->setText(ActiveValue);
         Vsp->setModified(true);
-        emit Vsp->returnPressed();
+        emit Vsp->editingFinished();
     }
 }
 
@@ -484,7 +486,7 @@ QString Ccontrol::ProcessCommand(QString cmd)
         {
             Vsp->setText(resList[1].trimmed());
             Vsp->setModified(true);
-            emit Vsp->returnPressed();
+            emit Vsp->editingFinished();
             return "";
         }
         return "?";

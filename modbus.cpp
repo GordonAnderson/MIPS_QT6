@@ -83,7 +83,11 @@ void ModChannel::Show(void)
     leModChannel  = new QLineEdit(frmModChannel); leModChannel->setGeometry(70,0,70,21);
     labels[0] = new QLabel(Title,frmModChannel);  labels[0]->setGeometry(0,0,59,16);
     labels[1] = new QLabel(Units,frmModChannel);  labels[1]->setGeometry(150,0,31,16);
-    if(leModChannel) connect(leModChannel, &QLineEdit::returnPressed, this, &ModChannel::leModChannelChange);
+    if(leModChannel)
+    {
+        connect(leModChannel, &QLineEdit::returnPressed,   this, [this]() {leModChannel->setModified(true);});
+        connect(leModChannel, &QLineEdit::editingFinished, this, &ModChannel::leModChannelChange);
+    }
     frmModChannel->installEventFilter(this);
     frmModChannel->setMouseTracking(true);
     labels[0]->installEventFilter(this);
@@ -197,7 +201,9 @@ void ModChannel::Update(void)
 // with the current line edit value.
 void ModChannel::leModChannelChange(void)
 {
+    if(!leModChannel->isModified()) return;
     Write();
+    leModChannel->setModified(false);
 }
 
 // Report — returns a "title,value" CSV string for method file save.
