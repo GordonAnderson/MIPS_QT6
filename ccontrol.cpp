@@ -211,6 +211,7 @@ void Ccontrol::Update(void)
                 firstUpdate = false;
                 if (resList.count() == 3) res = comms->SendMess(resList[0] + "\n");
                 if (resList.count() == 4) res = comms->SendMess(resList[0] + "," + resList[1] + "\n");
+                if (resList.count() == 5) res = comms->SendMess(resList[0] + "," + resList[1] + "," + resList[2] + "\n");
                 chkBox->blockSignals(true);
                 if (res == resList[resList.count() - 2]) chkBox->setChecked(true);
                 else if (res == resList[resList.count() - 1]) chkBox->setChecked(false);
