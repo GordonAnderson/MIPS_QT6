@@ -490,7 +490,7 @@
 //	    - Control panel editing
 //	    - lasso zoom mode enable
 //	2.) Fixed the lasso zoom out phatom dotted box
-//	3.) Improved the line end box data entry. Enter now forces
+//	3.) Improved the line entry box data entry. Enter now forces
 //	    an update.
 
 
