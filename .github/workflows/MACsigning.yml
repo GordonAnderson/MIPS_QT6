@@ -95,17 +95,12 @@ jobs:
         run: |
           VERSION=$(echo "${{ github.event.inputs.version }}" | tr '[:lower:]' '[:upper:]')
           
-          ASSET_ID=$(gh release view $VERSION \
-            --json assets \
-            --jq ".assets[] | select(.name == \"MIPS-macOS-$VERSION.zip\") | .id")
+          ASSET_NAME="MIPS-macOS-${VERSION}.zip"
           
-          if [ -n "$ASSET_ID" ]; then
-            echo "Deleting unsigned asset ID: $ASSET_ID"
-            gh api --method DELETE /repos/${{ github.repository }}/releases/assets/$ASSET_ID
-          else
-            echo "No unsigned asset found, skipping delete"
-          fi
-          
+          echo "Looking for asset: $ASSET_NAME in release $VERSION"
+          gh release delete-asset $VERSION "$ASSET_NAME" --yes \
+            --repo ${{ github.repository }}
+            
       - name: Upload signed app to release
         uses: softprops/action-gh-release@v2
         with:
