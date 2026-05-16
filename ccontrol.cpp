@@ -9,7 +9,8 @@
 //
 // Depends on:  ccontrol.h, Utilities.h
 // Author:      Gordon Anderson, GAA Custom Electronics, LLC
-// Revised:     March 2026 — Phase 3 extraction
+// Revised:     March  2026 — Phase 3 extraction
+//              May 15 2026 - Disable update is not visable
 //
 // Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
 // =============================================================================
@@ -183,19 +184,24 @@ void Ccontrol::Update(void)
     comms->rb.clear();
     if (Ctype == "LineEdit")
     {
+        if (!ReadbackCmd.isEmpty())
+        {
+            if((Vrb->isVisible()) || (forceUpdate))
+            {
+                forceUpdate = false;
+                res = comms->SendMess(ReadbackCmd + "\n");
+                if (res == "") return;
+                Vrb->setText(res);
+            }
+        }
         if (!GetCmd.isEmpty())
         {
+            if((!Vsp->isVisible()) && !firstUpdate) return;
             if ((updateCount != 1) && !firstUpdate) return;
             firstUpdate = false;
             res = comms->SendMess(GetCmd + "\n");
             if (res == "") return;
             if (!Vsp->hasFocus()) Vsp->setText(res);
-        }
-        if (!ReadbackCmd.isEmpty())
-        {
-            res = comms->SendMess(ReadbackCmd + "\n");
-            if (res == "") return;
-            Vrb->setText(res);
         }
     }
     if (Ctype == "CheckBox")
@@ -207,6 +213,7 @@ void Ccontrol::Update(void)
             QStringList resList = ReadbackCmd.split(",");
             if (resList.count() >= 3)
             {
+                if((!chkBox->isVisible()) && !firstUpdate) return;
                 if ((updateCount != 1) && !firstUpdate) return;
                 firstUpdate = false;
                 if (resList.count() == 3) res = comms->SendMess(resList[0] + "\n");
@@ -224,6 +231,7 @@ void Ccontrol::Update(void)
     {
         if (!GetCmd.isEmpty())
         {
+            if((!comboBox->isVisible()) && !firstUpdate) return;
             if ((updateCount != 1) && !firstUpdate) return;
             firstUpdate = false;
             res = comms->SendMess(GetCmd + "\n");
@@ -284,6 +292,7 @@ bool Ccontrol::SetValues(QString strVals)
     QStringList resList;
     QString res;
 
+    firstUpdate = true;
     res.clear();
     if (p->objectName() != "") res = p->objectName() + ".";
     res += Title;
@@ -355,6 +364,7 @@ void Ccontrol::Shutdown(void)
         Vsp->setText(ShutdownValue);
         Vsp->setModified(true);
         emit Vsp->editingFinished();
+        firstUpdate = true;
     }
 }
 
@@ -368,6 +378,7 @@ void Ccontrol::Restore(void)
         Vsp->setText(ActiveValue);
         Vsp->setModified(true);
         emit Vsp->editingFinished();
+        firstUpdate = true;
     }
 }
 
@@ -469,6 +480,7 @@ QString Ccontrol::ProcessCommand(QString cmd)
         if (!cmd.startsWith(res)) return "?";
         if (cmd == res)
         {
+            firstUpdate = true;
             if (!SetCmd.isEmpty() || !GetCmd.isEmpty()) return Vsp->text();
             if (!ReadbackCmd.isEmpty()) return Vrb->text();
         }
@@ -479,6 +491,7 @@ QString Ccontrol::ProcessCommand(QString cmd)
         if (cmd == res + ".script")  return scriptName;
         if (cmd == res + ".readback")
         {
+            forceUpdate = true;
             if ((!SetCmd.isEmpty() || !GetCmd.isEmpty()) && !ReadbackCmd.isEmpty()) return Vrb->text();
             return "?";
         }
@@ -488,6 +501,7 @@ QString Ccontrol::ProcessCommand(QString cmd)
             Vsp->setText(resList[1].trimmed());
             Vsp->setModified(true);
             emit Vsp->editingFinished();
+            firstUpdate = true;
             return "";
         }
         return "?";
@@ -502,6 +516,7 @@ QString Ccontrol::ProcessCommand(QString cmd)
                 QStringList resCmd = ReadbackCmd.split("_");
                 if (resCmd.count() == 3)
                 {
+                    firstUpdate = true;
                     if (chkBox->isChecked()) return resCmd[1];
                     else                     return resCmd[2];
                 }
@@ -517,6 +532,7 @@ QString Ccontrol::ProcessCommand(QString cmd)
                 QStringList resCmd = ReadbackCmd.split("_");
                 if (resCmd.count() == 3)
                 {
+                    firstUpdate = true;
                     if      (resCmd[1] == resList[1]) chkBox->setChecked(true);
                     else if (resCmd[2] == resList[1]) chkBox->setChecked(false);
                     else return "?";
@@ -552,6 +568,7 @@ QString Ccontrol::ProcessCommand(QString cmd)
         if ((i < 0) || (resList[0] != res)) return "?";
         comboBox->setCurrentIndex(i);
         comboBoxChanged(i);
+        firstUpdate = true;
         return "";
     }
     return "?";
