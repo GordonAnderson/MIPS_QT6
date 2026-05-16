@@ -93,10 +93,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Get the asset ID of the unsigned zip on the release
-          ASSET_ID=$(gh release view ${{ github.event.inputs.version }} \
+          VERSION=$(echo "${{ github.event.inputs.version }}" | tr '[:lower:]' '[:upper:]')
+          
+          ASSET_ID=$(gh release view $VERSION \
             --json assets \
-            --jq '.assets[] | select(.name == "MIPS-macOS-${{ github.event.inputs.version }}.zip") | .id')
+            --jq ".assets[] | select(.name == \"MIPS-macOS-$VERSION.zip\") | .id")
           
           if [ -n "$ASSET_ID" ]; then
             echo "Deleting unsigned asset ID: $ASSET_ID"
@@ -104,7 +105,7 @@ jobs:
           else
             echo "No unsigned asset found, skipping delete"
           fi
-
+          
       - name: Upload signed app to release
         uses: softprops/action-gh-release@v2
         with:
