@@ -100,7 +100,7 @@ jobs:
           
           if [ -n "$ASSET_ID" ]; then
             echo "Deleting unsigned asset ID: $ASSET_ID"
-            gh release delete-asset ${{ github.event.inputs.version }} $ASSET_ID --yes
+            gh api --method DELETE /repos/${{ github.repository }}/releases/assets/$ASSET_ID
           else
             echo "No unsigned asset found, skipping delete"
           fi
