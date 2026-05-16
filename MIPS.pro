@@ -12,7 +12,7 @@ lessThan(QT_MAJOR_VERSION, 6):    QT += script
 #greaterThan(QT_MAJOR_VERSION, 5): QT += core5compat
 greaterThan(QT_MAJOR_VERSION, 5): QT += qml
 QT       += serialbus serialport widgets
-APP_VERSION = 2.23-dev
+APP_VERSION = 2.24
 DEFINES += APP_VERSION=\\\"$$APP_VERSION\\\"
 win32:RC_ICONS += GAACElogo.ico
 ICON = GAACElogo.icns
@@ -124,6 +124,8 @@ QMAKE_APPLE_DEVICE_ARCHS = arm64
 macx {
     INCLUDEPATH += /opt/homebrew/include
     LIBS += -L/opt/homebrew/lib -lzmq
+    QMAKE_TARGET_BUNDLE_PREFIX = com.gaacustom
+    QMAKE_BUNDLE = MIPS
 }
 
 # Windows vcpkg paths
@@ -144,7 +146,7 @@ DISTFILES += \
     
 macx {
     copyBossac.commands = mkdir -p $$OUT_PWD/$${TARGET}.app/Contents/MacOS && \
-                          cp $$PWD/tools/bossac $$OUT_PWD/$${TARGET}.app/Contents/MacOS/bossac && \
+                          cp -f $$PWD/tools/bossac $$OUT_PWD/$${TARGET}.app/Contents/MacOS/bossac && \
                           chmod +x $$OUT_PWD/$${TARGET}.app/Contents/MacOS/bossac
     QMAKE_EXTRA_TARGETS += copyBossac
     POST_TARGETDEPS += copyBossac

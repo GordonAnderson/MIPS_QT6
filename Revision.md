@@ -484,7 +484,7 @@
 //  2.23, March 20, 2026
 //      1.) Fixed a crash in the scripting system cuased by where the 
 //          engine was created.
-//  2.23-dev updates, in progress
+//  2.24, May 16, 2026
 //	1.) Added properties options for the following:
 //	    - mouse wheel editing
 //	    - Control panel editing
@@ -492,5 +492,6 @@
 //	2.) Fixed the lasso zoom out phatom dotted box
 //	3.) Improved the line entry box data entry. Enter now forces
 //	    an update.
+//	4.) Updated Ccontrol to not update nin visible controls.
 
 
