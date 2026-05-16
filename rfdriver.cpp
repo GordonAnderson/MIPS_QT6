@@ -28,8 +28,10 @@ RFdriver::RFdriver(Ui::MIPS *w, Comms *c)
 
     SetNumberOfChannels(2);
     connect(rui->pbUpdateRF,   &QPushButton::pressed,        this, &RFdriver::UpdateRFdriver);
-    connect(rui->leSRFFRQ,     &QLineEdit::returnPressed,    this, &RFdriver::leSRFFRQ_editingFinished);
-    connect(rui->leSRFDRV,     &QLineEdit::returnPressed,    this, &RFdriver::leSRFDRV_editingFinished);
+    connect(rui->leSRFFRQ,     &QLineEdit::returnPressed,    this, [this]() {rui->leSRFFRQ->setModified(true);});
+    connect(rui->leSRFFRQ,     &QLineEdit::editingFinished,  this, &RFdriver::leSRFFRQ_editingFinished);
+    connect(rui->leSRFDRV,     &QLineEdit::returnPressed,    this, [this]() {rui->leSRFDRV->setModified(true);});
+    connect(rui->leSRFDRV,     &QLineEdit::editingFinished,  this, &RFdriver::leSRFDRV_editingFinished);
     connect(rui->pbAutoTune,   &QPushButton::pressed,        this, &RFdriver::AutoTune);
     connect(rui->pbAutoRetune, &QPushButton::pressed,        this, &RFdriver::AutoRetune);
     rui->leSRFFRQ->setValidator(new QIntValidator);
@@ -260,8 +262,10 @@ void RFchannel::Show(void)
     Tune   = new QPushButton("Tune",   gbRF); Tune->setGeometry(  10, 147, 81, 32); Tune->setAutoDefault(false);
     Retune = new QPushButton("Retune", gbRF); Retune->setGeometry(102, 147, 81, 32); Retune->setAutoDefault(false);
 
-    connect(Drive,  &QLineEdit::returnPressed,   this, &RFchannel::DriveChange);
-    connect(Freq,   &QLineEdit::returnPressed,   this, &RFchannel::FreqChange);
+    connect(Drive,  &QLineEdit::returnPressed,   this, [this]() {Drive->setModified(true);});
+    connect(Drive,  &QLineEdit::editingFinished, this, &RFchannel::DriveChange);
+    connect(Freq,   &QLineEdit::returnPressed,   this, [this]() {Freq->setModified(true);});
+    connect(Freq,   &QLineEdit::editingFinished, this, &RFchannel::FreqChange);
     connect(Tune,   &QPushButton::pressed,       this, &RFchannel::TunePressed);
     connect(Retune, &QPushButton::pressed,       this, &RFchannel::RetunePressed);
 
@@ -553,9 +557,12 @@ void RFCchannel::Show(void)
     Tune   = new QPushButton("Tune",   gbRF); Tune->setGeometry(  10, 190, 81, 32); Tune->setAutoDefault(false);
     Retune = new QPushButton("Retune", gbRF); Retune->setGeometry(102, 190, 81, 32); Retune->setAutoDefault(false);
 
-    connect(Drive,       &QLineEdit::returnPressed,    this, &RFCchannel::DriveChange);
-    connect(Setpoint,    &QLineEdit::returnPressed,    this, &RFCchannel::SetpointChange);
-    connect(Freq,        &QLineEdit::returnPressed,    this, &RFCchannel::FreqChange);
+    connect(Drive,       &QLineEdit::returnPressed,    this, [this]() {Drive->setModified(true);});
+    connect(Drive,       &QLineEdit::editingFinished,  this, &RFCchannel::DriveChange);
+    connect(Setpoint,    &QLineEdit::returnPressed,    this, [this]() {Setpoint->setModified(true);});
+    connect(Setpoint,    &QLineEdit::editingFinished,  this, &RFCchannel::SetpointChange);
+    connect(Freq,        &QLineEdit::returnPressed,    this, [this]() {Freq->setModified(true);});
+    connect(Freq,        &QLineEdit::editingFinished,  this, &RFCchannel::FreqChange);
     connect(Tune,        &QPushButton::pressed,        this, &RFCchannel::TunePressed);
     connect(Retune,      &QPushButton::pressed,        this, &RFCchannel::RetunePressed);
     connect(Open_Loop,   &QRadioButton::clicked,       this, &RFCchannel::rbChange);

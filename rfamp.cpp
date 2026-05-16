@@ -42,7 +42,10 @@ RFamp::RFamp(QWidget *parent, QString name, QString MIPSname, int Module) :
         if(w->objectName().contains("leS"))
         {
             if(QLineEdit *le = qobject_cast<QLineEdit *>(w))
-                connect(le, &QLineEdit::returnPressed, this, &RFamp::Updated);
+            {
+                connect(le, &QLineEdit::returnPressed, this, [le]() {le->setModified(true);});
+                connect(le, &QLineEdit::editingFinished, this, &RFamp::Updated);
+            }
         }
         else if(w->objectName().contains("chk"))
             connect(((QCheckBox *)w), &QCheckBox::toggled, this, &RFamp::Updated);

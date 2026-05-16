@@ -13,6 +13,7 @@
 // Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
 // =============================================================================
 #include "Utilities.h"
+#include "properties.h"
 #include <random>
 #include <ctime>
 
@@ -22,29 +23,63 @@ static const int KEY_DOWN_ARROW = 16777237;
 
 // moveWidget — enables right-click drag repositioning of floating widgets.
 // Attach to an event filter: returns true if the event was consumed.
-bool moveWidget(QObject *obj, QWidget *frame, QObject *hook , QEvent *event)
+bool moveWidget(QObject *obj, QWidget *frame, QObject *hook, QEvent *event)
 {
-    if((obj == hook) && (event->type() == QEvent::MouseButtonPress))
+    if((pProps != nullptr) && pProps->ControlPanelEdit)
     {
-        QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
-        if (mouseEvent->button() == Qt::RightButton)
+        if((obj == hook) && (event->type() == QEvent::MouseButtonPress))
         {
-            if(mouseEvent->position().rx() > 25) return false;
-            if(mouseEvent->position().ry() > 25) return false;
-            frame->raise();
-            if(obj->property("moving").toBool())obj->setProperty("moving", false);
-            else obj->setProperty("moving", true);
-            return true;
+            QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
+            if(mouseEvent->button() == Qt::RightButton)
+            {
+                if(mouseEvent->position().rx() > 25) return false;
+                if(mouseEvent->position().ry() > 25) return false;
+                frame->raise();
+                if(obj->property("moving").toBool())
+                {
+                    obj->setProperty("moving", false);
+                    // Release the mouse grab when done moving
+                    static_cast<QWidget*>(hook)->releaseMouse();
+                }
+                else
+                {
+                    obj->setProperty("moving", true);
+                    QPoint globalPos = mouseEvent->globalPosition().toPoint();
+                    obj->setProperty("grabX", globalPos.x());
+                    obj->setProperty("grabY", globalPos.y());
+                    // Grab the mouse so all events come here even if cursor
+                    // moves outside the hook widget
+                    static_cast<QWidget*>(hook)->grabMouse();
+                }
+                return true;
+            }
         }
-    }
-    if((obj == hook) && (event->type() == QEvent::MouseMove))
-    {
-        if(obj->property("moving").toBool())
+        if((obj == hook) && (event->type() == QEvent::MouseMove))
         {
-            frame->raise();
-            QMouseEvent *mouse = static_cast<QMouseEvent *>(event);
-            frame->setGeometry(frame->pos().x() + mouse->pos().rx() - 10, frame->pos().y() + mouse->pos().ry() - 10, frame->width(),frame->height());
-            return true;
+            if(obj->property("moving").toBool())
+            {
+                frame->raise();
+                QMouseEvent *mouse = static_cast<QMouseEvent*>(event);
+                QPoint globalPos = mouse->globalPosition().toPoint();
+                int lastX = obj->property("grabX").toInt();
+                int lastY = obj->property("grabY").toInt();
+                int dx = globalPos.x() - lastX;
+                int dy = globalPos.y() - lastY;
+                frame->move(frame->pos().x() + dx, frame->pos().y() + dy);
+                obj->setProperty("grabX", globalPos.x());
+                obj->setProperty("grabY", globalPos.y());
+                return true;
+            }
+        }
+        if((obj == hook) && (event->type() == QEvent::MouseButtonRelease))
+        {
+            QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
+            if(mouseEvent->button() == Qt::LeftButton)
+            {
+                obj->setProperty("moving", false);
+                static_cast<QWidget*>(hook)->releaseMouse();
+                return true;
+            }
         }
     }
     return false;
@@ -71,8 +106,11 @@ bool adjustValue(QObject *obj,QLineEdit *Vsp, QEvent *event,float multiplier)
         }
         else if(event->type() == QEvent::Wheel)
         {
-            QWheelEvent *wheel = static_cast<QWheelEvent *>(event);
-            delta = (float)wheel->angleDelta().ry()/10.0;
+            if((pProps != nullptr) && pProps->ScrollEdit)
+            {
+                QWheelEvent *wheel = static_cast<QWheelEvent *>(event);
+                delta = (float)wheel->angleDelta().ry()/10.0;
+            }
         }
         if(delta != 0)
         {

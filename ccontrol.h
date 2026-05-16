@@ -85,6 +85,7 @@ private:
     bool              Updating;
     bool              UpdateOff;
     bool              firstUpdate = true;
+    bool              forceUpdate = false;
     QRandomGenerator  generator;
     int               updateCount;
 

@@ -2269,7 +2269,7 @@ QString ControlPanel::Save(QString Filename)
         return "Settings saved to " + Filename;
     }
     UpdateHoldOff = 1;
-    return "Can't open file!";
+    return "Can't save file!";
 }
 
 /*! \brief Load is the main load method for the control panel.
@@ -2464,8 +2464,8 @@ QString ControlPanel::Load(QString Filename)
         file.close();
         return "Settings loaded from " + Filename;
     }
-    return "Can't open file!";
     UpdateHoldOff = 1;
+    return "Can't open file!";
 }
 
 /*! \brief ControlPanel::slotDataAcquired
