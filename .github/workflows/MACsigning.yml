@@ -12,11 +12,15 @@ on:
         required: true
         type: string
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   sign-macos:
     runs-on: macos-latest
     permissions:
       actions: read
+      contents: write
     steps:
       - name: Download unsigned macOS artifact
         uses: actions/download-artifact@v4
@@ -80,10 +84,32 @@ jobs:
       - name: Zip signed app
         run: |
           ditto -c -k --keepParent MIPS.app \
-            MIPS-macOS-${{ github.event.inputs.version }}-signed.zip
+            MIPS-macOS-${{ github.event.inputs.version }}.zip
+
+      - name: Delete unsigned asset from release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the asset ID of the unsigned zip on the release
+          ASSET_ID=$(gh release view ${{ github.event.inputs.version }} \
+            --json assets \
+            --jq '.assets[] | select(.name == "MIPS-macOS-${{ github.event.inputs.version }}.zip") | .id')
+          
+          if [ -n "$ASSET_ID" ]; then
+            echo "Deleting unsigned asset ID: $ASSET_ID"
+            gh release delete-asset ${{ github.event.inputs.version }} $ASSET_ID --yes
+          else
+            echo "No unsigned asset found, skipping delete"
+          fi
+
+      - name: Upload signed app to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          files: MIPS-macOS-${{ github.event.inputs.version }}.zip
 
       - name: Upload signed artifact
         uses: actions/upload-artifact@v4
         with:
           name: MIPS-macOS-signed
-          path: MIPS-macOS-${{ github.event.inputs.version }}-signed.zip
+          path: MIPS-macOS-${{ github.event.inputs.version }}.zip
