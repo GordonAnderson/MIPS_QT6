@@ -1,0 +1,96 @@
+name: Sign Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Build workflow run ID (find in Actions tab URL)'
+        required: true
+        type: string
+      version:
+        description: 'Version number (e.g. V2.24)'
+        required: true
+        type: string
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  sign-windows:
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download unsigned Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: MIPS-Windows
+          run-id: ${{ github.event.inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Unzip Windows build
+        shell: pwsh
+        run: |
+          Expand-Archive -Path "MIPS-Windows-${{ github.event.inputs.version }}.zip" `
+            -DestinationPath "unsigned"
+
+      - name: Install Azure signing tool
+        shell: pwsh
+        run: |
+          dotnet tool install --global AzureSignTool
+
+      - name: Sign executables and DLLs
+        shell: pwsh
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+        run: |
+          # Find all .exe and .dll files to sign
+          $files = Get-ChildItem -Path "unsigned" -Recurse -Include "*.exe","*.dll" |
+            Select-Object -ExpandProperty FullName
+
+          # Sign all files
+          AzureSignTool sign `
+            --azure-key-vault-url "$env:AZURE_SIGNING_ACCOUNT" `
+            --azure-key-vault-client-id "$env:AZURE_CLIENT_ID" `
+            --azure-key-vault-client-secret "$env:AZURE_CLIENT_SECRET" `
+            --azure-key-vault-tenant-id "$env:AZURE_TENANT_ID" `
+            --azure-key-vault-certificate "MIPS-Signing" `
+            --timestamp-rfc3161 "http://timestamp.acs.microsoft.com" `
+            --verbose `
+            $files
+
+      - name: Zip signed build
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "unsigned\*" `
+            -DestinationPath "MIPS-Windows-${{ github.event.inputs.version }}.zip"
+
+      - name: Delete unsigned asset from release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          VERSION=$(echo "${{ github.event.inputs.version }}" | tr '[:lower:]' '[:upper:]')
+          ASSET_NAME="MIPS-Windows-${VERSION}.zip"
+          echo "Looking for asset: $ASSET_NAME in release $VERSION"
+          gh release delete-asset $VERSION "$ASSET_NAME" --yes \
+            --repo ${{ github.repository }}
+
+      - name: Upload signed app to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          files: MIPS-Windows-${{ github.event.inputs.version }}.zip
+
+      - name: Upload signed artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MIPS-Windows-signed
+          path: MIPS-Windows-${{ github.event.inputs.version }}.zip
