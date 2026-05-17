@@ -50,6 +50,10 @@ jobs:
         run: |
           qmake ../MIPS.pro CONFIG+=release
           make -j$(sysctl -n hw.ncpu)
+
+      - name: Debug Qt paths
+        shell: cmd
+        run: set | findstr /i "qt"
  
       - name: Deploy Qt frameworks
         working-directory: build
