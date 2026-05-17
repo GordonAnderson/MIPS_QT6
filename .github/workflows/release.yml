@@ -128,15 +128,18 @@ jobs:
       - name: Deploy Qt frameworks
         shell: cmd
         working-directory: build
-        run: windeployqt release\MIPS.exe
- 
+        run: |
+          mkdir deploy
+          copy release\MIPS.exe deploy\
+          windeployqt --release deploy\MIPS.exe
+
       - name: Zip Windows build
         shell: pwsh
         working-directory: build
         run: |
-          Compress-Archive -Path release\* `
+          Compress-Archive -Path deploy\* `
             -DestinationPath MIPS-Windows-${{ github.event.inputs.version }}.zip
- 
+            
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
