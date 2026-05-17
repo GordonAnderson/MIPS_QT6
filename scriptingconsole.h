@@ -36,11 +36,17 @@
 #include <QThread>
 #include <QMap>
 #include <QMutex>
+#include <atomic>
 #include "properties.h"
 
 // JSengine — wraps QJSEngine for worker-thread execution. Each Q_INVOKABLE
 // function emits a blocking signal to the corresponding ControlPanel slot,
 // marshalling the call safely back to the main thread.
+//
+// Threading model: JSengine is constructed on the main thread but moved to a
+// worker thread before use. initEngine() is connected to QThread::started() so
+// that QJSEngine and its newQObject() binding are both created on the worker
+// thread — the only thread-safe way to use them under MSVC.
 class JSengine : public QObject
 {
     Q_OBJECT
@@ -89,17 +95,18 @@ public:
     QString   script;
     QString   scriptCall;
     QJSValue  result;
-    bool      isRunning = false;
+    std::atomic<bool> isRunning{false};
 
 private:
     QWidget *p;
-    QJSEngine *engine;
+    QJSEngine *engine = nullptr;
     void doMsDelay(int ms);
     void doWaitForUpdate(void);
     QMap<QString, QVariant> m_storage;
     QMutex m_mutex;
 
 public slots:
+    void     initEngine(void);   // called on worker thread start — creates QJSEngine safely on the correct thread
     QVariant runEngine(void);
     void     setInterrupted(bool);
 

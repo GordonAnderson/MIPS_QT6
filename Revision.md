@@ -493,5 +493,6 @@
 //	3.) Improved the line entry box data entry. Enter now forces
 //	    an update.
 //	4.) Updated Ccontrol to not update nin visible controls.
+//	5.) Fixed scripting system bugs in creation of threads.
 
 

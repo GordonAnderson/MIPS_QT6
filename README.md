@@ -189,13 +189,36 @@ refactoring to Qt 6.7.1 with modern C++ conventions throughout, and new
 features continue to be added with each release. See [`Revision.md`](Revision.md)
 for the full change history going back to v1.0 (July 2015).
 
-Current version: **2.23**
+Current version: **2.24**
 
 We warmly welcome community partners who would like to contribute — whether
 that's adding support for new hardware modules, improving the scripting API,
 extending the custom control panel system, or helping with testing across
 platforms. Please read the **Developer Guide** before diving in, and don't
 hesitate to open an Issue to discuss ideas before writing code.
+
+---
+
+## Developer notes
+
+Merge your dev branch into main while keeping the dev branch for future work:
+
+Step 1 — Switch to main and pull the latest
+
+- git checkout main
+- git pull origin main
+
+Step 2 — Merge dev into main
+
+- git merge dev
+
+Step 3 — Push main to GitHub
+
+- git push origin main
+
+Step 4 — Switch back to dev and continue working
+
+- git checkout dev
 
 ---
 
