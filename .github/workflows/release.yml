@@ -132,7 +132,9 @@ jobs:
           mkdir deploy
           copy release\MIPS.exe deploy\
           windeployqt --release deploy\MIPS.exe
-
+          copy C:\vcpkg\installed\x64-windows\bin\libzmq-mt-4_3_5.dll deploy\
+          copy C:\vcpkg\installed\x64-windows\bin\libzmq*.dll deploy\
+          
       - name: Zip Windows build
         shell: pwsh
         working-directory: build
