@@ -7,6 +7,12 @@
 // All invokable functions block using Qt::BlockingQueuedConnection signals to
 // marshal calls safely back to the main thread (ControlPanel slots).
 //
+// Threading model: JSengine is constructed on the main thread but immediately
+// moved to a worker QThread. QThread::started() is connected to initEngine()
+// so that QJSEngine and its newQObject("mips") binding are both created on
+// the worker thread. This is required for correct behaviour under MSVC — MinGW
+// tolerates cross-thread QJSEngine construction but MSVC does not.
+//
 // Note: QString assignment to JSengine::script is not thread safe. Callers
 // must set engine->script before emitting startEngine() while the engine is
 // idle (isRunning == false).
@@ -52,6 +58,11 @@
  * Connects each JSengine signal to the corresponding ControlPanel slot using
  * Qt::BlockingQueuedConnection so that invokable script functions block until
  * the main thread has completed the requested operation and returned a value.
+ *
+ * Note: QJSEngine is NOT created here. It is created in initEngine(), which
+ * is called via QThread::started() after this object has been moved to its
+ * worker thread. This ensures the engine and its QObject binding are both
+ * created on the correct thread, which is required under MSVC.
  */
 JSengine::JSengine(QWidget *parent)
 {
@@ -96,9 +107,21 @@ JSengine::JSengine(QWidget *parent)
     connect(this, SIGNAL(getValueSig(const QString &)),              cp, SLOT(getValue(const QString &)),              Qt::BlockingQueuedConnection);
     connect(this, SIGNAL(CreateProcessSig(QString,QString)),         cp, SLOT(CreateProcess(QString,QString)),         Qt::BlockingQueuedConnection);
     connect(this, SIGNAL(ZMQsig(QString)),                           cp, SLOT(ZMQ(QString)),                           Qt::BlockingQueuedConnection);
+}
 
-    //QJSValue mips = engine.newQObject(this);
-    //engine.globalObject().setProperty("mips", mips);
+/*! \brief initEngine
+ *
+ * Creates the QJSEngine and registers this JSengine instance as the "mips"
+ * global object available to scripts. Called via QThread::started() so that
+ * both the engine and the newQObject() binding are created on the worker
+ * thread — required for MSVC compatibility.
+ */
+void JSengine::initEngine(void)
+{
+    engine = new QJSEngine();
+    engine->installExtensions(QJSEngine::ConsoleExtension);
+    QJSValue mips = engine->newQObject(this);
+    engine->globalObject().setProperty("mips", mips);
 }
 
 // doMsDelay — sleeps the engine thread for ms milliseconds. Called from
@@ -129,16 +152,19 @@ void JSengine::setInterrupted(bool state)
  * Runs the script or a named function call. If scriptCall is empty the full
  * script text is evaluated. If scriptCall is non-empty it is parsed as a
  * function call with arguments: "functionName(arg1,arg2)".
+ *
+ * The engine is guaranteed to exist here because initEngine() was called on
+ * thread start before any startEngine() signal can be delivered.
  */
 QVariant JSengine::runEngine(void)
 {
-    // CRITICAL FIX: Ensure engine exists in the CURRENT thread
-    if (!engine) {
-        engine = new QJSEngine();
-
-        // Re-bind the "mips" object to the new local engine
-        QJSValue mips = engine->newQObject(this);
-        engine->globalObject().setProperty("mips", mips);
+    if (!engine)
+    {
+        // Should not happen — initEngine() is connected to QThread::started().
+        // Guard against misconfiguration to avoid a null-pointer crash.
+        result = QJSValue("Error: JS engine not initialised");
+        emit resultReady(result);
+        return result.toVariant();
     }
 
     if(scriptCall.isEmpty())
@@ -149,6 +175,7 @@ QVariant JSengine::runEngine(void)
         isRunning = false;
         return result.toVariant();
     }
+
     // Parse call string and invoke the named function with arguments
     static QRegularExpression re("[()]");
     QStringList callList = scriptCall.split(re);
@@ -174,8 +201,9 @@ QVariant JSengine::runEngine(void)
 // ---------------------------------------------------------------------------
 
 // Script — constructor. Creates a dedicated QThread and JSengine, wires
-// BlockingQueuedConnection signals for cross-thread safety, and starts
-// the thread ready for script execution.
+// BlockingQueuedConnection signals for cross-thread safety, connects
+// QThread::started() to initEngine() so the QJSEngine is created on the
+// worker thread, and starts the thread ready for script execution.
 Script::Script(QWidget *parent, QString scriptName, QString fileName, Properties *prop, QStatusBar *statusbar)
 {
     p                = parent;
@@ -188,9 +216,10 @@ Script::Script(QWidget *parent, QString scriptName, QString fileName, Properties
 
     thread = new QThread(this);
     engine = new JSengine(p);
-    connect(engine, &JSengine::resultReady,    this, &Script::scriptFinished);
+    connect(engine, &JSengine::resultReady,        this,   &Script::scriptFinished);
     engine->moveToThread(thread);
-    connect(thread, SIGNAL(finished()),            this, SLOT(engineDone()));
+    connect(thread, &QThread::started,             engine, &JSengine::initEngine);
+    connect(thread, SIGNAL(finished()),            this,   SLOT(engineDone()));
     connect(this,   SIGNAL(startEngine()),         engine, SLOT(runEngine()));
     connect(this,   SIGNAL(setInterrupted(bool)),  engine, SLOT(setInterrupted(bool)));
     thread->start();
@@ -201,10 +230,11 @@ Script::Script(QWidget *parent, QString scriptName, QString fileName, Properties
 Script::~Script()
 {
     engine->setInterrupted(true);
-    disconnect(engine, &JSengine::resultReady,   this, &Script::scriptFinished);
-    disconnect(thread, SIGNAL(finished()),           this, SLOT(engineDone()));
-    disconnect(this,   SIGNAL(startEngine()),        engine, SLOT(runEngine()));
-    disconnect(this,   SIGNAL(setInterrupted(bool)), engine, SLOT(setInterrupted(bool)));
+    disconnect(engine, &JSengine::resultReady,        this,   &Script::scriptFinished);
+    disconnect(thread, &QThread::started,             engine, &JSengine::initEngine);
+    disconnect(thread, SIGNAL(finished()),            this,   SLOT(engineDone()));
+    disconnect(this,   SIGNAL(startEngine()),         engine, SLOT(runEngine()));
+    disconnect(this,   SIGNAL(setInterrupted(bool)),  engine, SLOT(setInterrupted(bool)));
     thread->quit();
     thread->wait();
     engine->deleteLater();
@@ -216,7 +246,7 @@ Script::~Script()
 // running or the file cannot be opened.
 bool Script::run(void)
 {
-    if(engine == nullptr) engine = new JSengine(p);
+    if(engine == nullptr) return false;
     if(engine->isRunning) return false;
 
     if(scriptText.isEmpty())
@@ -308,8 +338,9 @@ QString Script::ProcessCommand(QString cmd)
 // ---------------------------------------------------------------------------
 
 // ScriptingConsole — constructor. Creates the dialog UI, a dedicated thread,
-// and a JSengine. Connects engine result and lifecycle signals and starts
-// the thread ready for interactive script execution.
+// and a JSengine. Connects QThread::started() to initEngine() so the
+// QJSEngine is created on the worker thread, then starts the thread ready
+// for interactive script execution.
 ScriptingConsole::ScriptingConsole(QWidget *parent, Properties *prop) :
     QDialog(parent),
     ui(new Ui::ScriptingConsole)
@@ -321,11 +352,12 @@ ScriptingConsole::ScriptingConsole(QWidget *parent, Properties *prop) :
     this->setFixedSize(501, 366);
     thread = new QThread(this);
     engine = new JSengine(p);
-    connect(engine, &JSengine::resultReady,   this, &ScriptingConsole::scriptFinished);
+    connect(engine, &JSengine::resultReady,        this,   &ScriptingConsole::scriptFinished);
     engine->moveToThread(thread);
-    connect(thread, SIGNAL(finished()),           this, SLOT(engineDone()));
-    connect(this,   SIGNAL(startEngine()),        engine, SLOT(runEngine()));
-    connect(this,   SIGNAL(setInterrupted(bool)), engine, SLOT(setInterrupted(bool)));
+    connect(thread, &QThread::started,             engine, &JSengine::initEngine);
+    connect(thread, SIGNAL(finished()),            this,   SLOT(engineDone()));
+    connect(this,   SIGNAL(startEngine()),         engine, SLOT(runEngine()));
+    connect(this,   SIGNAL(setInterrupted(bool)),  engine, SLOT(setInterrupted(bool)));
     thread->start();
 }
 
@@ -334,10 +366,11 @@ ScriptingConsole::ScriptingConsole(QWidget *parent, Properties *prop) :
 ScriptingConsole::~ScriptingConsole()
 {
     engine->setInterrupted(true);
-    disconnect(engine, &JSengine::resultReady,   this, &ScriptingConsole::scriptFinished);
-    disconnect(thread, SIGNAL(finished()),           this, SLOT(engineDone()));
-    disconnect(this,   SIGNAL(startEngine()),        engine, SLOT(runEngine()));
-    disconnect(this,   SIGNAL(setInterrupted(bool)), engine, SLOT(setInterrupted(bool)));
+    disconnect(engine, &JSengine::resultReady,        this,   &ScriptingConsole::scriptFinished);
+    disconnect(thread, &QThread::started,             engine, &JSengine::initEngine);
+    disconnect(thread, SIGNAL(finished()),            this,   SLOT(engineDone()));
+    disconnect(this,   SIGNAL(startEngine()),         engine, SLOT(runEngine()));
+    disconnect(this,   SIGNAL(setInterrupted(bool)),  engine, SLOT(setInterrupted(bool)));
     thread->quit();
     thread->wait();
     engine->deleteLater();
@@ -464,7 +497,9 @@ void ScriptingConsole::on_pbHelp_clicked()
 
 // ScriptButton — constructor. Creates a QPushButton at (x,y) backed by a
 // dedicated JSengine thread. Traverses to the top-level window to find the
-// ControlPanel for signal connections, then starts the engine thread.
+// ControlPanel for signal connections, connects QThread::started() to
+// initEngine() so the QJSEngine is created on the worker thread, then starts
+// the engine thread.
 ScriptButton::ScriptButton(QWidget *parent, QString name, QString ScriptFile, int x, int y, Properties *prop, QStatusBar *statusbar)
 {
     p               = parent;
@@ -490,11 +525,12 @@ ScriptButton::ScriptButton(QWidget *parent, QString name, QString ScriptFile, in
 
     thread = new QThread(this);
     engine = new JSengine(pcp);
-    connect(engine, &JSengine::resultReady,   this, &ScriptButton::scriptFinished);
+    connect(engine, &JSengine::resultReady,        this,   &ScriptButton::scriptFinished);
     engine->moveToThread(thread);
-    connect(thread, SIGNAL(finished()),           this, SLOT(engineDone()));
-    connect(this,   SIGNAL(startEngine()),        engine, SLOT(runEngine()));
-    connect(this,   SIGNAL(setInterrupted(bool)), engine, SLOT(setInterrupted(bool)));
+    connect(thread, &QThread::started,             engine, &JSengine::initEngine);
+    connect(thread, SIGNAL(finished()),            this,   SLOT(engineDone()));
+    connect(this,   SIGNAL(startEngine()),         engine, SLOT(runEngine()));
+    connect(this,   SIGNAL(setInterrupted(bool)),  engine, SLOT(setInterrupted(bool)));
     thread->start();
 }
 
@@ -503,10 +539,11 @@ ScriptButton::ScriptButton(QWidget *parent, QString name, QString ScriptFile, in
 ScriptButton::~ScriptButton()
 {
     engine->setInterrupted(true);
-    disconnect(engine, &JSengine::resultReady,   this, &ScriptButton::scriptFinished);
-    disconnect(thread, SIGNAL(finished()),           this, SLOT(engineDone()));
-    disconnect(this,   SIGNAL(startEngine()),        engine, SLOT(runEngine()));
-    disconnect(this,   SIGNAL(setInterrupted(bool)), engine, SLOT(setInterrupted(bool)));
+    disconnect(engine, &JSengine::resultReady,        this,   &ScriptButton::scriptFinished);
+    disconnect(thread, &QThread::started,             engine, &JSengine::initEngine);
+    disconnect(thread, SIGNAL(finished()),            this,   SLOT(engineDone()));
+    disconnect(this,   SIGNAL(startEngine()),         engine, SLOT(runEngine()));
+    disconnect(this,   SIGNAL(setInterrupted(bool)),  engine, SLOT(setInterrupted(bool)));
     thread->quit();
     thread->wait();
     engine->deleteLater();

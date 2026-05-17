@@ -12,7 +12,7 @@ lessThan(QT_MAJOR_VERSION, 6):    QT += script
 #greaterThan(QT_MAJOR_VERSION, 5): QT += core5compat
 greaterThan(QT_MAJOR_VERSION, 5): QT += qml
 QT       += serialbus serialport widgets
-APP_VERSION = 2.24
+APP_VERSION = 2.24-dev
 DEFINES += APP_VERSION=\\\"$$APP_VERSION\\\"
 win32:RC_ICONS += GAACElogo.ico
 ICON = GAACElogo.icns
