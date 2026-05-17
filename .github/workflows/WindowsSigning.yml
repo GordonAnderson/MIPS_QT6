@@ -38,10 +38,10 @@ jobs:
           Expand-Archive -Path "MIPS-Windows-${{ github.event.inputs.version }}.zip" `
             -DestinationPath "unsigned"
 
-      - name: Install Azure signing tool
+      - name: Install signing tool
         shell: pwsh
         run: |
-          dotnet tool install --global AzureSignTool
+          dotnet tool install --global sign --version 0.9.1-beta.24325.2
 
       - name: Sign executables and DLLs
         shell: pwsh
@@ -49,23 +49,17 @@ jobs:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
         run: |
-          # Find all .exe and .dll files to sign
           $files = Get-ChildItem -Path "unsigned" -Recurse -Include "*.exe","*.dll" |
             Select-Object -ExpandProperty FullName
 
-          # Sign all files
-          AzureSignTool sign `
-            --azure-key-vault-url "$env:AZURE_SIGNING_ACCOUNT" `
-            --azure-key-vault-client-id "$env:AZURE_CLIENT_ID" `
-            --azure-key-vault-client-secret "$env:AZURE_CLIENT_SECRET" `
-            --azure-key-vault-tenant-id "$env:AZURE_TENANT_ID" `
-            --azure-key-vault-certificate "MIPS-Signing" `
-            --timestamp-rfc3161 "http://timestamp.acs.microsoft.com" `
-            --verbose `
-            $files
-
+          sign code trusted-signing $files `
+            --trusted-signing-account-name "wus.codesigning.azure.net" `
+            --trusted-signing-certificate-profile-name "MIPS-Signing" `
+            --azure-client-id "$env:AZURE_CLIENT_ID" `
+            --azure-client-secret "$env:AZURE_CLIENT_SECRET" `
+            --azure-tenant-id "$env:AZURE_TENANT_ID"
+            
       - name: Zip signed build
         shell: pwsh
         run: |
