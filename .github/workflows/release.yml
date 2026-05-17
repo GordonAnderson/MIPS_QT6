@@ -125,19 +125,24 @@ jobs:
           qmake ..\MIPS.pro CONFIG+=release
           nmake
 
-      - name: Debug Qt paths
-        shell: cmd
-        run: set | findstr /i "qt"
- 
       - name: Deploy Qt frameworks
         shell: cmd
         working-directory: build
         run: |
           mkdir deploy
           copy release\MIPS.exe deploy\
-          windeployqt --release --no-quick-import --no-translations --no-system-d3d-compiler --no-opengl-sw deploy\MIPS.exe          
-          copy C:\vcpkg\installed\x64-windows\bin\libzmq-mt-4_3_5.dll deploy\
+          copy release\bossac.exe deploy\
+          windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw deploy\MIPS.exe
           copy C:\vcpkg\installed\x64-windows\bin\libzmq*.dll deploy\
+
+          REM Derive Qt root from where windeployqt lives (already on PATH)
+          for /f "delims=" %%i in ('where windeployqt') do set QT_BIN=%%~dpi
+          set QT_ROOT=%QT_BIN:~0,-5%
+
+          REM Extra DLLs required by QJSEngine that windeployqt misses
+          copy "%QT_BIN%Qt6QmlModels.dll" deploy\
+          copy "%QT_BIN%Qt6QmlWorkerScript.dll" deploy\
+          xcopy /E /I /Y "%QT_ROOT%qml\QtQml" deploy\qml\QtQml\
           
       - name: Zip Windows build
         shell: pwsh
