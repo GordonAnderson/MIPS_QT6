@@ -203,13 +203,20 @@ hesitate to open an Issue to discuss ideas before writing code.
 
 Merge your dev branch into main while keeping the dev branch for future work:
 Step 1 — Switch to main and pull the latest
+
 - git checkout main
 - git pull origin main
+
 Step 2 — Merge dev into main
+
 - git merge dev
+
 Step 3 — Push main to GitHub
+
 - git push origin main
+
 Step 4 — Switch back to dev and continue working
+
 - git checkout dev
 
 ---
