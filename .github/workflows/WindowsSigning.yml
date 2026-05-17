@@ -45,7 +45,7 @@ jobs:
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
           azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
           endpoint: https://wus.codesigning.azure.net/
-          trusted-signing-account-name: MIPS-Signing-RG
+          trusted-signing-account-name: mips-dev-signer
           certificate-profile-name: MIPS-Signing
           files-folder: unsigned
           files-folder-filter: exe,dll
