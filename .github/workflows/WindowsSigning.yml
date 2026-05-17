@@ -57,8 +57,9 @@ jobs:
         shell: pwsh
         run: |
           Compress-Archive -Path "unsigned\*" `
-            -DestinationPath "MIPS-Windows-${{ github.event.inputs.version }}.zip"
-
+            -DestinationPath "MIPS-Windows-${{ github.event.inputs.version }}.zip" `
+            -Force
+            
       - name: Delete unsigned asset from release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
