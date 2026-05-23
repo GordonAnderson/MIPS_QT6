@@ -107,7 +107,6 @@ public:
     void    writeData(const QByteArray &data);
     bool    openSerialPort();
     void    reopenSerialPort(void);
-    void    reopenPort(void);
     void    closeSerialPort();
     void    waitforline(int timeout);
     void    clearReceiveBuffer() {
@@ -194,6 +193,7 @@ private:
 
 public slots:
     void readData2RingBuffer(void);
+    void reopenPort(void);
 
 private slots:
     // -------------------------------------------------------------------------

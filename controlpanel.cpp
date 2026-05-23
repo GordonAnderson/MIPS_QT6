@@ -1960,7 +1960,16 @@ void ControlPanel::UpdateStateMachine(void)
             }
             if(ret == QMessageBox::Yes)
             {
-                for(i=0;i<Systems.count();i++) if(!Systems[i]->isConnected()) Systems[i]->reopenPort();
+                for(i=0;i<Systems.count();i++)
+                {
+                    if(!Systems[i]->isConnected())
+                    {
+                        // Post to Comms worker thread — never call blocking Comms
+                        // methods from the UI thread poll loop.
+                        QMetaObject::invokeMethod(Systems[i], "reopenPort",
+                                                  Qt::QueuedConnection);
+                    }
+                }
             }
             else reject();
         }

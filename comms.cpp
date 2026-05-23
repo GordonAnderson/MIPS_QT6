@@ -1371,7 +1371,7 @@ void Comms::reopenPort(void)
         timer.start();
         while(timer.elapsed() < 5000)
         {
-            QApplication::processEvents();
+            QThread::msleep(100);
             if(client_connected) return;
         }
         sb->showMessage(tr("MIPS failed to connect!"));
