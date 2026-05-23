@@ -180,7 +180,7 @@ void ESI::Update(void)
 
     if (comms == nullptr) return;
 
-    comms->rb.clear();
+    comms->clearReceiveBuffer();
     res = "GHV," + QString::number(Channel) + "\n";
     res = comms->SendMess(res);
     if (res == "") return;

@@ -146,7 +146,7 @@ void DACchannel::Update(void)
     if (comms == nullptr) return;
     if (UpdateOff) return;
     Updating = true;
-    comms->rb.clear();
+    comms->clearReceiveBuffer();
     res = "GDACV,CH" + QString::number(Channel) + "\n";
     res = comms->SendMess(res);
     if (res == "")

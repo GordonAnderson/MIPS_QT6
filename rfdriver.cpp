@@ -389,7 +389,7 @@ void RFchannel::Update(QString sVals)
     if(comms == NULL) return;
     if(UpdateOff) return;
     Updating = true;
-    comms->rb.clear();
+    comms->clearReceiveBuffer();
 
     if(sValsList.count() < 2) res = comms->SendMess("GRFDRV,"  + QString::number(Channel) + "\n");
     else                      res = sValsList[1];
@@ -704,7 +704,7 @@ void RFCchannel::Update(QString sVals)
     if(comms == NULL) return;
     if(UpdateOff) return;
     Updating = true;
-    comms->rb.clear();
+    comms->clearReceiveBuffer();
 
     if(sValsList.count() < 2) res = comms->SendMess("GRFDRV,"  + QString::number(Channel) + "\n");
     else                      res = sValsList[1];

@@ -82,7 +82,7 @@ void Compressor::Update(void)
     widgetList += ui->gbARBtiming->children();
     foreach(QObject *w, widgetList)
     {
-        comms->rb.clear();
+        comms->clearReceiveBuffer();
         if(w->objectName().startsWith("leS") || w->objectName().startsWith("leG"))
         {
             if(!((QLineEdit *)w)->hasFocus())

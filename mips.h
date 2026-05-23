@@ -128,8 +128,14 @@ public slots:
     QString popupUserInput(QString title, QString message);
 
 private:
+    void    clearSystems();
+    QString getNextLine(Comms *c);
+
     Properties      *properties;
     Comms           *comms;
+    Comms   *primaryComms;        // the one Comms created in MIPS::MIPS()
+    QThread *primaryCommsThread;  // its dedicated thread
+    QList<QThread*> commsThreads; // threads for additional Systems entries
     Twave           *twave;
     DCbias          *dcbias;
     DIO             *dio;

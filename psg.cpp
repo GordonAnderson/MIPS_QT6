@@ -12,6 +12,22 @@
 
 #include "psg.h"
 
+static QString commsGetNextLine(Comms *comms, int timeoutMs = 100)
+{
+    QString result;
+    QMutex m;
+    QWaitCondition wc;
+    QMutexLocker lock(&m);
+    QMetaObject::invokeMethod(comms, [comms, &result, &m, &wc, timeoutMs]() {
+        comms->waitforline(timeoutMs);
+        QMutexLocker lk(&m);
+        result = comms->rb.getline();
+        wc.wakeAll();
+    }, Qt::QueuedConnection);
+    wc.wait(&m);
+    return result;
+}
+
 static const int PSG_TABLE_WRAP_WIDTH = 60; // Characters per line when displaying table command in a message box
 
 // -----------------------------------------------------------------------------
@@ -216,8 +232,7 @@ void PSG::on_pbDownload_pressed(void)
     comms->SendCommand("STBLTRG," + res + "\n");
     comms->SendCommand(BuildTableCommand(psg));
     comms->SendCommand("SMOD,TBL\n");
-    comms->waitforline(100);
-    pui->statusBar->showMessage(comms->getline());
+    pui->statusBar->showMessage(commsGetNextLine(comms, 100));
 }
 
 // -----------------------------------------------------------------------------
@@ -349,12 +364,9 @@ void PSG::on_chkAutoAdvance_clicked()
 void PSG::on_pbTrigger_pressed()
 {
     comms->SendCommand("TBLSTRT\n");
-    comms->waitforline(100);
-    pui->statusBar->showMessage(comms->getline());
-    comms->waitforline(500);
-    pui->statusBar->showMessage(pui->statusBar->currentMessage() + " " + comms->getline());
-    comms->waitforline(100);
-    pui->statusBar->showMessage(pui->statusBar->currentMessage() + " " + comms->getline());
+    pui->statusBar->showMessage(commsGetNextLine(comms, 100));
+    pui->statusBar->showMessage(pui->statusBar->currentMessage() + " " + commsGetNextLine(comms, 500));
+    pui->statusBar->showMessage(pui->statusBar->currentMessage() + " " + commsGetNextLine(comms, 100));
 }
 
 // on_pbExitTableMode_pressed — aborts table execution and returns MIPS to local mode.

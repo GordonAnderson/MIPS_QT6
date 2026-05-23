@@ -529,7 +529,7 @@ void DCBchannel::Update(QString sVals)
     if(comms == NULL) return;
     if(UpdateOff) return;
     Updating = true;
-    comms->rb.clear();
+    comms->clearReceiveBuffer();
 
     if(sVals.isEmpty() || (sValsList[0].isEmpty() && VspEdited))
     {
@@ -728,7 +728,7 @@ void DCBoffset::Update(void)
     QString res;
 
     if(comms == NULL) return;
-    comms->rb.clear();
+    comms->clearReceiveBuffer();
     res = "GDCBOF," + QString::number(Channel) + "\n";
     res = comms->SendMess(res);
     if(res == "") return;
@@ -864,7 +864,7 @@ void DCBenable::Update(void)
     QString res;
 
     if(comms == NULL) return;
-    comms->rb.clear();
+    comms->clearReceiveBuffer();
     res = comms->SendMess("GDCPWR\n");
     bool oldState = DCBena->blockSignals(true);
     if(res.contains("ON"))  DCBena->setChecked(true);

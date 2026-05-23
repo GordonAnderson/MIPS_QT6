@@ -302,7 +302,7 @@ void ADCchannel::Update(void)
     QString res;
 
     if(comms == NULL) return;
-    comms->rb.clear();
+    comms->clearReceiveBuffer();
     res = "ADC," + QString::number(Channel) + "\n";
     res = comms->SendMess(res);
     if(res == "") return;

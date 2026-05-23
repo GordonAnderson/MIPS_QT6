@@ -80,7 +80,13 @@ MIPS::MIPS(QWidget *parent, QString CPfilename) :
     appPath = QApplication::applicationDirPath();
     pollTimer = new QTimer;
     settings = new SettingsDialog;
-    comms  = new Comms(settings,"",ui->statusBar);
+
+    primaryComms       = new Comms(settings, "", ui->statusBar);
+    primaryCommsThread = new QThread(this);
+    primaryComms->moveToThread(primaryCommsThread);
+    primaryCommsThread->start();
+    comms = primaryComms;
+
     console = new Console(ui->Terminal,ui,comms);
     console->setEnabled(false);
     twave  = new Twave(ui,comms);
@@ -192,6 +198,9 @@ void MIPS::closeEvent(QCloseEvent *)
     delete settings;
     delete help;
     for(int i=0;i<plots.count();i++) emit plots[i]->DialogClosed(plots[i]);
+    clearSystems();
+    primaryCommsThread->quit();
+    primaryCommsThread->wait();
     delete ui;
 }
 
@@ -562,7 +571,7 @@ void MIPS::tabSelected()
         // Abort when exiting this tab
         comms->SendString("TBLABRT\n");
         delay();
-        comms->rb.clear();
+        comms->clearReceiveBuffer();
     }
     if( ui->tabMIPS->tabText(ui->tabMIPS->currentIndex()) == "System")
     {

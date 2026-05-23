@@ -27,6 +27,22 @@
 #include <QTcpServer>
 #include <QTabWidget>
 
+static QString commsGetNextLine(Comms *comms, int timeoutMs = 100)
+{
+    QString result;
+    QMutex m;
+    QWaitCondition wc;
+    QMutexLocker lock(&m);
+    QMetaObject::invokeMethod(comms, [comms, &result, &m, &wc, timeoutMs]() {
+        comms->waitforline(timeoutMs);
+        QMutexLocker lk(&m);
+        result = comms->rb.getline();
+        wc.wakeAll();
+    }, Qt::QueuedConnection);
+    wc.wait(&m);
+    return result;
+}
+
 QSemaphore UpdateSemaphore(1);
 
 /*! \brief ControlPanel::ControlPanel
@@ -1873,7 +1889,7 @@ void ControlPanel::UpdateStateMachine(void)
             // Make sure all MIPS systems are in local mode
             for(i=0;i<Systems.count();i++)    Systems[i]->SendString("SMOD,LOC\n");
             msDelay(100);
-            for(i=0;i<Systems.count();i++)    Systems[i]->rb.clear();
+            for(i=0;i<Systems.count();i++)    Systems[i]->clearReceiveBuffer();
             for(i=0;i<ESIchans.count();i++)   ESIchans[i]->Shutdown();
             for(i=0;i<DCBenables.count();i++) DCBenables[i]->Shutdown();
             for(i=0;i<RFchans.count();i++)    RFchans[i]->Shutdown();
@@ -2796,8 +2812,7 @@ QString ControlPanel::GetLine(QString MIPSname)
 {
    Comms *cp =  FindCommPort(MIPSname,Systems);
    if(cp==nullptr) return "";
-   cp->waitforline(500);
-   return cp->getline();
+   return commsGetNextLine(cp, 500);
 }
 
 /*! \brief ControlPanel::SendCommand

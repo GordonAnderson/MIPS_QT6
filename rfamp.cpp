@@ -118,7 +118,7 @@ void RFamp::Update(void)
 
     foreach(QObject *w, widgetList)
     {
-        comms->rb.clear();
+        comms->clearReceiveBuffer();
         if(w->objectName().contains("leS") || w->objectName().contains("leG"))
         {
             if(!((QLineEdit *)w)->hasFocus())
@@ -139,7 +139,6 @@ void RFamp::Update(void)
                 res = comms->SendMess(res);
                 if(res == resList[1]) ((QCheckBox *)w)->setChecked(true);
                 if(res == resList[2]) ((QCheckBox *)w)->setChecked(false);
-                if(res.contains("?")) comms->waitforline(100);
             }
         }
         else if(w->objectName().contains("rb"))

@@ -12,6 +12,22 @@
 
 #include "twave.h"
 
+static QString commsGetNextLine(Comms *comms)
+{
+    QString result;
+    QMutex m;
+    QWaitCondition wc;
+    QMutexLocker lock(&m);
+    QMetaObject::invokeMethod(comms, [comms, &result, &m, &wc]() {
+        comms->waitforline(100);
+        QMutexLocker lk(&m);
+        result = comms->rb.getline();
+        wc.wakeAll();
+    }, Qt::QueuedConnection);
+    wc.wait(&m);
+    return result;
+}
+
 // Twave parameter limits used for range clamping in Changed()
 static const float TWAVE_PULSE_VOLTAGE_MIN  =       7.0f;
 static const float TWAVE_PULSE_VOLTAGE_MAX  =     100.0f;
@@ -285,8 +301,7 @@ void Twave::Update(void)
         {
             res = "G" + w->objectName().mid(3).replace("_", ",") + "\n";
             ((QLineEdit *)w)->setText(comms->SendMess(res));
-            comms->waitforline(1);
-            res = comms->rb.getline();
+            res = commsGetNextLine(comms);
         }
     }
 

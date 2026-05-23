@@ -16,6 +16,22 @@
 #include "Utilities.h"
 #include "controlpanel.h"
 
+static QString commsGetNextLine(Comms *comms)
+{
+    QString result;
+    QMutex m;
+    QWaitCondition wc;
+    QMutexLocker lock(&m);
+    QMetaObject::invokeMethod(comms, [comms, &result, &m, &wc]() {
+        comms->waitforline(100);
+        QMutexLocker lk(&m);
+        result = comms->rb.getline();
+        wc.wakeAll();
+    }, Qt::QueuedConnection);
+    wc.wait(&m);
+    return result;
+}
+
 // This function tests if the system is in table mode by sending the trigger source
 // option. If its in table mode then a NAK will be received from MIPS
 /*! \brief isTblMode
@@ -26,12 +42,11 @@ bool isTblMode(Comms *comms, QString TriggerSource)
    if(comms == nullptr) return false;
    QString res = TriggerSource.toUpper();
    if(res == "SOFTWARE") res = "SW";
-   comms->rb.clear();
+   comms->clearReceiveBuffer();
    comms->SendString("STBLTRG," + res + "\n");
-   comms->waitforline(1000);
-   if(comms->rb.numLines() >= 1)
+   res = commsGetNextLine(comms);
+   if(res != "")
    {
-       res = comms->rb.getline();
        if(res == "?") return true;
        if(res == "") return false;
    }

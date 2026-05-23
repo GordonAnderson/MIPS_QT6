@@ -663,7 +663,7 @@ void ARBchannel::Update(void)
     QString res;
 
     if(comms == NULL) return;
-    comms->rb.clear();
+    comms->clearReceiveBuffer();
     if(UpdateOff) return;
     Updating = true;
 

@@ -181,7 +181,7 @@ void Ccontrol::Update(void)
 
     if (++updateCount > skipCount) updateCount = 1;
     if (comms == nullptr) return;
-    comms->rb.clear();
+    comms->clearReceiveBuffer();
     if (Ctype == "LineEdit")
     {
         if (!ReadbackCmd.isEmpty())
