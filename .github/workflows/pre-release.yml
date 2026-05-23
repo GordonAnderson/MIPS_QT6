@@ -1,0 +1,180 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g. v2.23-dev)'
+        required: true
+        type: string
+      release_notes:
+        description: 'Release notes'
+        required: true
+        type: string
+ 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+ 
+jobs:
+ 
+  # ─────────────────────────────────────────────────────────────────────────
+  # macOS build
+  # ─────────────────────────────────────────────────────────────────────────
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+ 
+      - name: Install dependencies
+        run: brew install zeromq cppzmq
+ 
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.1'
+          modules: 'qtserialport qtserialbus'
+ 
+      - name: Fix ZMQ paths
+        run: |
+          sed -i '' 's|/opt/homebrew/Cellar/zeromq/[^/]*/include|/opt/homebrew/include|g' MIPS.pro
+          sed -i '' 's|/opt/homebrew/Cellar/zeromq/[^/]*/lib|/opt/homebrew/lib|g' MIPS.pro
+          sed -i '' 's|/opt/homebrew/Cellar/cppzmq/[^/]*/include|/opt/homebrew/include|g' MIPS.pro
+ 
+      - name: Create build directory
+        run: |
+          rm -f .qmake.stash
+          mkdir build
+ 
+      - name: Build
+        working-directory: build
+        run: |
+          qmake ../MIPS.pro CONFIG+=release
+          make -j$(sysctl -n hw.ncpu)
+
+      - name: Deploy Qt frameworks
+        working-directory: build
+        run: macdeployqt6 MIPS.app || macdeployqt MIPS.app
+ 
+      - name: Sign all libraries and frameworks
+        working-directory: build
+        run: |
+          # Sign every dylib and framework inside the bundle individually
+          # before signing the bundle itself — macOS requires bottom-up signing
+          find MIPS.app -name "*.dylib" | while read f; do
+            codesign --force --sign - "$f"
+          done
+          find MIPS.app -name "*.framework" -type d | while read f; do
+            codesign --force --sign - "$f"
+          done
+ 
+      - name: Sign app bundle
+        working-directory: build
+        run: |
+          codesign --deep --force --sign - MIPS.app
+          # Verify the signature is valid before packaging
+          codesign --verify --deep --strict MIPS.app
+          echo "Code signing verified successfully"
+ 
+      - name: Zip app bundle
+        working-directory: build
+        run: ditto -c -k --keepParent MIPS.app MIPS-macOS-${{ github.event.inputs.version }}.zip
+ 
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MIPS-macOS
+          path: build/MIPS-macOS-${{ github.event.inputs.version }}.zip
+ 
+  # ─────────────────────────────────────────────────────────────────────────
+  # Windows build
+  # ─────────────────────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+ 
+      - name: Setup MSVC compiler
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+ 
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.1'
+          modules: 'qtserialport qtserialbus'
+ 
+      - name: Setup vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git C:/vcpkg
+          C:/vcpkg/bootstrap-vcpkg.bat
+          C:/vcpkg/vcpkg.exe install zeromq:x64-windows
+          C:/vcpkg/vcpkg.exe install cppzmq:x64-windows
+ 
+      - name: Create build directory
+        shell: cmd
+        run: |
+          if exist .qmake.stash del .qmake.stash
+          if not exist build mkdir build
+ 
+      - name: Build
+        shell: cmd
+        working-directory: build
+        run: |
+          qmake ..\MIPS.pro CONFIG+=release
+          nmake
+
+      - name: Deploy Qt frameworks
+        shell: cmd
+        working-directory: build
+        run: |
+          mkdir deploy
+          copy release\MIPS.exe deploy\
+          copy release\bossac.exe deploy\
+          windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw deploy\MIPS.exe
+          copy C:\vcpkg\installed\x64-windows\bin\libzmq*.dll deploy\
+          
+      - name: Zip Windows build
+        shell: pwsh
+        working-directory: build
+        run: |
+          Compress-Archive -Path deploy\* `
+            -DestinationPath MIPS-Windows-${{ github.event.inputs.version }}.zip
+            
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MIPS-Windows
+          path: build/MIPS-Windows-${{ github.event.inputs.version }}.zip
+ 
+  # ─────────────────────────────────────────────────────────────────────────
+  # Create GitHub Release with both platform builds attached
+  # ─────────────────────────────────────────────────────────────────────────
+  create-release:
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: MIPS-macOS
+ 
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: MIPS-Windows
+ 
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          name: MIPS ${{ github.event.inputs.version }}
+          body: ${{ github.event.inputs.release_notes }}
+          prerelease: true
+          files: |
+            MIPS-macOS-${{ github.event.inputs.version }}.zip
+            MIPS-Windows-${{ github.event.inputs.version }}.zip
+ 
