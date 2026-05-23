@@ -61,6 +61,18 @@ Comms::Comms(SettingsDialog *settings, QString Host, QStatusBar *statusbar)
     connect(keepAliveTimer, &QTimer::timeout,    this, &Comms::slotKeepAlive);
     connect(reconnectTimer, &QTimer::timeout,    this, &Comms::slotReconnect);
     connect(&pollTimer,     &QTimer::timeout,    this, &Comms::pollLoop);
+
+    // (Qt::QueuedConnection ensures it crosses to the UI thread)
+    connect(this, &Comms::statusMessage,sb, &QStatusBar::showMessage,Qt::QueuedConnection);
+
+    connect(this, &Comms::errorMessage, this, [](QString t, QString m){
+        QMessageBox::critical(nullptr, t, m);
+    }, Qt::QueuedConnection);
+
+    connect(this, &Comms::infoMessage, this, [](QString t, QString m){
+        QMessageBox::information(nullptr, t, m);
+    }, Qt::QueuedConnection);
+
 }
 
 // =============================================================================
@@ -318,7 +330,7 @@ void Comms::GetMIPSfile(QString MIPSfile, QString LocalFile)
         }
         if(FileData.length() != 2 * FileSize.toInt())
         {
-            QMessageBox::critical(nullptr, tr("File Error"), "Data block size not correct!");
+            emit errorMessage(tr("File Error"), "Data block size not correct!");
             return;
         }
         waitforline(500);
@@ -334,12 +346,12 @@ void Comms::GetMIPSfile(QString MIPSfile, QString LocalFile)
             file.open(QIODevice::WriteOnly);
             file.write(fdata);
             file.close();
-            QMessageBox::information(nullptr, tr("File saved"),
+            emit infoMessage(tr("File saved"),
                                      "File from MIPS read and saved successfully!");
         }
         else
         {
-            QMessageBox::critical(nullptr, tr("File Error"), "CRC error!");
+            emit errorMessage(tr("File Error"), "CRC error!");
         }
     }
 }
@@ -380,7 +392,7 @@ void Comms::PutMIPSfile(QString MIPSfile, QString LocalFile)
                 waitforline(1000);
                 if((res = getline()) == "")
                 {
-                    QMessageBox::critical(nullptr, tr("Data read error"),
+                    emit errorMessage(tr("Data read error"),
                                          "Timedout waiting for data from MIPS!");
                     return;
                 }
@@ -388,7 +400,7 @@ void Comms::PutMIPSfile(QString MIPSfile, QString LocalFile)
         }
         SendString("\n");
         SendString(QString::number(CalculateCRC(fdata)) + "\n");
-        QMessageBox::information(nullptr, tr("File saved"), "File sent to MIPS!");
+        emit infoMessage(tr("File saved"), "File sent to MIPS!");
     }
 }
 
@@ -412,7 +424,7 @@ void Comms::GetEEPROM(QString FileName, QString Board, int Addr)
         FileData = getline();
         if(FileData.length() != 2 * FileSize.toInt())
         {
-            QMessageBox::critical(nullptr, tr("File Error"), "Data block size not correct!");
+            emit errorMessage(tr("File Error"), "Data block size not correct!");
             return;
         }
         waitforline(500);
@@ -428,12 +440,12 @@ void Comms::GetEEPROM(QString FileName, QString Board, int Addr)
             file.open(QIODevice::WriteOnly);
             file.write(fdata);
             file.close();
-            QMessageBox::information(nullptr, tr("File saved"),
+            emit infoMessage(tr("File saved"),
                                      "EEPROM from MIPS read and saved successfully!");
         }
         else
         {
-            QMessageBox::critical(nullptr, tr("File Error"), "CRC error!");
+            emit errorMessage(tr("File Error"), "CRC error!");
         }
     }
 }
@@ -457,7 +469,7 @@ void Comms::PutEEPROM(QString FileName, QString Board, int Addr)
         file.close();
         SendString(dblock + "\n");
         SendString(QString::number(CalculateCRC(fdata)) + "\n");
-        QMessageBox::information(nullptr, tr("EEPROM write"), "MIPS module's EEPROM Written!");
+        emit infoMessage(tr("EEPROM write"), "MIPS module's EEPROM Written!");
     }
 }
 
@@ -481,7 +493,7 @@ void Comms::GetARBFLASH(QString FileName)
         FileData = getline();
         if(FileData.length() != 2 * FileSize.toInt())
         {
-            QMessageBox::critical(nullptr, tr("File Error"), "Data block size not correct!");
+            emit errorMessage(tr("File Error"), "Data block size not correct!");
             return;
         }
         waitforline(500);
@@ -497,12 +509,12 @@ void Comms::GetARBFLASH(QString FileName)
             file.open(QIODevice::WriteOnly);
             file.write(fdata);
             file.close();
-            QMessageBox::information(nullptr, tr("File saved"),
+            emit infoMessage(tr("File saved"),
                                      "FLASH from ARB read and saved successfully!");
         }
         else
         {
-            QMessageBox::critical(nullptr, tr("File Error"), "CRC error!");
+            emit errorMessage(tr("File Error"), "CRC error!");
         }
     }
 }
@@ -526,7 +538,7 @@ void Comms::PutARBFLASH(QString FileName)
         file.close();
         SendString(dblock + "\n");
         SendString(QString::number(CalculateCRC(fdata)) + "\n");
-        QMessageBox::information(nullptr, tr("FLASH write"), "ARB module FLASH Written!");
+        emit infoMessage(tr("FLASH write"), "ARB module FLASH Written!");
     }
 }
 
@@ -566,7 +578,7 @@ void Comms::ARBupload(QString Faddress, QString FileName)
                 waitforline(2000);
                 if((res = getline()) == "")
                 {
-                    QMessageBox::critical(nullptr, tr("Data read error"),
+                    emit errorMessage(tr("Data read error"),
                                          "Timedout waiting for data from ARB!");
                     return;
                 }
@@ -574,7 +586,7 @@ void Comms::ARBupload(QString Faddress, QString FileName)
         }
         SendString("\n");
         SendString(QString::number(CalculateCRC(fdata)) + "\n");
-        QMessageBox::information(nullptr, tr("File saved"), "File uploaded to ARB FLASH!");
+        emit infoMessage(tr("File saved"), "File uploaded to ARB FLASH!");
     }
 }
 
@@ -806,8 +818,8 @@ void Comms::doSendCommand(QString message)
             if(res == "?")
             {
                 res = message + " :NAK";
-                if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + ", " + res, 2000);
-                else                    sb->showMessage(res, 2000);
+                if(!MIPSname.isEmpty()) emit statusMessage(MIPSname + ", " + res, 2000);
+                else                    emit statusMessage(res, 2000);
                 pendingBool = false;
                 sendWait.wakeAll();
                 return;
@@ -932,8 +944,8 @@ void Comms::doSendMessage(QString message)
 
     // Timeout
     res = message + " :Timeout";
-    if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + ", " + res, 2000);
-    else                    sb->showMessage(res, 2000);
+    if(!MIPSname.isEmpty()) emit statusMessage(MIPSname + ", " + res, 2000);
+    else                    emit statusMessage(res, 2000);
     pendingResponse = "";
     sendWait.wakeAll();
 }
@@ -1295,9 +1307,9 @@ void Comms::handleError(QSerialPort::SerialPortError error)
         // FIX: no QThread::sleep() here — was causing the USB-disconnect crash.
         closeSerialPort();
         if(!MIPSname.isEmpty())
-            sb->showMessage(MIPSname + tr(" Critical Error, port closing: ") + serial->errorString());
+            emit statusMessage(MIPSname + tr(" Critical Error, port closing: ") + serial->errorString());
         else
-            sb->showMessage(tr("Critical Error, port closing: ") + serial->errorString());
+            emit statusMessage(tr("Critical Error, port closing: ") + serial->errorString());
 
         if(properties != nullptr && properties->AutoRestore)
         {
@@ -1396,8 +1408,8 @@ void Comms::slotReconnect(void)
     if(serial->isOpen())
     {
         reconnectTimer->stop();
-        if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + tr(" Serial port reconnected!"));
-        else                    sb->showMessage(tr("Serial port reconnected!"));
+        if(!MIPSname.isEmpty()) emit statusMessage(MIPSname + tr(" Serial port reconnected!"));
+        else                    emit statusMessage(tr("Serial port reconnected!"));
     }
 }
 
