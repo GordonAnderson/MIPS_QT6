@@ -1888,7 +1888,6 @@ void ControlPanel::UpdateStateMachine(void)
             UpdateHoldOff = 1000;
             // Make sure all MIPS systems are in local mode
             for(i=0;i<Systems.count();i++)    Systems[i]->SendString("SMOD,LOC\n");
-            msDelay(100);
             for(i=0;i<Systems.count();i++)    Systems[i]->clearReceiveBuffer();
             for(i=0;i<ESIchans.count();i++)   ESIchans[i]->Shutdown();
             for(i=0;i<DCBenables.count();i++) DCBenables[i]->Shutdown();
@@ -1916,10 +1915,9 @@ void ControlPanel::UpdateStateMachine(void)
             SystemIsShutdown = false;
             UpdateHoldOff = 1000;
             for(i=0;i<ESIchans.count();i++)   ESIchans[i]->Restore();
-            msDelay(100);
-            for(i=0;i<DCBenables.count();i++) {DCBenables[i]->Restore(); msDelay(250);}
-            for(i=0;i<RFchans.count();i++)    {RFchans[i]->Restore(); msDelay(250);}
-            for(i=0;i<RFCchans.count();i++)   {RFCchans[i]->Restore(); msDelay(250);}
+            for(i=0;i<DCBenables.count();i++) {DCBenables[i]->Restore();}
+            for(i=0;i<RFchans.count();i++)    {RFchans[i]->Restore();}
+            for(i=0;i<RFCchans.count();i++)   {RFCchans[i]->Restore();}
             for(i=0;i<Ccontrols.count();i++)  Ccontrols[i]->Restore();
             for(i=0;i<rfa.count();i++)        rfa[i]->Restore();
             for(i=0;i<ARBchans.count();i++)   ARBchans[i]->Restore();
@@ -1958,7 +1956,6 @@ void ControlPanel::UpdateStateMachine(void)
             else
             {
                 if(statusBar != nullptr) statusBar->showMessage("Attempting to reestablish connection(s).",2000);
-                msDelay(2000);
                 ret = QMessageBox::Yes;
             }
             if(ret == QMessageBox::Yes)
