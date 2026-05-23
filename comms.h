@@ -168,6 +168,7 @@ private:
     Properties              *properties;
     QString                  host;
     int                      major, minor;  //!< MIPS firmware version major.minor
+    QAtomicInt portAlive;                   // 1 = connected, 0 = dead
 
     // -------------------------------------------------------------------------
     // Thread-safety primitives replacing the serialBusy bool.

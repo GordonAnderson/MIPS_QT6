@@ -73,6 +73,7 @@ Comms::Comms(SettingsDialog *settings, QString Host, QStatusBar *statusbar)
         QMessageBox::information(nullptr, t, m);
     }, Qt::QueuedConnection);
 
+    portAlive.storeRelaxed(1);
 }
 
 // =============================================================================
@@ -694,6 +695,13 @@ bool Comms::SendString(QString message)
  */
 void Comms::doSendString(QString message)
 {
+    if(!portAlive.loadRelaxed())
+    {
+        QMutexLocker lock(&sendMutex);
+        pendingBool = false;
+        sendWait.wakeAll();
+        return;
+    }
     QMutexLocker lock(&sendMutex);
 
     if(client.isOpen()) keepAliveTimer->setInterval(600000);
@@ -765,10 +773,18 @@ bool Comms::SendCommand(QString message)
  */
 void Comms::doSendCommand(QString message)
 {
-    QMutexLocker lock(&sendMutex);
     QString res;
     bool hasacknak = false;
 
+    if(!portAlive.loadRelaxed())
+    {
+        QMutexLocker lock(&sendMutex);
+        pendingBool = true;    // return safe default
+        sendWait.wakeAll();
+        return;
+    }
+
+    QMutexLocker lock(&sendMutex);
     if(client.isOpen()) keepAliveTimer->setInterval(600000);
 
     for(int i = 0; i < 2; i++)
@@ -889,9 +905,17 @@ QString Comms::SendMessage(QString message)
  */
 void Comms::doSendMessage(QString message)
 {
-    QMutexLocker lock(&sendMutex);
     QString res;
     bool hasacknak = false;
+
+    if(!portAlive.loadRelaxed())
+    {
+        QMutexLocker lock(&sendMutex);
+        pendingResponse = "";
+        sendWait.wakeAll();
+        return;
+    }
+    QMutexLocker lock(&sendMutex);
 
     if(client.isOpen()) keepAliveTimer->setInterval(600000);
 
@@ -1220,6 +1244,7 @@ bool Comms::ConnectToMIPS()
 /*! \brief Comms::DisconnectFromMIPS */
 void Comms::DisconnectFromMIPS()
 {
+    portAlive.storeRelaxed(0);
     if(client.isOpen())
     {
         client.close();
@@ -1232,9 +1257,7 @@ void Comms::DisconnectFromMIPS()
 /*! \brief Comms::isConnected */
 bool Comms::isConnected(void)
 {
-    if(client_connected)  return true;
-    if(serial->isOpen())  return true;
-    return false;
+    return portAlive.loadRelaxed() == 1;
 }
 
 // =============================================================================
@@ -1272,6 +1295,7 @@ bool Comms::openSerialPort()
             QString("Connected to %1 : %2, %3, %4, %5, %6")
                 .arg(p.name, p.stringBaudRate, p.stringDataBits,
                      p.stringParity, p.stringStopBits, p.stringFlowControl));
+        portAlive.storeRelaxed(1);
         return true;
     }
 
@@ -1285,6 +1309,7 @@ bool Comms::openSerialPort()
  */
 void Comms::closeSerialPort()
 {
+    portAlive.storeRelaxed(0);
     if(serial->isOpen()) serial->close();
     if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + " Closed!", 2000);
     else                    sb->showMessage("Closed!", 2000);
@@ -1304,6 +1329,7 @@ void Comms::handleError(QSerialPort::SerialPortError error)
 {
     if(error == QSerialPort::ResourceError)
     {
+        portAlive.storeRelaxed(0);   // atomic — visible to all threads immediately
         // FIX: no QThread::sleep() here — was causing the USB-disconnect crash.
         closeSerialPort();
         if(!MIPSname.isEmpty())
@@ -1368,6 +1394,7 @@ void Comms::reopenPort(void)
 /*! \brief Comms::connected — TCP connected */
 void Comms::connected(void)
 {
+    portAlive.storeRelaxed(1);
     if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + tr(" MIPS connected"));
     else                    sb->showMessage(tr("MIPS connected"));
     client_connected = true;
@@ -1376,6 +1403,7 @@ void Comms::connected(void)
 /*! \brief Comms::disconnected — TCP disconnected */
 void Comms::disconnected(void)
 {
+    portAlive.storeRelaxed(0);
     if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + " Disconnect signaled!", 2000);
     else                    sb->showMessage("Disconnect signaled!!", 2000);
 }
@@ -1407,6 +1435,7 @@ void Comms::slotReconnect(void)
     }
     if(serial->isOpen())
     {
+        portAlive.storeRelaxed(1);
         reconnectTimer->stop();
         if(!MIPSname.isEmpty()) emit statusMessage(MIPSname + tr(" Serial port reconnected!"));
         else                    emit statusMessage(tr("Serial port reconnected!"));
