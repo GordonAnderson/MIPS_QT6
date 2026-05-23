@@ -124,6 +124,8 @@ void FAIMS::Update(void)
 {
     QString res;
 
+    if(comms == nullptr) return;
+    if(!comms->isConnected()) return;
     SetVersionOptions();
     QObjectList widgetList = fui->gbFAIMS_RF->children();
     widgetList += fui->gbFAIMS_DC->children();

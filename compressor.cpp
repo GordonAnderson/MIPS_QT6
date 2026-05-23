@@ -74,6 +74,7 @@ void Compressor::Update(void)
     int i;
 
     if(comms == NULL) return;
+    if(!comms->isConnected()) return;
     if(UpdateOff) return;
     Updating = true;
     QObjectList widgetList = ui->frmCompressor->children();

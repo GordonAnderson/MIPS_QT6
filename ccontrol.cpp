@@ -181,6 +181,7 @@ void Ccontrol::Update(void)
 
     if (++updateCount > skipCount) updateCount = 1;
     if (comms == nullptr) return;
+    if(!comms->isConnected()) return;
     comms->clearReceiveBuffer();
     if (Ctype == "LineEdit")
     {

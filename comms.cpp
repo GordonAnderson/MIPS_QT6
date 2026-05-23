@@ -672,6 +672,12 @@ bool Comms::SendString(QString name, QString message)
  */
 bool Comms::SendString(QString message)
 {
+    if(QThread::currentThread() == qApp->thread())
+    {
+        if(!portAlive.loadRelaxed()) return false;
+        qWarning() << "WARNING: SendString called from UI thread with live port:"
+                   << message << "- this may block the UI thread";
+    }
     QMutexLocker lock(&sendMutex);
 
     if(!serial->isOpen() && !client.isOpen())
@@ -750,6 +756,12 @@ bool Comms::SendCommand(QString name, QString message)
  */
 bool Comms::SendCommand(QString message)
 {
+    if(QThread::currentThread() == qApp->thread())
+    {
+        if(!portAlive.loadRelaxed()) return true;
+        qWarning() << "WARNING: SendCommand called from UI thread with live port:"
+                   << message << "- this may block the UI thread";
+    }
     QMutexLocker lock(&sendMutex);
 
     if(!serial->isOpen() && !client.isOpen())
@@ -882,6 +894,12 @@ QString Comms::SendMess(QString message)
  */
 QString Comms::SendMessage(QString message)
 {
+    if(QThread::currentThread() == qApp->thread())
+    {
+        if(!portAlive.loadRelaxed()) return "";
+        qWarning() << "WARNING: SendMessage called from UI thread with live port:"
+                   << message << "- this may block the UI thread";
+    }
     QMutexLocker lock(&sendMutex);
 
     if(!serial->isOpen() && !client.isOpen())

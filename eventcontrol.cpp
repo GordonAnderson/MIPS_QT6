@@ -52,6 +52,7 @@ void EventControl::Update(void)
 
     if(Gcommand.isEmpty()) return;
     if(comms == nullptr) return;
+    if(!comms->isConnected()) return;
     comms->clearReceiveBuffer();
     res = Gcommand + "\n";
     res = comms->SendMess(res);

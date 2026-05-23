@@ -185,6 +185,8 @@ void DCbias::Update(void)
     QString res;
 
     if(UpdateOff) return;
+    if(comms == nullptr) return;
+    if(!comms->isConnected()) return;
     Updating = true;
 
     dui->leGCHAN_DCB->setText(QString::number(NumChannels));
@@ -527,6 +529,7 @@ void DCBchannel::Update(QString sVals)
 
     sValsList = sVals.split(",");
     if(comms == NULL) return;
+    if(!comms->isConnected()) return;
     if(UpdateOff) return;
     Updating = true;
     comms->clearReceiveBuffer();
@@ -728,6 +731,7 @@ void DCBoffset::Update(void)
     QString res;
 
     if(comms == NULL) return;
+    if(!comms->isConnected()) return;
     comms->clearReceiveBuffer();
     res = "GDCBOF," + QString::number(Channel) + "\n";
     res = comms->SendMess(res);
@@ -864,6 +868,7 @@ void DCBenable::Update(void)
     QString res;
 
     if(comms == NULL) return;
+    if(!comms->isConnected()) return;
     comms->clearReceiveBuffer();
     res = comms->SendMess("GDCPWR\n");
     bool oldState = DCBena->blockSignals(true);

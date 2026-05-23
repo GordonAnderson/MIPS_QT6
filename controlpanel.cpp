@@ -1841,6 +1841,18 @@ void ControlPanel::UpdateStateMachine(void)
     switch (updateState)
     {
     case 0:
+        // Clear reconnect guard when any system reconnects
+        if(reconnectPending)
+        {
+            for(int i = 0; i < Systems.count(); i++)
+            {
+                if(Systems[i]->isConnected())
+                {
+                    reconnectPending = false;
+                    break;
+                }
+            }
+        }
         if(++updateCount > skipCount) updateCount = 1;
         if(firstCall)
         {
@@ -1962,8 +1974,9 @@ void ControlPanel::UpdateStateMachine(void)
             {
                 for(i=0;i<Systems.count();i++)
                 {
-                    if(!Systems[i]->isConnected())
+                    if(!Systems[i]->isConnected() && !reconnectPending)
                     {
+                        reconnectPending = true;
                         // Post to Comms worker thread — never call blocking Comms
                         // methods from the UI thread poll loop.
                         QMetaObject::invokeMethod(Systems[i], "reopenPort",

@@ -106,6 +106,7 @@ void RFamp::Update(void)
     QObjectList widgetList;
 
     if(comms == NULL) return;
+    if(!comms->isConnected()) return;
     if(UpdateOff) return;
     Updating = true;
 

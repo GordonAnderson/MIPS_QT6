@@ -67,6 +67,8 @@ void ADC::Update(bool UpdateSelected)
 {
     QString res;
 
+    if(comms == nullptr) return;
+    if(!comms->isConnected()) return;
     QObjectList widgetList = ui->gbADCdigitizer->children();
     foreach(QObject *w, widgetList)
     {

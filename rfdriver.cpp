@@ -54,6 +54,8 @@ void RFdriver::SetNumberOfChannels(int num)
 // readbacks for the currently selected channel and refreshes the UI.
 void RFdriver::Update(void)
 {
+    if(comms == nullptr) return;
+    if(!comms->isConnected()) return;
     rui->tabMIPS->setEnabled(false);
     rui->statusBar->showMessage(tr("Updating RF driver controls..."));
     rui->leSRFFRQ->setText(comms->SendMess("GRFFRQ,"  + rui->comboRFchan->currentText() + "\n"));
@@ -387,6 +389,7 @@ void RFchannel::Update(QString sVals)
 
     sValsList = (sVals == "") ? QStringList() : sVals.split(",");
     if(comms == NULL) return;
+    if(!comms->isConnected()) return;
     if(UpdateOff) return;
     Updating = true;
     comms->clearReceiveBuffer();
@@ -702,6 +705,7 @@ void RFCchannel::Update(QString sVals)
 
     sValsList = (sVals == "") ? QStringList() : sVals.split(",");
     if(comms == NULL) return;
+    if(!comms->isConnected()) return;
     if(UpdateOff) return;
     Updating = true;
     comms->clearReceiveBuffer();

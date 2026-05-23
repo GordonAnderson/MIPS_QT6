@@ -423,6 +423,7 @@ void DIOchannel::Update(void)
     QString res;
 
     if(comms == NULL) return;
+    if(!comms->isConnected()) return;
     comms->clearReceiveBuffer();
     res = comms->SendMess("GDIO," + Channel + "\n");
     bool oldState = DIO->blockSignals(true);

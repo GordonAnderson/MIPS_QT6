@@ -144,6 +144,7 @@ void DACchannel::Update(void)
     QString res;
 
     if (comms == nullptr) return;
+    if(!comms->isConnected()) return;
     if (UpdateOff) return;
     Updating = true;
     comms->clearReceiveBuffer();

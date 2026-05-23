@@ -194,6 +194,7 @@ private:
     bool                    RestoreFlag;
     bool                    StartMIPScomms;
     bool                    firstCall = true;
+    bool                    reconnectPending = false;
     QString                 CommentText = "";
     Shutdown                *SD;
     SaveLoad                *SL;

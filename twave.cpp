@@ -258,6 +258,8 @@ void Twave::Update(void)
     QString res;
 
     if(UpdateOff) return;
+    if(comms == nullptr) return;
+    if(!comms->isConnected()) return;
     Updating = true;
     switch(NumChannels)
     {

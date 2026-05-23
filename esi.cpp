@@ -179,6 +179,7 @@ void ESI::Update(void)
     QString res;
 
     if (comms == nullptr) return;
+    if(!comms->isConnected()) return;
 
     comms->clearReceiveBuffer();
     res = "GHV," + QString::number(Channel) + "\n";
