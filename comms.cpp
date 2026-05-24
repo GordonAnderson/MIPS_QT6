@@ -706,6 +706,8 @@ void Comms::doSendString(QString message)
         QMutexLocker lock(&sendMutex);
         pendingBool = false;
         sendWait.wakeAll();
+        QCoreApplication::removePostedEvents(reconnectTimer);
+        QCoreApplication::removePostedEvents(keepAliveTimer);
         return;
     }
     QMutexLocker lock(&sendMutex);
@@ -742,6 +744,8 @@ void Comms::doSendString(QString message)
 
     pendingBool = true;
     sendWait.wakeAll();
+    QCoreApplication::removePostedEvents(reconnectTimer);
+    QCoreApplication::removePostedEvents(keepAliveTimer);
 }
 
 // -----------------------------------------------------------------------------
@@ -798,6 +802,8 @@ void Comms::doSendCommand(QString message)
         QMutexLocker lock(&sendMutex);
         pendingBool = true;    // return safe default
         sendWait.wakeAll();
+        QCoreApplication::removePostedEvents(reconnectTimer);
+        QCoreApplication::removePostedEvents(keepAliveTimer);
         return;
     }
 
@@ -852,6 +858,8 @@ void Comms::doSendCommand(QString message)
             {
                 pendingBool = true;
                 sendWait.wakeAll();
+                QCoreApplication::removePostedEvents(reconnectTimer);
+                QCoreApplication::removePostedEvents(keepAliveTimer);
                 return;
             }
             if(res == "?")
@@ -861,6 +869,8 @@ void Comms::doSendCommand(QString message)
                 else                    emit statusMessage(res, 2000);
                 pendingBool = false;
                 sendWait.wakeAll();
+                QCoreApplication::removePostedEvents(reconnectTimer);
+                QCoreApplication::removePostedEvents(keepAliveTimer);
                 return;
             }
             break;
@@ -873,6 +883,8 @@ void Comms::doSendCommand(QString message)
     else                    emit statusMessage(res, 2000);
     pendingBool = true;   // original returned true on timeout
     sendWait.wakeAll();
+    QCoreApplication::removePostedEvents(reconnectTimer);
+    QCoreApplication::removePostedEvents(keepAliveTimer);
 }
 
 // -----------------------------------------------------------------------------
@@ -942,6 +954,8 @@ void Comms::doSendMessage(QString message)
         QMutexLocker lock(&sendMutex);
         pendingResponse = "";
         sendWait.wakeAll();
+        QCoreApplication::removePostedEvents(reconnectTimer);
+        QCoreApplication::removePostedEvents(keepAliveTimer);
         return;
     }
     if(properties != nullptr)
@@ -996,6 +1010,8 @@ void Comms::doSendMessage(QString message)
             {
                 pendingResponse = res;
                 sendWait.wakeAll();
+                QCoreApplication::removePostedEvents(reconnectTimer);
+                QCoreApplication::removePostedEvents(keepAliveTimer);
                 return;
             }
         }
@@ -1007,6 +1023,8 @@ void Comms::doSendMessage(QString message)
     else                    emit statusMessage(res, 2000);
     pendingResponse = "";
     sendWait.wakeAll();
+    QCoreApplication::removePostedEvents(reconnectTimer);
+    QCoreApplication::removePostedEvents(keepAliveTimer);
 }
 
 // =============================================================================
@@ -1472,6 +1490,7 @@ void Comms::slotAboutToClose(void) {}
 /*! \brief Comms::slotKeepAlive — sends a newline to keep the TCP link alive */
 void Comms::slotKeepAlive(void)
 {
+    if(!portAlive.loadRelaxed()) return;
     SendString("\n");
 }
 
@@ -1485,14 +1504,22 @@ void Comms::slotReconnect(void)
 {
     if(properties != nullptr)
         properties->Log("Comms slotReconnect: attempting reopen");
+    if(portAlive.loadRelaxed())
+    {
+        if(properties != nullptr)
+            properties->Log("Comms slotReconnect: already connected, skipping");
+        return;
+    }
     if(!serial->isOpen())
     {
         serial->open(QIODevice::ReadWrite);
         serial->setDataTerminalReady(true);
-        // FIX: Qt::UniqueConnection prevents stacking duplicate error handlers
-        connect(serial, &QSerialPort::errorOccurred, this, &Comms::handleError,
-                Qt::UniqueConnection);
     }
+    // Always reconnect errorOccurred regardless of whether port was already open —
+    // closeSerialPort() disconnects it and it must be restored on every reconnect,
+    // including silent resets where Windows keeps the port open.
+    connect(serial, &QSerialPort::errorOccurred, this, &Comms::handleError,
+            Qt::UniqueConnection);
     if(serial->isOpen())
     {
         // Restore timer signal connections removed by DisconnectFromMIPS().
@@ -1505,6 +1532,9 @@ void Comms::slotReconnect(void)
                 Qt::UniqueConnection);
         if(properties != nullptr)
             properties->Log("Comms slotReconnect: port open, restoring connections");
+        // Give device time to reinitialize after reset before allowing commands
+        // to flow — safe on Comms worker thread.
+        QThread::msleep(1000);
         portAlive.storeRelaxed(1);
         emit reconnected();
         reconnectTimer->stop();
