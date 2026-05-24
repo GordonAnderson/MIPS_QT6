@@ -1841,6 +1841,23 @@ void ControlPanel::UpdateStateMachine(void)
 
     // Make sure the UpdateSemaphore is avaliable, if not exit
 
+    // Exit immediately if no systems are connected and we are past
+    // state 0. This prevents singleShot-driven Update() calls from
+    // reaching Send* methods after a USB disconnect.
+    // State 0 is allowed through so it can detect the disconnect
+    // and handle the reconnect logic.
+    if(updateState > 0)
+    {
+        bool anyConnected = false;
+        for(int k = 0; k < Systems.count(); k++)
+            if(Systems[k]->isConnected()) { anyConnected = true; break; }
+        if(!anyConnected)
+        {
+            updateState = 0;
+            return;
+        }
+    }
+
     switch (updateState)
     {
     case 0:
