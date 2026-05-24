@@ -579,6 +579,9 @@ void MIPS::tabSelected()
     disconnect(comms, &Comms::DataReady, nullptr, nullptr);
     disconnect(console, &Console::getData, nullptr, nullptr);
     ui->menuTerminal->setEnabled(false);
+    // Restart poll timer when leaving Terminal tab
+    if(LastTab == "Terminal" && !pollTimer->isActive())
+        pollTimer->start(1000 * properties->UpdateSecs);
     if(LastTab == "Pulse Sequence Generation")
     {
         // Abort when exiting this tab
@@ -598,6 +601,7 @@ void MIPS::tabSelected()
     }
     if( ui->tabMIPS->tabText(ui->tabMIPS->currentIndex()) == "Terminal")
     {
+        pollTimer->stop();   // stop polling so all serial IO goes to terminal, not Send* methods
         ui->menuTerminal->setEnabled(true);
         LastTab = "Terminal";
         connect(comms, &Comms::DataReady, this, &MIPS::readData2Console);
