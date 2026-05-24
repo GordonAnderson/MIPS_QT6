@@ -89,7 +89,17 @@ void MIPS::clearSystems()
     // Disconnect and stop every worker thread cleanly.
     for(int j = 0; j < Systems.count(); j++)
     {
-        Systems.at(j)->DisconnectFromMIPS();
+        Comms *c = Systems.at(j);
+        c->DisconnectFromMIPS();
+        // Ensure timer teardown completes on the Comms thread before
+        // we call quit() — BlockingQueuedConnection blocks the caller
+        // until the lambda finishes on the target thread.
+        QMetaObject::invokeMethod(c, [c]() {
+            c->keepAliveTimer->stop();
+            c->keepAliveTimer->disconnect();
+            c->reconnectTimer->stop();
+            c->reconnectTimer->disconnect();
+        }, Qt::BlockingQueuedConnection);
     }
     for(int j = 0; j < commsThreads.count(); j++)
     {

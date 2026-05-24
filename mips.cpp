@@ -199,6 +199,15 @@ void MIPS::closeEvent(QCloseEvent *)
     delete help;
     for(int i=0;i<plots.count();i++) emit plots[i]->DialogClosed(plots[i]);
     clearSystems();
+    // Ensure timer teardown completes on the primaryComms thread before
+    // we call quit() — BlockingQueuedConnection blocks the caller until
+    // the lambda finishes on the target thread.
+    QMetaObject::invokeMethod(primaryComms, [this]() {
+        primaryComms->keepAliveTimer->stop();
+        primaryComms->keepAliveTimer->disconnect();
+        primaryComms->reconnectTimer->stop();
+        primaryComms->reconnectTimer->disconnect();
+    }, Qt::BlockingQueuedConnection);
     primaryCommsThread->quit();
     primaryCommsThread->wait();
     delete ui;

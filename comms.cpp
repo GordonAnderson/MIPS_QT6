@@ -1262,12 +1262,17 @@ bool Comms::ConnectToMIPS()
 /*! \brief Comms::DisconnectFromMIPS */
 void Comms::DisconnectFromMIPS()
 {
+    // Stop and disconnect timers first — prevents any queued timeout
+    // from firing into a partially destroyed object during cleanup.
+    keepAliveTimer->stop();
+    keepAliveTimer->disconnect();
+    reconnectTimer->stop();
+    reconnectTimer->disconnect();
+
     portAlive.storeRelaxed(0);
     if(client.isOpen())
     {
         client.close();
-        keepAliveTimer->stop();
-        reconnectTimer->stop();
     }
     closeSerialPort();
 }
