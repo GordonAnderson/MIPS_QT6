@@ -674,6 +674,8 @@ void MIPS::writeData(const QByteArray &data)
  */
 void MIPS::readData2Console(QByteArray data)
 {
+    if(properties != nullptr)
+        properties->Log("readData2Console: " + QString::number(data.size()) + " bytes: " + QString(data).left(20));
     console->putData(data);
 }
 
