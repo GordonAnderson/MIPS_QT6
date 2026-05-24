@@ -105,7 +105,6 @@ public:
     QString SendMess(QString message);
     bool    SendString(QString name, QString message);
     bool    SendString(QString message);
-    void    writeData(const QByteArray &data);
     bool    openSerialPort();
     void    reopenSerialPort(void);
     void    closeSerialPort();
@@ -195,6 +194,7 @@ private:
 public slots:
     void readData2RingBuffer(void);
     void reopenPort(void);
+    void    writeData(const QByteArray &data);
 
 private slots:
     // -------------------------------------------------------------------------

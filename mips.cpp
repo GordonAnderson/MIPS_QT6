@@ -581,7 +581,10 @@ void MIPS::tabSelected()
     ui->menuTerminal->setEnabled(false);
     // Restart poll timer when leaving Terminal tab
     if(LastTab == "Terminal" && !pollTimer->isActive())
-        pollTimer->start(1000 * properties->UpdateSecs);
+    {
+        if(properties != nullptr) pollTimer->start(1000 * properties->UpdateSecs);
+        else pollTimer->start(1000);
+    }
     if(LastTab == "Pulse Sequence Generation")
     {
         // Abort when exiting this tab
@@ -666,7 +669,9 @@ void MIPS::tabSelected()
  */
 void MIPS::writeData(const QByteArray &data)
 {
-    comms->writeData(data);
+    QMetaObject::invokeMethod(comms, [comms = this->comms, data]() {
+        comms->writeData(data);
+    }, Qt::QueuedConnection);
 }
 
 /*! \brief MIPS::readData2Console
@@ -676,6 +681,7 @@ void MIPS::readData2Console(QByteArray data)
 {
     if(properties != nullptr)
         properties->Log("readData2Console: " + QString::number(data.size()) + " bytes: " + QString(data).left(20));
+    qDebug() << ("readData2Console: " + QString::number(data.size()) + " bytes: " + QString(data).left(20));
     console->putData(data);
 }
 

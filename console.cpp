@@ -81,7 +81,19 @@ void Console::resize(QWidget *parent)
 // putData — appends incoming data to the console and auto-scrolls to the end.
 void Console::putData(const QByteArray &data)
 {
-    insertPlainText(QString(data));
+    // Convert the QByteArray to a QString
+    QString cleanedString = QString(data);
+
+    // Remove all 0x06 (ACK) characters
+    cleanedString.remove(QChar(0x06));
+
+    // Remove all 0x15 (NAK) characters
+    cleanedString.remove(QChar(0x15));
+
+    // Insert the cleaned text into the text edit
+    insertPlainText(cleanedString);
+
+    // Scroll to the bottom
     QScrollBar *bar = verticalScrollBar();
     bar->setValue(bar->maximum());
 }
