@@ -151,6 +151,7 @@ void ControlPanel::loadConfig(QString fileName)
     MIPSnames.clear();
     for(int i=0;i<Systems.count();i++)
     {
+       if(!Systems[i]->isConnected()) continue;
        QString res = Systems[i]->MIPSname + ": " + Systems[i]->SendMess("GVER\n");
        // Add MIPS firmware version to log file
        if(properties != nullptr) properties->Log(Systems[i]->MIPSname + ": " + Systems[i]->SendMess("GVER\n"));
@@ -1023,6 +1024,7 @@ void ControlPanel::loadConfig(QString fileName)
         if(properties != nullptr) properties->Log("Enabling serial watch dog on MIPS system(s)");
         for(int i=0;i<Systems.count();i++)
         {
+           if(!Systems[i]->isConnected()) continue;
            Systems[i]->SendCommand("SSERWD," + QString::number(SerialWatchDog) + "\n");
         }
     }
@@ -1083,6 +1085,7 @@ ControlPanel::~ControlPanel()
         if(properties != nullptr) properties->Log("Disabling serial watch dog on MIPS system(s)");
         for(int i=0;i<Systems.count();i++)
         {
+           if(!Systems[i]->isConnected()) continue;
            Systems[i]->SendCommand("SSERWD,0\n");
         }
     }
@@ -1800,7 +1803,7 @@ void ControlPanel::InitMIPSsystems(QString initFilename)
             if(line.trimmed().startsWith("#")) continue;
             QStringList resList = line.split(",");
             Comms *cp =  FindCommPort(resList[0],Systems);
-            if(cp!=nullptr) cp->SendString(line.mid(line.indexOf(resList[0]) + resList[0].length() + 1) + "\n");
+            if(cp!=nullptr && cp->isConnected()) cp->SendString(line.mid(line.indexOf(resList[0]) + resList[0].length() + 1) + "\n");
         } while(!line.isNull());
         file.close();
     }
@@ -1868,6 +1871,7 @@ void ControlPanel::UpdateStateMachine(void)
         {
             for(i=0;i<Systems.count();i++)
             {
+                if(!Systems[i]->isConnected()) continue;
                 Systems[i]->SendString("\n");
             }
         }
@@ -1899,7 +1903,7 @@ void ControlPanel::UpdateStateMachine(void)
             SystemIsShutdown = true;
             UpdateHoldOff = 1000;
             // Make sure all MIPS systems are in local mode
-            for(i=0;i<Systems.count();i++)    Systems[i]->SendString("SMOD,LOC\n");
+            for(i=0;i<Systems.count();i++)    if(Systems[i]->isConnected()) Systems[i]->SendString("SMOD,LOC\n");
             for(i=0;i<Systems.count();i++)    Systems[i]->clearReceiveBuffer();
             for(i=0;i<ESIchans.count();i++)   ESIchans[i]->Shutdown();
             for(i=0;i<DCBenables.count();i++) DCBenables[i]->Shutdown();
@@ -1995,6 +1999,7 @@ void ControlPanel::UpdateStateMachine(void)
         {
             for(j=0;j<RFchans.count();j++) if(RFchans[j]->comms == Systems[i])
                 {
+                    if(!Systems[i]->isConnected()) break;
                     // Read all the RF parameters
                     QString RFallRes = Systems[i]->SendMess("GRFALL\n");
                     QStringList RFallResList = RFallRes.split(",");
@@ -2024,6 +2029,7 @@ void ControlPanel::UpdateStateMachine(void)
         {
             for(j=0;j<RFCchans.count();j++) if(RFCchans[j]->comms == Systems[i])
                 {
+                    if(!Systems[i]->isConnected()) break;
                     // Read all the RF parameters
                     QString RFallRes = Systems[i]->SendMess("GRFALL\n");
                     QStringList RFallResList = RFallRes.split(",");
@@ -2061,6 +2067,7 @@ void ControlPanel::UpdateStateMachine(void)
         {
             for(j=0;j<DCBchans.count();j++) if(DCBchans[j]->comms == Systems[i])
                 {
+                    if(!Systems[i]->isConnected()) break;
                     // Read all the setpoints and readbacks and parse the strings
                     QString VspRes;
                     if(updateCount == 1)
@@ -2172,6 +2179,7 @@ QString ControlPanel::Save(QString Filename)
         // Add uptime if MIPS systems are connected
         for(int i=0;i<Systems.count();i++)
         {
+           if(!Systems[i]->isConnected()) continue;
            QString res = Systems[i]->SendMess("UPTIME\n");
            if(res!="" && !res.contains("?")) stream << "# " + Systems[i]->MIPSname + ": " + res + "\n";
         }
@@ -2841,6 +2849,7 @@ bool ControlPanel::SendCommand(QString MIPSname, QString message)
 {
    Comms *cp =  FindCommPort(MIPSname,Systems);
    if(cp==nullptr) return false;
+   if(!cp->isConnected()) return false;
    return cp->SendCommand(message);
 }
 
@@ -2851,6 +2860,7 @@ bool ControlPanel::SendString(QString MIPSname, QString message)
 {
    Comms *cp =  FindCommPort(MIPSname,Systems);
    if(cp==nullptr) return false;
+   if(!cp->isConnected()) return false;
    return cp->SendString(message);
 }
 
@@ -2861,6 +2871,7 @@ QString ControlPanel::SendMess(QString MIPSname, QString message)
 {
     Comms *cp =  FindCommPort(MIPSname,Systems);
     if(cp==nullptr) return "MIPS not found!";
+    if(!cp->isConnected()) return "";
     return cp->SendMess(message);
 }
 
