@@ -1,0 +1,84 @@
+name: Sign Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Build workflow run ID (find in Actions tab URL)'
+        required: true
+        type: string
+      version:
+        description: 'Version number (e.g. V2.24)'
+        required: true
+        type: string
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  sign-windows:
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download unsigned Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: MIPS-Windows
+          run-id: ${{ github.event.inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Unzip Windows build
+        shell: pwsh
+        run: |
+          Expand-Archive -Path "MIPS-Windows-${{ github.event.inputs.version }}.zip" `
+            -DestinationPath "unsigned"
+
+      - name: Sign executables and DLLs
+        uses: azure/trusted-signing-action@v0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://wus.codesigning.azure.net/
+          trusted-signing-account-name: mips-dev-signer
+          certificate-profile-name: MIPS-Signing
+          files-folder: unsigned
+          files-folder-filter: exe,dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+ 
+      - name: Zip signed build
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "unsigned\*" `
+            -DestinationPath "MIPS-Windows-${{ github.event.inputs.version }}.zip" `
+            -Force
+            
+      - name: Delete unsigned asset from release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          VERSION=$(echo "${{ github.event.inputs.version }}" | tr '[:lower:]' '[:upper:]')
+          ASSET_NAME="MIPS-Windows-${VERSION}.zip"
+          echo "Looking for asset: $ASSET_NAME in release $VERSION"
+          gh release delete-asset $VERSION "$ASSET_NAME" --yes \
+            --repo ${{ github.repository }}
+
+      - name: Upload signed app to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          files: MIPS-Windows-${{ github.event.inputs.version }}.zip
+
+      - name: Upload signed artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MIPS-Windows-signed
+          path: MIPS-Windows-${{ github.event.inputs.version }}.zip
