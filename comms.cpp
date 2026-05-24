@@ -1262,18 +1262,26 @@ bool Comms::ConnectToMIPS()
 /*! \brief Comms::DisconnectFromMIPS */
 void Comms::DisconnectFromMIPS()
 {
-    // Stop and disconnect timers first — prevents any queued timeout
-    // from firing into a partially destroyed object during cleanup.
-    keepAliveTimer->stop();
-    keepAliveTimer->disconnect();
-    reconnectTimer->stop();
-    reconnectTimer->disconnect();
-
-    portAlive.storeRelaxed(0);
-    if(client.isOpen())
+    // Post timer teardown to the Comms thread and wait for completion
+    // This guarantees the stops execute on the correct thread
+    if(QThread::currentThread() != this->thread())
     {
-        client.close();
+        QMetaObject::invokeMethod(this, [this]() {
+            keepAliveTimer->stop();
+            keepAliveTimer->disconnect();
+            reconnectTimer->stop();
+            reconnectTimer->disconnect();
+        }, Qt::BlockingQueuedConnection);
     }
+    else
+    {
+        keepAliveTimer->stop();
+        keepAliveTimer->disconnect();
+        reconnectTimer->stop();
+        reconnectTimer->disconnect();
+    }
+
+    if(client.isOpen()) client.close();
     closeSerialPort();
 }
 
