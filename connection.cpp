@@ -86,33 +86,21 @@ static Comms* makeCommsOnThread(SettingsDialog *settings,
  */
 void MIPS::clearSystems()
 {
-    // Disconnect and stop every worker thread cleanly.
+    // DisconnectFromMIPS() now handles timer stop/disconnect on the
+    // Comms thread via BlockingQueuedConnection internally.
     for(int j = 0; j < Systems.count(); j++)
     {
-        Comms *c = Systems.at(j);
-        c->DisconnectFromMIPS();
-        // Ensure timer teardown completes on the Comms thread before
-        // we call quit() — BlockingQueuedConnection blocks the caller
-        // until the lambda finishes on the target thread.
-        QMetaObject::invokeMethod(c, [c]() {
-            c->keepAliveTimer->stop();
-            c->keepAliveTimer->disconnect();
-            c->reconnectTimer->stop();
-            c->reconnectTimer->disconnect();
-        }, Qt::BlockingQueuedConnection);
+        Systems.at(j)->DisconnectFromMIPS();
     }
     for(int j = 0; j < commsThreads.count(); j++)
     {
         commsThreads.at(j)->quit();
-        commsThreads.at(j)->wait();   // block until the thread has finished
+        commsThreads.at(j)->wait();
+        QCoreApplication::sendPostedEvents(Systems.at(j), QEvent::None);
         delete commsThreads.at(j);
     }
-    // Delete each Comms object now that its thread has stopped.
     for(int j = 0; j < Systems.count(); j++)
     {
-        // Do not delete the object that comms points to if it is the
-        // pre-allocated primary comms created in MIPS::MIPS() — that one
-        // lives for the lifetime of the MIPS window.
         if(Systems.at(j) != primaryComms) delete Systems.at(j);
     }
     Systems.clear();

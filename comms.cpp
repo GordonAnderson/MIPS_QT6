@@ -1262,8 +1262,6 @@ bool Comms::ConnectToMIPS()
 /*! \brief Comms::DisconnectFromMIPS */
 void Comms::DisconnectFromMIPS()
 {
-    // Post timer teardown to the Comms thread and wait for completion
-    // This guarantees the stops execute on the correct thread
     if(QThread::currentThread() != this->thread())
     {
         QMetaObject::invokeMethod(this, [this]() {
@@ -1271,6 +1269,9 @@ void Comms::DisconnectFromMIPS()
             keepAliveTimer->disconnect();
             reconnectTimer->stop();
             reconnectTimer->disconnect();
+            QCoreApplication::removePostedEvents(this);
+            QCoreApplication::removePostedEvents(keepAliveTimer);
+            QCoreApplication::removePostedEvents(reconnectTimer);
         }, Qt::BlockingQueuedConnection);
     }
     else
@@ -1279,6 +1280,9 @@ void Comms::DisconnectFromMIPS()
         keepAliveTimer->disconnect();
         reconnectTimer->stop();
         reconnectTimer->disconnect();
+        QCoreApplication::removePostedEvents(this);
+        QCoreApplication::removePostedEvents(keepAliveTimer);
+        QCoreApplication::removePostedEvents(reconnectTimer);
     }
 
     if(client.isOpen()) client.close();
