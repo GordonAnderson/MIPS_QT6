@@ -1271,25 +1271,6 @@ void Comms::handleError(QSerialPort::SerialPortError error)
         break;
     }
 }
-/*
-void Comms::handleError(QSerialPort::SerialPortError error)
-{
-    if (error == QSerialPort::ResourceError)
-    {
-        closeSerialPort();
-        if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + tr(" Critical Error, port closing: ") + serial->errorString());
-        else sb->showMessage(tr("Critical Error, port closing: ") + serial->errorString());
-        if(properties != nullptr)
-        {
-            if(properties->AutoRestore)
-            {
-                reconnectTimer->setInterval(2000);
-                reconnectTimer->start();
-            }
-        }
-    }
-}
-*/
 
 /*! \brief Comms::writeData
  * Writes a byte array to the open TCP socket or serial port in 100-byte chunks.
@@ -1449,11 +1430,11 @@ void Comms::slotKeepAlive(void)
  */
 void Comms::slotReconnect(void)
 {
+    connect(serial, &QSerialPort::errorOccurred, this, &Comms::handleError,Qt::UniqueConnection);
     if(!serial->isOpen())
     {
         serial->open(QIODevice::ReadWrite);
         serial->setDataTerminalReady(true);
-        connect(serial, &QSerialPort::errorOccurred, this, &Comms::handleError,Qt::UniqueConnection);
     }
     if(serial->isOpen())
     {
