@@ -21,6 +21,7 @@
 // =============================================================================
 #include "properties.h"
 #include "ui_properties.h"
+#include <QMutex>
 
 // Define the pointer (it starts as null)
 Properties *pProps = nullptr;
@@ -91,6 +92,9 @@ Properties::~Properties()
 // Empty messages and an empty LogFile path are silently ignored.
 void Properties::Log(QString Message)
 {
+    static QMutex logMutex;
+    QMutexLocker locker(&logMutex);
+
     if(Message.isEmpty() || LogFile.isEmpty()) return;
     QFile file(LogFile);
     if(file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))

@@ -682,8 +682,8 @@ bool Comms::SendString(QString message)
 
     if(!serial->isOpen() && !client.isOpen())
     {
-        if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + " SS Disconnected!", 2000);
-        else                    sb->showMessage("SS Disconnected!", 2000);
+        if(!MIPSname.isEmpty()) emit statusMessage(MIPSname + " SS Disconnected!", 2000);
+        else                    emit statusMessage("SS Disconnected!", 2000);
         return true;
     }
 
@@ -771,8 +771,8 @@ bool Comms::SendCommand(QString message)
 
     if(!serial->isOpen() && !client.isOpen())
     {
-        if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + " SC Disconnected!", 2000);
-        else                    sb->showMessage("SC Disconnected!", 2000);
+        if(!MIPSname.isEmpty()) emit statusMessage(MIPSname + " SC Disconnected!", 2000);
+        else                    emit statusMessage("SC Disconnected!", 2000);
         return true;
     }
 
@@ -869,8 +869,8 @@ void Comms::doSendCommand(QString message)
 
     // Timeout
     res = message + " :Timeout";
-    if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + ", " + res, 2000);
-    else                    sb->showMessage(res, 2000);
+    if(!MIPSname.isEmpty()) emit statusMessage(MIPSname + ", " + res, 2000);
+    else                    emit statusMessage(res, 2000);
     pendingBool = true;   // original returned true on timeout
     sendWait.wakeAll();
 }
@@ -915,8 +915,8 @@ QString Comms::SendMessage(QString message)
 
     if(!serial->isOpen() && !client.isOpen())
     {
-        if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + " SM Disconnected!", 2000);
-        else                    sb->showMessage("SM Disconnected!", 2000);
+        if(!MIPSname.isEmpty()) emit statusMessage(MIPSname + " SM Disconnected!", 2000);
+        else                    emit statusMessage("SM Disconnected!", 2000);
         return "";
     }
 
@@ -1250,7 +1250,7 @@ bool Comms::ConnectToMIPS()
         client_connected = false;
         client.setSocketOption(QAbstractSocket::KeepAliveOption, 1);
         client.connectToHost(host, 2015);
-        sb->showMessage(tr("Connecting..."));
+        emit statusMessage(tr("Connecting..."));
         timer.start();
         while(timer.elapsed() < 30000)
         {
@@ -1262,7 +1262,7 @@ bool Comms::ConnectToMIPS()
                 return true;
             }
         }
-        sb->showMessage(tr("MIPS failed to connect!"));
+        emit statusMessage(tr("MIPS failed to connect!"));
         client.abort();
         client.close();
         return false;
@@ -1347,7 +1347,7 @@ bool Comms::openSerialPort()
 
     if(serial->open(QIODevice::ReadWrite))
     {
-        sb->showMessage(
+        emit statusMessage(
             QString("Connected to %1 : %2, %3, %4, %5, %6")
                 .arg(p.name, p.stringBaudRate, p.stringDataBits,
                      p.stringParity, p.stringStopBits, p.stringFlowControl));
@@ -1356,7 +1356,7 @@ bool Comms::openSerialPort()
     }
 
     QMessageBox::critical(nullptr, QString("Error"), serial->errorString());
-    sb->showMessage(tr("Open error: ") + serial->errorString());
+    emit statusMessage(tr("Open error: ") + serial->errorString());
     return false;
 }
 
@@ -1367,8 +1367,8 @@ void Comms::closeSerialPort()
 {
     portAlive.storeRelaxed(0);
     if(serial->isOpen()) serial->close();
-    if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + " Closed!", 2000);
-    else                    sb->showMessage("Closed!", 2000);
+    if(!MIPSname.isEmpty()) emit statusMessage(MIPSname + " Closed!", 2000);
+    else                    emit statusMessage("Closed!", 2000);
     disconnect(serial, &QSerialPort::errorOccurred, nullptr, nullptr);
 }
 
@@ -1425,14 +1425,14 @@ void Comms::reopenPort(void)
         client_connected = false;
         client.setSocketOption(QAbstractSocket::KeepAliveOption, 1);
         client.connectToHost(host, 2015);
-        sb->showMessage(tr("Connecting..."));
+        emit statusMessage(tr("Connecting..."));
         timer.start();
         while(timer.elapsed() < 5000)
         {
             QThread::msleep(100);
             if(client_connected) return;
         }
-        sb->showMessage(tr("MIPS failed to connect!"));
+        emit statusMessage(tr("MIPS failed to connect!"));
         client.abort();
         client.close();
     }
@@ -1453,8 +1453,8 @@ void Comms::reopenPort(void)
 void Comms::connected(void)
 {
     portAlive.storeRelaxed(1);
-    if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + tr(" MIPS connected"));
-    else                    sb->showMessage(tr("MIPS connected"));
+    if(!MIPSname.isEmpty()) emit statusMessage(MIPSname + tr(" MIPS connected"));
+    else                    emit statusMessage(tr("MIPS connected"));
     client_connected = true;
 }
 
@@ -1462,8 +1462,8 @@ void Comms::connected(void)
 void Comms::disconnected(void)
 {
     portAlive.storeRelaxed(0);
-    if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + " Disconnect signaled!", 2000);
-    else                    sb->showMessage("Disconnect signaled!!", 2000);
+    if(!MIPSname.isEmpty()) emit statusMessage(MIPSname + " Disconnect signaled!", 2000);
+    else                    emit statusMessage("Disconnect signaled!!", 2000);
 }
 
 /*! \brief Comms::slotAboutToClose */
