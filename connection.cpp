@@ -101,7 +101,7 @@ void MIPS::clearSystems()
     }
     for(int j = 0; j < Systems.count(); j++)
     {
-        if(Systems.at(j) != primaryComms) delete Systems.at(j);
+        if(Systems.at(j) != primaryComms) Systems.at(j)->deleteLater();
     }
     Systems.clear();
     commsThreads.clear();
