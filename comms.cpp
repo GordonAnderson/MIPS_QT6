@@ -709,6 +709,11 @@ void Comms::doSendString(QString message)
         return;
     }
     QMutexLocker lock(&sendMutex);
+    // Flush any queued timer events before blocking wait.
+    // Prevents reconnectTimer/keepAliveTimer events that arrived
+    // during reconnect from firing while doSendString is blocked.
+    QCoreApplication::removePostedEvents(reconnectTimer);
+    QCoreApplication::removePostedEvents(keepAliveTimer);
 
     if(client.isOpen()) keepAliveTimer->setInterval(600000);
 
@@ -799,6 +804,10 @@ void Comms::doSendCommand(QString message)
     if(properties != nullptr)
         properties->Log("Comms doSendCommand: " + message.trimmed());
     QMutexLocker lock(&sendMutex);
+    QCoreApplication::removePostedEvents(reconnectTimer);
+    QCoreApplication::removePostedEvents(keepAliveTimer);
+    if(properties != nullptr)
+        properties->Log("Comms doSendCommand executing: " + message.trimmed());
     if(client.isOpen()) keepAliveTimer->setInterval(600000);
 
     for(int i = 0; i < 2; i++)
@@ -938,6 +947,10 @@ void Comms::doSendMessage(QString message)
     if(properties != nullptr)
         properties->Log("Comms doSendMessage: " + message.trimmed());
     QMutexLocker lock(&sendMutex);
+    QCoreApplication::removePostedEvents(reconnectTimer);
+    QCoreApplication::removePostedEvents(keepAliveTimer);
+    if(properties != nullptr)
+        properties->Log("Comms doSendMessage executing: " + message.trimmed());
 
     if(client.isOpen()) keepAliveTimer->setInterval(600000);
 
