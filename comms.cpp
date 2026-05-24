@@ -1470,9 +1470,20 @@ void Comms::slotReconnect(void)
     }
     if(serial->isOpen())
     {
+        // Restore timer signal connections removed by DisconnectFromMIPS().
+        // UniqueConnection prevents stacking if slotReconnect fires more than once.
+        connect(keepAliveTimer, &QTimer::timeout,
+                this, &Comms::slotKeepAlive,
+                Qt::UniqueConnection);
+        connect(reconnectTimer, &QTimer::timeout,
+                this, &Comms::slotReconnect,
+                Qt::UniqueConnection);
         portAlive.storeRelaxed(1);
         emit reconnected();
         reconnectTimer->stop();
+        // Flush any queued timeout event that arrived between the last tick
+        // and stop() — prevents a stale event firing after stop() returns.
+        QCoreApplication::removePostedEvents(reconnectTimer);
         if(!MIPSname.isEmpty()) emit statusMessage(MIPSname + tr(" Serial port reconnected!"));
         else                    emit statusMessage(tr("Serial port reconnected!"));
     }
