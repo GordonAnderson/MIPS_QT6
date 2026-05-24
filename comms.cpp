@@ -12,6 +12,7 @@
 // Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
 // =============================================================================
 #include <QElapsedTimer>
+#include <QSerialPort>
 #include <QtSerialPort/QtSerialPort>
 #include <QStringView>
 #include <qeventloop.h>
@@ -1190,7 +1191,7 @@ void Comms::reopenPort(void)
  */
 bool Comms::openSerialPort()
 {
-    connect(serial, &QSerialPort::errorOccurred, this, &Comms::handleError);
+    connect(serial, &QSerialPort::errorOccurred, this, &Comms::handleError,Qt::UniqueConnection);
     serial->setPortName(p.name);
     #if defined(Q_OS_MAC)
         serial->setPortName("cu." + p.name);
@@ -1219,9 +1220,6 @@ bool Comms::openSerialPort()
  */
 void Comms::closeSerialPort()
 {
-    if (serial->isOpen()) serial->close();
-    serial->close();
-    serial->close();
     serial->close();
     if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + " Closed!",2000);
     else sb->showMessage("Closed!",2000);
@@ -1232,6 +1230,48 @@ void Comms::closeSerialPort()
  * Slot: handles serial port errors. On ResourceError, closes the port and
  * starts the reconnect timer if AutoRestore is enabled in properties.
  */
+void Comms::handleError(QSerialPort::SerialPortError error)
+{
+    if (error == QSerialPort::NoError) return;
+
+    QString errMsg = serial->errorString();
+
+    switch (error)
+    {
+    case QSerialPort::ResourceError:
+    case QSerialPort::PermissionError:
+    case QSerialPort::DeviceNotFoundError:
+    case QSerialPort::UnsupportedOperationError:
+        // Fatal — close the port
+        closeSerialPort();
+        if (!MIPSname.isEmpty())
+            sb->showMessage(MIPSname + tr(" Critical Error, port closing: ") + errMsg);
+        else
+            sb->showMessage(tr("Critical Error, port closing: ") + errMsg);
+
+        if (properties != nullptr && properties->AutoRestore)
+        {
+            reconnectTimer->setInterval(2000);
+            reconnectTimer->start();
+        }
+        break;
+
+    case QSerialPort::TimeoutError:
+    case QSerialPort::ReadError:
+    case QSerialPort::WriteError:
+        // Non-fatal — log it, keep port open
+        if (!MIPSname.isEmpty())
+            sb->showMessage(MIPSname + tr(" Serial error: ") + errMsg);
+        else
+            sb->showMessage(tr("Serial error: ") + errMsg);
+        break;
+
+    default:
+        sb->showMessage(tr("Unknown serial error: ") + errMsg);
+        break;
+    }
+}
+/*
 void Comms::handleError(QSerialPort::SerialPortError error)
 {
     if (error == QSerialPort::ResourceError)
@@ -1249,6 +1289,7 @@ void Comms::handleError(QSerialPort::SerialPortError error)
         }
     }
 }
+*/
 
 /*! \brief Comms::writeData
  * Writes a byte array to the open TCP socket or serial port in 100-byte chunks.
@@ -1412,7 +1453,7 @@ void Comms::slotReconnect(void)
     {
         serial->open(QIODevice::ReadWrite);
         serial->setDataTerminalReady(true);
-        connect(serial, &QSerialPort::errorOccurred, this, &Comms::handleError);
+        connect(serial, &QSerialPort::errorOccurred, this, &Comms::handleError,Qt::UniqueConnection);
     }
     if(serial->isOpen())
     {
