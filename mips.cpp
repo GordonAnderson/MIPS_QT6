@@ -148,6 +148,10 @@ MIPS::MIPS(QWidget *parent, QString CPfilename) :
     connect(ui->actionSelect, &QAction::triggered, this, [this](){ SelectCP(); });
     connect(ui->actionScripting, &QAction::triggered, this, &MIPS::slotScripting);
     connect(ui->statusBar, &QStatusBar::messageChanged, this, &MIPS::slotLogStatusBarMessage);
+    connect(primaryComms, &Comms::reconnected, this, [this]() {
+        if(!pollTimer->isActive())
+            pollTimer->start(1000 * properties->UpdateSecs);
+    }, Qt::QueuedConnection);
 
     ui->comboMIPSnetNames->installEventFilter(new DeleteHighlightedItemWhenShiftDelPressedEventFilter);
     // Sets the polling loop interval and starts the timer

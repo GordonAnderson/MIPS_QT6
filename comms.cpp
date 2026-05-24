@@ -1471,6 +1471,7 @@ void Comms::slotReconnect(void)
     if(serial->isOpen())
     {
         portAlive.storeRelaxed(1);
+        emit reconnected();
         reconnectTimer->stop();
         if(!MIPSname.isEmpty()) emit statusMessage(MIPSname + tr(" Serial port reconnected!"));
         else                    emit statusMessage(tr("Serial port reconnected!"));

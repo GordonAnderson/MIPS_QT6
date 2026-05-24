@@ -90,6 +90,7 @@ signals:
     void statusMessage(QString message, int timeout = 0);
     void errorMessage(QString title, QString message);
     void infoMessage(QString title, QString message);
+    void reconnected();
 
 
 public:

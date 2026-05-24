@@ -273,6 +273,7 @@ void MIPS::MIPSsetup(void)
  */
 void MIPS::MIPSconnect(void)
 {
+    pollTimer->stop();
     comms->setSettings(settings->settings());
     comms->setProperties(properties);
     comms->setHost(ui->comboMIPSnetNames->currentText());
@@ -289,6 +290,7 @@ void MIPS::MIPSconnect(void)
         ui->lblMIPSconnectionNotes->setHidden(true);
         MIPSsetup();
     }
+    pollTimer->start(1000 * properties->UpdateSecs);
 }
 
 /*! \brief MIPS::MIPSsearch
@@ -350,6 +352,10 @@ void MIPS::FindAllMIPSsystems(void)
             {
                 Systems      << cp;
                 commsThreads << ct;
+                connect(cp, &Comms::reconnected, this, [this]() {
+                    if(!pollTimer->isActive())
+                        pollTimer->start(1000 * properties->UpdateSecs);
+                }, Qt::QueuedConnection);
             }
             else
             {
@@ -389,6 +395,10 @@ void MIPS::FindAllMIPSsystems(void)
                 {
                     Systems      << cp;
                     commsThreads << ct;
+                    connect(cp, &Comms::reconnected, this, [this]() {
+                        if(!pollTimer->isActive())
+                            pollTimer->start(1000 * properties->UpdateSecs);
+                    }, Qt::QueuedConnection);
                 }
                 else
                 {
@@ -405,6 +415,10 @@ void MIPS::FindAllMIPSsystems(void)
                     {
                         Systems      << cp;
                         commsThreads << ct;
+                        connect(cp, &Comms::reconnected, this, [this]() {
+                            if(!pollTimer->isActive())
+                                pollTimer->start(1000 * properties->UpdateSecs);
+                        }, Qt::QueuedConnection);
                     }
                     else
                     {
@@ -441,6 +455,7 @@ void MIPS::FindAllMIPSsystems(void)
  */
 void MIPS::FindMIPSandConnect(void)
 {
+    pollTimer->stop();
     ui->pbSearchandConnect->setDown(false);
     QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
     FindAllMIPSsystems();
@@ -459,6 +474,7 @@ void MIPS::FindMIPSandConnect(void)
     {
         ui->statusBar->showMessage(tr("Can't find MIPS system!"));
     }
+    pollTimer->start(1000 * properties->UpdateSecs);
 }
 
 /*! \brief MIPS::MIPSdisconnect
@@ -472,6 +488,7 @@ void MIPS::FindMIPSandConnect(void)
  */
 void MIPS::MIPSdisconnect(void)
 {
+    pollTimer->stop();
     AddTab("ADC");
     AddTab("Digital IO");
     AddTab("DCbias");
