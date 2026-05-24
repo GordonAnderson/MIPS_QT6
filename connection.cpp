@@ -348,6 +348,7 @@ void MIPS::FindAllMIPSsystems(void)
             QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
             cp = makeCommsOnThread(settings, ui->statusBar, ct);
             cp->setHost(ui->comboMIPSnetNames->itemText(j));
+            cp->setProperties(properties);
             if(cp->ConnectToMIPS())
             {
                 Systems      << cp;

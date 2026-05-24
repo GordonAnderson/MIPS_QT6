@@ -796,6 +796,8 @@ void Comms::doSendCommand(QString message)
         return;
     }
 
+    if(properties != nullptr)
+        properties->Log("Comms doSendCommand: " + message.trimmed());
     QMutexLocker lock(&sendMutex);
     if(client.isOpen()) keepAliveTimer->setInterval(600000);
 
@@ -933,6 +935,8 @@ void Comms::doSendMessage(QString message)
         sendWait.wakeAll();
         return;
     }
+    if(properties != nullptr)
+        properties->Log("Comms doSendMessage: " + message.trimmed());
     QMutexLocker lock(&sendMutex);
 
     if(client.isOpen()) keepAliveTimer->setInterval(600000);
@@ -1265,6 +1269,8 @@ void Comms::DisconnectFromMIPS()
     if(QThread::currentThread() != this->thread())
     {
         QMetaObject::invokeMethod(this, [this]() {
+            if(properties != nullptr)
+                properties->Log("Comms DisconnectFromMIPS: timers stopped on Comms thread");
             keepAliveTimer->stop();
             keepAliveTimer->disconnect();
             reconnectTimer->stop();
@@ -1276,6 +1282,8 @@ void Comms::DisconnectFromMIPS()
     }
     else
     {
+        if(properties != nullptr)
+            properties->Log("Comms DisconnectFromMIPS: timers stopped on calling thread");
         keepAliveTimer->stop();
         keepAliveTimer->disconnect();
         reconnectTimer->stop();
@@ -1364,6 +1372,8 @@ void Comms::handleError(QSerialPort::SerialPortError error)
 {
     if(error == QSerialPort::ResourceError)
     {
+        if(properties != nullptr)
+            properties->Log("Comms handleError: ResourceError fired");
         portAlive.storeRelaxed(0);   // atomic — visible to all threads immediately
         // FIX: no QThread::sleep() here — was causing the USB-disconnect crash.
         closeSerialPort();
@@ -1460,6 +1470,8 @@ void Comms::slotKeepAlive(void)
  */
 void Comms::slotReconnect(void)
 {
+    if(properties != nullptr)
+        properties->Log("Comms slotReconnect: attempting reopen");
     if(!serial->isOpen())
     {
         serial->open(QIODevice::ReadWrite);
@@ -1478,12 +1490,16 @@ void Comms::slotReconnect(void)
         connect(reconnectTimer, &QTimer::timeout,
                 this, &Comms::slotReconnect,
                 Qt::UniqueConnection);
+        if(properties != nullptr)
+            properties->Log("Comms slotReconnect: port open, restoring connections");
         portAlive.storeRelaxed(1);
         emit reconnected();
         reconnectTimer->stop();
         // Flush any queued timeout event that arrived between the last tick
         // and stop() — prevents a stale event firing after stop() returns.
         QCoreApplication::removePostedEvents(reconnectTimer);
+        if(properties != nullptr)
+            properties->Log("Comms slotReconnect: reconnect complete, portAlive=1");
         if(!MIPSname.isEmpty()) emit statusMessage(MIPSname + tr(" Serial port reconnected!"));
         else                    emit statusMessage(tr("Serial port reconnected!"));
     }
