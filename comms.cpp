@@ -1236,7 +1236,6 @@ void Comms::handleError(QSerialPort::SerialPortError error)
 {
     if (error == QSerialPort::ResourceError)
     {
-        QThread::sleep(1);
         closeSerialPort();
         if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + tr(" Critical Error, port closing: ") + serial->errorString());
         else sb->showMessage(tr("Critical Error, port closing: ") + serial->errorString());
