@@ -92,7 +92,7 @@ public slots:
     void MIPSdisconnect(void);
     void tabSelected();
     void writeData(const QByteArray &data);
-    void readData2Console(void);
+    void readData2Console(QByteArray data);
     void pollLoop(void);
     void loadSettings(void);
     void loadPlot(void);

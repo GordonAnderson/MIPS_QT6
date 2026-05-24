@@ -38,7 +38,7 @@ void MIPS::GetFileFromMIPS(void)
             if( ui->tabMIPS->tabText(ui->tabMIPS->currentIndex()) == "Terminal")
             {
                 connect(comms, &Comms::DataReady, this, &MIPS::readData2Console);
-                readData2Console();
+                readData2Console(comms->readall());
             }
         }
      }
@@ -65,7 +65,7 @@ void MIPS::PutFiletoMIPS(void)
     if( ui->tabMIPS->tabText(ui->tabMIPS->currentIndex()) == "Terminal")
     {
         connect(comms, &Comms::DataReady, this, &MIPS::readData2Console);
-        readData2Console();
+        readData2Console(comms->readall());
     }
 }
 
@@ -99,7 +99,7 @@ void MIPS::ReadEEPROM(void)
             if( ui->tabMIPS->tabText(ui->tabMIPS->currentIndex()) == "Terminal")
             {
                 connect(comms, &Comms::DataReady, this, &MIPS::readData2Console);
-                readData2Console();
+                readData2Console(comms->readall());
             }
         }
     }
@@ -135,7 +135,7 @@ void MIPS::WriteEEPROM(void)
             if( ui->tabMIPS->tabText(ui->tabMIPS->currentIndex()) == "Terminal")
             {
                 connect(comms, &Comms::DataReady, this, &MIPS::readData2Console);
-                readData2Console();
+                readData2Console(comms->readall());
             }
         }
     }
@@ -155,7 +155,7 @@ void MIPS::ReadARBFLASH(void)
         if( ui->tabMIPS->tabText(ui->tabMIPS->currentIndex()) == "Terminal")
         {
             connect(comms, &Comms::DataReady, this, &MIPS::readData2Console);
-            readData2Console();
+            readData2Console(comms->readall());
         }
     }
 }
@@ -174,7 +174,7 @@ void MIPS::WriteARBFLASH(void)
         if( ui->tabMIPS->tabText(ui->tabMIPS->currentIndex()) == "Terminal")
         {
             connect(comms, &Comms::DataReady, this, &MIPS::readData2Console);
-            readData2Console();
+            readData2Console(comms->readall());
         }
     }
 }
@@ -197,7 +197,7 @@ void MIPS::ARBupload(void)
             if( ui->tabMIPS->tabText(ui->tabMIPS->currentIndex()) == "Terminal")
             {
                 connect(comms, &Comms::DataReady, this, &MIPS::readData2Console);
-                readData2Console();
+                readData2Console(comms->readall());
             }
         }
     }

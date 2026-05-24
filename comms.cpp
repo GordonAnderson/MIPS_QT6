@@ -1097,18 +1097,21 @@ void Comms::waitforline(int timeout)
  */
 void Comms::readData2RingBuffer(void)
 {
+    QByteArray data;
     if(client.isOpen())
     {
-        QByteArray data = client.readAll();
-        for(int i = 0; i < data.size(); i++) rb.putch(data[i]);
+        QByteArray chunk = client.readAll();
+        for(int i = 0; i < chunk.size(); i++) rb.putch(chunk[i]);
+        data += chunk;
     }
     if(serial->isOpen())
     {
-        QByteArray data = serial->readAll();
-        for(int i = 0; i < data.size(); i++) rb.putch(data[i]);
+        QByteArray chunk = serial->readAll();
+        for(int i = 0; i < chunk.size(); i++) rb.putch(chunk[i]);
+        data += chunk;
     }
     if(rb.numLines() > 0) emit lineAvailable();
-    emit DataReady();
+    emit DataReady(data);
 }
 
 /*! \brief Comms::readAvailableData2RingBuffer
@@ -1121,13 +1124,13 @@ void Comms::readAvailableData2RingBuffer(void)
     {
         QByteArray data = client.readAll();
         for(int i = 0; i < data.size(); i++) rb.putch(data[i]);
-        emit DataReady();
+        emit DataReady(data);
     }
     if(serial->isOpen() && serial->bytesAvailable() > 0)
     {
         QByteArray data = serial->readAll();
         for(int i = 0; i < data.size(); i++) rb.putch(data[i]);
-        emit DataReady();
+        emit DataReady(data);
     }
 }
 

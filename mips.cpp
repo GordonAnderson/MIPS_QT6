@@ -668,11 +668,8 @@ void MIPS::writeData(const QByteArray &data)
 /*! \brief MIPS::readData2Console
  * Slot: reads all available bytes from Comms and appends them to the terminal console.
  */
-void MIPS::readData2Console(void)
+void MIPS::readData2Console(QByteArray data)
 {
-    QByteArray data;
-
-    data = comms->readall();
     console->putData(data);
 }
 

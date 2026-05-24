@@ -84,7 +84,7 @@ class Comms : public QObject
 
 signals:
     void lineAvailable(void);       //!< Emitted when a complete line arrives in the ring buffer.
-    void DataReady(void);           //!< Emitted whenever new bytes are placed into the ring buffer.
+    void DataReady(QByteArray data); //!< Emitted whenever new bytes are placed into the ring buffer.
     void ADCrecordingDone(void);    //!< Emitted when all ADC vectors have been received.
     void ADCvectorReady(void);      //!< Emitted when a single ADC vector is ready to consume.
     void statusMessage(QString message, int timeout = 0);
