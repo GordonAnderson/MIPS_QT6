@@ -1,9 +1,9 @@
-name: Release
+name: Pre-Release
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version number (e.g. v2.23)'
+        description: 'Version number (e.g. v2.23-dev)'
         required: true
         type: string
       release_notes:
@@ -173,7 +173,7 @@ jobs:
           tag_name: ${{ github.event.inputs.version }}
           name: MIPS ${{ github.event.inputs.version }}
           body: ${{ github.event.inputs.release_notes }}
+          prerelease: true
           files: |
             MIPS-macOS-${{ github.event.inputs.version }}.zip
             MIPS-Windows-${{ github.event.inputs.version }}.zip
- 
