@@ -93,6 +93,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          VERSION="${{ github.event.inputs.version }}"
           ASSET_NAME="MIPS-macOS-${VERSION}.zip"
           
           echo "Looking for asset: $ASSET_NAME in release $VERSION"
