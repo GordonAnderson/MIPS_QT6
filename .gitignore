@@ -16,6 +16,10 @@ Makefile
 
 # macOS
 .DS_Store
+MIPS.app/
+moc_*.cpp
+ui_*.h
+
 
 # Windows
 Thumbs.db
