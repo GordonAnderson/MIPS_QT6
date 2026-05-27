@@ -207,6 +207,7 @@ private:
     Help                    *help;
     Help                    *comments;
     QMap<QString, QVariant> m_storage;
+    QTimer                  *updateTimer;
 
 public slots:
     void pbSD(void);

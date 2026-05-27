@@ -25,6 +25,8 @@
 //              properties.h, Utilities.h, help.h
 // Author:      Gordon Anderson, GAA Custom Electronics, LLC
 // Revised:     March 2026 — documented for host app v2.22
+//              May 2026 - added garbage collection after function calls to prevent
+//              memory bloat in long-running scripts
 //
 // Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
 // =============================================================================
@@ -189,6 +191,7 @@ QVariant JSengine::runEngine(void)
         result = fun.call(args);
         emit resultReady(result);
         isRunning = false;
+        engine->collectGarbage();
         return result.toVariant();
     }
     result = "Invalid call!";

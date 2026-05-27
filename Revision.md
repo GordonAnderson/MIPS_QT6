@@ -492,7 +492,7 @@
 //	2.) Fixed the lasso zoom out phatom dotted box
 //	3.) Improved the line entry box data entry. Enter now forces
 //	    an update.
-//	4.) Updated Ccontrol to not update nin visible controls.
+//	4.) Updated Ccontrol to not update non visible controls.
 //	5.) Fixed scripting system bugs in creation of threads.
 //  2.24-dev
 //

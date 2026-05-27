@@ -9,6 +9,9 @@
 // Depends on:  controlpanel.h, Utilities.h
 // Author:      Gordon Anderson, GAA Custom Electronics, LLC
 // Revised:     March 2026 — Phase 3 refactoring (loadConfig extraction)
+//              May 2026 - removed single-shot update timer and replaced with
+//              qtimer that is restarted at the end of each UpdateStateMachine() call.
+//              fixed bugs in string processing.
 //
 // Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
 // =============================================================================
@@ -111,6 +114,11 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
     else fileName = CPfileName;
     if((fileName == "") || (fileName.isEmpty())) return;
     loadConfig(fileName);
+
+    updateTimer = new QTimer(this);
+    updateTimer->setSingleShot(true);
+    updateTimer->setInterval(10);
+    connect(updateTimer, &QTimer::timeout, this, &ControlPanel::UpdateStateMachine);
 }
 
 // -----------------------------------------------------------------------------
@@ -1709,7 +1717,7 @@ void ControlPanel::LogDataFile(void)
    if(LogStartTime == 0)
    {
        LogStartTime = qt.currentDateTime().toMSecsSinceEpoch();
-       NextSampleTime = LogStartTime;
+       NextSampleTime = qt.currentDateTime().toSecsSinceEpoch();
        // Write the file header
        header = QDateTime().currentDateTime().toString() + "\n";
        // Build the CSV header record
@@ -2028,11 +2036,10 @@ void ControlPanel::UpdateStateMachine(void)
                 {
                     // Read all the setpoints and readbacks and parse the strings
                     QString VspRes;
-                    if(updateCount == 1)
-                    {
-                        VspRes = Systems[i]->SendMess("GDCBALL\n");
-                    }
-                    QStringList VspResList = VspRes.split(",");
+                    QStringList VspResList;
+                    if(updateCount == 1) VspRes = Systems[i]->SendMess("GDCBALL\n");
+                    if(VspRes.isEmpty()) VspResList.clear();
+                    else VspResList = VspRes.split(",");
                     if(VspResList.count() <= 1) VspResList.clear();
                     QString VrbRes = Systems[i]->SendMess("GDCBALLV\n");
                     QStringList VrbResList = VrbRes.split(",");
@@ -2043,22 +2050,33 @@ void ControlPanel::UpdateStateMachine(void)
                         // This support old MIPS firmware that did not have the DCB group commands
                         for(k=0;k<DCBchans.count();k++) if(DCBchans[k]->comms == Systems[i]) DCBchans[k]->Update();
                     }
-                    else if((VspResList.count() == 0))
+                    else if (VspResList.count() == 0)
                     {
                         // build strings and update the readbacks for all channels that use this comm port
-                        for(k=0;k<DCBchans.count();k++) if(DCBchans[k]->comms == Systems[i])
+                        for (k = 0; k < DCBchans.count(); k++)
+                        {
+                            if (DCBchans[k]->comms == Systems[i])
                             {
-                                DCBchans[k]->Update("," + VrbResList[DCBchans[k]->Channel - 1]);
+                                if (VrbResList.count() < DCBchans[k]->Channel)
+                                    DCBchans[k]->Update();
+                                else
+                                    DCBchans[k]->Update("," + VrbResList[DCBchans[k]->Channel - 1]);
                             }
+                        }
                     }
                     else
                     {
                         // build strings and update all channels that use this comm port
-                        for(k=0;k<DCBchans.count();k++) if(DCBchans[k]->comms == Systems[i])
+                        for (k = 0; k < DCBchans.count(); k++)
+                        {
+                            if (DCBchans[k]->comms == Systems[i])
                             {
-                                if(VspResList.count() < (DCBchans[k]->Channel)) DCBchans[k]->Update();
-                                else DCBchans[k]->Update(VspResList[DCBchans[k]->Channel - 1] + "," + VrbResList[DCBchans[k]->Channel - 1]);
+                                if (VspResList.count() < DCBchans[k]->Channel || VrbResList.count() < DCBchans[k]->Channel)
+                                    DCBchans[k]->Update();
+                                else
+                                    DCBchans[k]->Update(VspResList[DCBchans[k]->Channel - 1] + "," + VrbResList[DCBchans[k]->Channel - 1]);
                             }
+                        }
                     }
                     break;
                 }
@@ -2080,7 +2098,7 @@ void ControlPanel::UpdateStateMachine(void)
             if(updateIndex >= Ccontrols.count()) break;
             if(updateIndex > 0 && updateIndex % 10 == 0)
             {
-                QTimer::singleShot(10, this, &ControlPanel::UpdateStateMachine);
+                updateTimer->start();
                 return;
             }
         }
@@ -2105,7 +2123,7 @@ void ControlPanel::UpdateStateMachine(void)
     // Advance to next state and restart this function after a delay
     updateState++;
     updateIndex=0;
-    QTimer::singleShot(10, this, &ControlPanel::UpdateStateMachine);
+    updateTimer->start();
 }
 
 /*! \brief Save is the main save method for the control panel.
