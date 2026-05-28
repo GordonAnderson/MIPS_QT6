@@ -65,7 +65,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          VERSION=$(echo "${{ github.event.inputs.version }}" | tr '[:lower:]' '[:upper:]')
+          VERSION="${{ github.event.inputs.version }}"
           ASSET_NAME="MIPS-Windows-${VERSION}.zip"
           echo "Looking for asset: $ASSET_NAME in release $VERSION"
           gh release delete-asset $VERSION "$ASSET_NAME" --yes \
