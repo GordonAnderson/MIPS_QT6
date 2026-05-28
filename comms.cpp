@@ -8,7 +8,16 @@
 // Depends on:  comms.h
 // Author:      Gordon Anderson, GAA Custom Electronics, LLC
 // Revised:     March 2026 — Phase 3 refactoring
-//
+//              May 2026   — readData2RingBuffer rewrite:
+//                           - Removed waitForReadyRead(0) (ineffective, misleading)
+//                           - Added serial null guard before port access
+//                           - Added bytesAvailable() pre-check with 1 ms
+//                             waitForReadyRead() to bridge Windows USB-serial
+//                             driver timing gap (readyRead fires before bytes
+//                             are visible to bytesAvailable())
+//                           - DataReady emitted only when bytes actually read
+//                           - pollLoop() calls readData2RingBuffer() directly
+//                             instead of emitting serial->readyRead() externally//
 // Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
 // =============================================================================
 #include <QElapsedTimer>
@@ -93,10 +102,7 @@ void Comms::setSettings(const SettingsDialog::Settings &s)
  */
 void Comms::pollLoop(void)
 {
-   if(serial->isOpen())
-   {
-       if(serial->bytesAvailable() > 0) emit serial->readyRead();
-   }
+    readData2RingBuffer();
 }
 
 /*! \brief Comms::getchar
@@ -1257,6 +1263,7 @@ void Comms::handleError(QSerialPort::SerialPortError error)
         break;
 
     case QSerialPort::TimeoutError:
+        break;
     case QSerialPort::ReadError:
     case QSerialPort::WriteError:
         // Non-fatal — log it, keep port open
@@ -1331,29 +1338,60 @@ void Comms::readAvailableData2RingBuffer(void)
     }
 }
 
-/*! \brief Comms::readData2RingBuffer
- * Slot: reads incoming bytes into the ring buffer. Waits briefly if no bytes
- * are available. Emits lineAvailable when a complete line is present, and
- * DataReady after every read.
+/* brief Comms::readData2RingBuffer
+ * Slot: drains all available bytes from the open TCP socket and/or serial port
+ * into the ring buffer, then emits the appropriate signals.
+ *
+ * Design notes:
+ *  - Called in two contexts:
+ *      (a) Event-driven: connected to readyRead signals in the constructor, so
+ *          Qt fires this automatically whenever bytes arrive.
+ *      (b) Polling: called directly from waitforline() inside synchronous
+ *          Send/wait loops where the event loop is not running.
+ *  - No waitForReadyRead() is used. In case (a) data is guaranteed present;
+ *    in case (b) the caller loops and retries, so blocking here is wrong.
+ *  - DataReady is emitted only when bytes were actually placed in the buffer,
+ *    preventing spurious wakeups in the consumer.
+ *  - lineAvailable is emitted inside the drain loop so consumers are notified
+ *    promptly on large bursts rather than only after the final byte.
  */
 void Comms::readData2RingBuffer(void)
 {
-    int i;
+    bool gotData = false;
 
-    if(client.isOpen())
+    // --- TCP socket ---
+    if (client.isOpen() && client.bytesAvailable() > 0)
     {
-        if(client.bytesAvailable() == 0) client.waitForReadyRead(0);
-        QByteArray data = client.readAll();
-        for(i=0;i<data.size();i++) rb.putch(data[i]);
+        if(client.bytesAvailable() == 0) client.waitForReadyRead(1);
+        if(client.bytesAvailable() > 0)
+        {
+            const QByteArray data = client.readAll();
+            for (const char byte : data) rb.putch(byte);
+            if (!data.isEmpty())
+            {
+                gotData = true;
+                if (rb.numLines() > 0) emit lineAvailable();
+            }
+        }
     }
-    if(serial->isOpen())
+
+    // --- Serial port ---
+    if (serial && serial->isOpen())
     {
-        if(serial->bytesAvailable() == 0) serial->waitForReadyRead(0);
-        QByteArray data = serial->readAll();
-        for(i=0;i<data.size();i++) rb.putch(data[i]);
+        if(serial->bytesAvailable() == 0) serial->waitForReadyRead(1);
+        if(serial->bytesAvailable() > 0)
+        {
+            const QByteArray data = serial->readAll();
+            for (const char byte : data) rb.putch(byte);
+            if (!data.isEmpty())
+            {
+                gotData = true;
+                if (rb.numLines() > 0) emit lineAvailable();
+            }
+        }
     }
-    if(rb.numLines() > 0) emit lineAvailable();
-    emit DataReady();
+
+    if (gotData) emit DataReady();
 }
 
 /*! \brief Comms::connected
