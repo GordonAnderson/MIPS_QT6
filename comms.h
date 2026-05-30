@@ -25,6 +25,7 @@
 #include <QFileInfo>
 #include <QFileDialog>
 #include <QThread>
+#include <QPointer>
 
 #include "settingsdialog.h"
 #include "ringbuffer.h"
@@ -124,7 +125,8 @@ public:
 private:
     void    msDelay(int ms);
     bool    serialBusy = false;
-    QSerialPort             *serial;
+    bool    readReadyBusy = false;
+    QPointer<QSerialPort>    serial;
     SettingsDialog::Settings p;
     Properties              *properties;
     QString                  host;

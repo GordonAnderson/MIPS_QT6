@@ -1357,6 +1357,8 @@ void Comms::readAvailableData2RingBuffer(void)
  */
 void Comms::readData2RingBuffer(void)
 {
+    if(readReadyBusy) return;
+    readReadyBusy = true;
     bool gotData = false;
 
     // --- TCP socket ---
@@ -1392,6 +1394,7 @@ void Comms::readData2RingBuffer(void)
     }
 
     if (gotData) emit DataReady();
+    readReadyBusy = false;
 }
 
 /*! \brief Comms::connected
