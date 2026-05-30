@@ -453,6 +453,35 @@
     <string>Enable plot lasso zooming</string>
    </property>
   </widget>
+  <widget class="QLineEdit" name="leWheelSensitivity">
+   <property name="geometry">
+    <rect>
+     <x>205</x>
+     <y>450</y>
+     <width>66</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="toolTip">
+    <string>This value controls the sensitivity of the wheel, higher number equal bigger steps</string>
+   </property>
+   <property name="text">
+    <string>10</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_6">
+   <property name="geometry">
+    <rect>
+     <x>280</x>
+     <y>450</y>
+     <width>171</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Sensitivity</string>
+   </property>
+  </widget>
  </widget>
  <resources/>
  <connections/>

@@ -64,6 +64,7 @@ public:
     // Numeric settings
     int   MinMIPS;
     float UpdateSecs;
+    float WheelSensitivity;
 
     // TCP/IP connection list
     QStringList MIPS_TCPIP;

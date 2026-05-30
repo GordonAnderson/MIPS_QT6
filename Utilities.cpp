@@ -9,11 +9,15 @@
 // Author:      Gordon Anderson, GAA Custom Electronics, LLC
 // Created:     2021
 // Revised:     March 2026 — documented for host app v2.22
+//              May 2026 - added test for validator presence in adjustValue().
+//                         only adjust is double or float.
+//                       - Added wheel sensitivity to control wheel delta.
 //
 // Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
 // =============================================================================
 #include "Utilities.h"
 #include "properties.h"
+#include <QtGui/qvalidator.h>
 #include <random>
 #include <ctime>
 
@@ -95,6 +99,8 @@ bool adjustValue(QObject *obj,QLineEdit *Vsp, QEvent *event,float multiplier)
 
     if (((obj == Vsp) && (event->type() == QEvent::KeyPress)) || ((obj == Vsp) && (event->type() == QEvent::Wheel)))
     {
+        const QValidator *validator = Vsp->validator();
+        if (!validator) return false;
         if(event->type() == QEvent::KeyPress)
         {
             QKeyEvent *key = static_cast<QKeyEvent *>(event);
@@ -109,18 +115,31 @@ bool adjustValue(QObject *obj,QLineEdit *Vsp, QEvent *event,float multiplier)
             if((pProps != nullptr) && pProps->ScrollEdit)
             {
                 QWheelEvent *wheel = static_cast<QWheelEvent *>(event);
-                delta = (float)wheel->angleDelta().ry()/10.0;
+                delta = (float)wheel->angleDelta().ry()/100.0;
+                delta *= pProps->WheelSensitivity;
             }
         }
         if(delta != 0)
         {
             QString myString;
-            if(abs(multiplier) <= 0.01) myString = myString.asprintf("%3.3f", Vsp->text().toFloat() + delta * multiplier);
-            else                        myString = myString.asprintf("%3.2f", Vsp->text().toFloat() + delta * multiplier);
-            Vsp->setText(myString);
-            Vsp->setModified(true);
-            emit Vsp->editingFinished();
-            return true;
+            if (qobject_cast<const QDoubleValidator*>(validator))
+            {
+                if(abs(multiplier) <= 0.01) myString = myString.asprintf("%3.3f", Vsp->text().toFloat() + delta * multiplier);
+                else                        myString = myString.asprintf("%3.2f", Vsp->text().toFloat() + delta * multiplier);
+                Vsp->setText(myString);
+                Vsp->setModified(true);
+                emit Vsp->editingFinished();
+                return true;
+            }
+            if (qobject_cast<const QIntValidator*>(validator))
+            {
+                if(abs(multiplier) <= 0.01) myString = myString.asprintf("%d", Vsp->text().toInt() + (int)(delta * multiplier));
+                else                        myString = myString.asprintf("%d", Vsp->text().toInt() + (int)(delta * multiplier));
+                Vsp->setText(myString);
+                Vsp->setModified(true);
+                emit Vsp->editingFinished();
+                return true;
+            }
         }
     }
     return false;

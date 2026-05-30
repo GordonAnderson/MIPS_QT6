@@ -16,6 +16,8 @@
 // Depends on:  ui_properties.h
 // Author:      Gordon Anderson, GAA Custom Electronics, LLC
 // Revised:     March 2026 — documented for host app v2.22
+//              May 2026 - added wheelsensitivity property and applied it
+//                         to adjustValue() in Utilities.cpp.
 //
 // Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
 // =============================================================================
@@ -120,6 +122,7 @@ void Properties::UpdateVars(void)
     AutoRestore      = ui->chkAutoRestore->isChecked();
     AutoFileName     = ui->chkAutoFileName->isChecked();
     ScrollEdit       = ui->chkEnableScrollChange->isChecked();
+    WheelSensitivity = ui->leWheelSensitivity->text().toFloat();
     ControlPanelEdit = ui->chkEnableControlEdit->isChecked();
     LassoZoom        = ui->chkEnableLasso->isChecked();
     MIPS_TCPIP.clear();
@@ -217,6 +220,7 @@ bool Properties::Save(QString fileName)
         stream << "AutoConnect,"      + QString(AutoConnect      ? "TRUE" : "FALSE") + "\n";
         stream << "AutoRestore,"      + QString(AutoRestore      ? "TRUE" : "FALSE") + "\n";
         stream << "ScrollEdit,"       + QString(ScrollEdit       ? "TRUE" : "FALSE") + "\n";
+        stream << "WheelSensitivity," + QString::number(WheelSensitivity)   + "\n";
         stream << "ControlPanelEdit," + QString(ControlPanelEdit ? "TRUE" : "FALSE") + "\n";
         stream << "LassoZoom,"        + QString(LassoZoom        ? "TRUE" : "FALSE") + "\n";
         stream << "MIPS_TCPIP";
@@ -259,6 +263,7 @@ bool Properties::Load(QString fileName)
                 else if(r[0] == "AutoConnect")       ui->chkAutoConnect->setChecked(r[1]  == "TRUE");
                 else if(r[0] == "AutoRestore")       ui->chkAutoRestore->setChecked(r[1]  == "TRUE");
                 else if(r[0] == "ScrollEdit")        ui->chkEnableScrollChange->setChecked(r[1] == "TRUE");
+                else if(r[0] == "WheelSensitivity")  ui->leWheelSensitivity->setText(r[1]);
                 else if(r[0] == "ControlPanelEdit")  ui->chkEnableControlEdit->setChecked(r[1]  == "TRUE");
                 else if(r[0] == "LassoZoom")         ui->chkEnableLasso->setChecked(r[1]        == "TRUE");
             }
