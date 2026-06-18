@@ -27,6 +27,8 @@
 // Revised:     March 2026 — documented for host app v2.22
 //              May 2026 - added garbage collection after function calls to prevent
 //              memory bloat in long-running scripts
+//              June 2026 - added script abort support to ScriptButton and
+//              improved thread shutdown handling in ScriptButton destructor
 //
 // Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
 // =============================================================================
@@ -541,6 +543,7 @@ ScriptButton::ScriptButton(QWidget *parent, QString name, QString ScriptFile, in
 // cleanly shuts down the engine thread.
 ScriptButton::~ScriptButton()
 {
+    buttonTimer->stop();
     engine->setInterrupted(true);
     disconnect(engine, &JSengine::resultReady,        this,   &ScriptButton::scriptFinished);
     disconnect(thread, &QThread::started,             engine, &JSengine::initEngine);
@@ -548,7 +551,8 @@ ScriptButton::~ScriptButton()
     disconnect(this,   SIGNAL(startEngine()),         engine, SLOT(runEngine()));
     disconnect(this,   SIGNAL(setInterrupted(bool)),  engine, SLOT(setInterrupted(bool)));
     thread->quit();
-    thread->wait();
+    while (!thread->wait(50))
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
     engine->deleteLater();
     thread->deleteLater();
 }
@@ -729,6 +733,7 @@ QString ScriptButton::ProcessCommand(QString cmd)
  */
 void ScriptButton::Update(void)
 {
+    if (engine->isRunning) return;
     if(CallOnUpdate) ButtonPressed(false);
     if(CallOnStart)
     {
