@@ -62,6 +62,7 @@ signals:
 
 public:
     explicit Comms(SettingsDialog *settings, QString Host, QStatusBar *statusbar);
+    explicit Comms(const QString &host, int port, QStatusBar *statusbar);
     bool ConnectToMIPS();
     void DisconnectFromMIPS();
     bool SendCommand(QString name, QString message);
@@ -96,6 +97,7 @@ public:
     QString getline(void);
     int     CalculateCRC(QByteArray fdata);
     void    GetMIPSnameAndVersion(void);
+    bool    ConnectToDevice(const QHostAddress &ip, int port, const QString &name);
     QString MIPSname;
     QByteArray readall(void);
     bool isMIPS(QString port);
@@ -139,6 +141,7 @@ private slots:
     void handleError(QSerialPort::SerialPortError error);
     void readData2ADCBuffer(void);
     void connected(void);
+    void connectedDevice(void);
     void disconnected(void);
     void slotAboutToClose(void);
     void slotKeepAlive(void);

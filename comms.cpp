@@ -7,8 +7,8 @@
 //
 // Depends on:  comms.h
 // Author:      Gordon Anderson, GAA Custom Electronics, LLC
-// Revised:     March 2026 — Phase 3 refactoring
-//              May 2026   — readData2RingBuffer rewrite:
+// Revised:     March 2026   — Phase 3 refactoring
+//              May 2026     — readData2RingBuffer rewrite:
 //                           - Removed waitForReadyRead(0) (ineffective, misleading)
 //                           - Added serial null guard before port access
 //                           - Added bytesAvailable() pre-check with 1 ms
@@ -17,7 +17,9 @@
 //                             are visible to bytesAvailable())
 //                           - DataReady emitted only when bytes actually read
 //                           - pollLoop() calls readData2RingBuffer() directly
-//                             instead of emitting serial->readyRead() externally//
+//                             instead of emitting serial->readyRead() externally
+//              July 2026
+//                           - Added support for UPD device scanning and connecting
 // Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
 // =============================================================================
 #include <QElapsedTimer>
@@ -50,6 +52,26 @@ Comms::Comms(SettingsDialog *settings, QString Host, QStatusBar *statusbar)
     connect(keepAliveTimer, &QTimer::timeout, this, &Comms::slotKeepAlive);
     connect(reconnectTimer, &QTimer::timeout, this, &Comms::slotReconnect);
     connect(&pollTimer, &QTimer::timeout, this, &Comms::pollLoop);
+}
+
+Comms::Comms(const QString &host, int port, QStatusBar *statusbar)
+    : QObject(nullptr)
+{
+    sb = statusbar;
+    client_connected = false;
+    this->host = host;
+    properties = nullptr;
+    serial = new QSerialPort(this);
+    keepAliveTimer = new QTimer;
+    reconnectTimer = new QTimer;
+    connect(&client, &QTcpSocket::readyRead,    this, &Comms::readData2RingBuffer);
+    connect(serial,  &QSerialPort::readyRead,   this, &Comms::readData2RingBuffer);
+    connect(&client, &QTcpSocket::connected,    this, &Comms::connectedDevice);
+    connect(&client, &QTcpSocket::disconnected, this, &Comms::disconnected);
+    connect(&client, &QIODevice::aboutToClose,  this, &Comms::slotAboutToClose);
+    connect(keepAliveTimer, &QTimer::timeout,   this, &Comms::slotKeepAlive);
+    connect(reconnectTimer, &QTimer::timeout,   this, &Comms::slotReconnect);
+    connect(&pollTimer,     &QTimer::timeout,   this, &Comms::pollLoop);
 }
 
 /*! \brief Comms::serialPort
@@ -1407,6 +1429,14 @@ void Comms::connected(void)
     client_connected = true;
 }
 
+void Comms::connectedDevice(void)
+{
+    client_connected = true;
+    keepAliveTimer->start(600000);
+    sb->showMessage(MIPSname + tr(" connected"));
+    //GetMIPSnameAndVersion();
+}
+
 /*! \brief Comms::isConnected
  * Returns true if a TCP or serial connection is currently active.
  */
@@ -1483,4 +1513,26 @@ void Comms::slotReconnect(void)
         if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + tr(" Serial port reconnected!"));
         else sb->showMessage(tr("Serial port reconnected!"));
     }
+}
+
+/*! \brief Comms::ConnectToDevice
+ * Opens a TCP connection to a GAACE device discovered via UDP broadcast.
+ * Equivalent to ConnectToMIPS() but takes an IP and port directly rather
+ * than reading from SettingsDialog. Called from GAACEDiscovery's onReadyRead
+ * slot when a new device replies to the broadcast.
+ */
+bool Comms::ConnectToDevice(const QHostAddress &ip, int port, const QString &name)
+{
+    if (client.isOpen() || serial->isOpen()) return false;
+
+    MIPSname = name;
+    host = ip.toString();
+
+    client_connected = false;
+    client.setSocketOption(QAbstractSocket::KeepAliveOption, 1);
+    client.connectToHost(ip.toString(), port);
+    sb->showMessage(tr("Connecting to ") + name + "...");
+
+    // Don't block — the connected() slot handles the rest
+    return true;
 }

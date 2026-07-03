@@ -59,7 +59,8 @@ SOURCES += main.cpp connection.cpp fileops.cpp\
     device.cpp \
     zmqworker.cpp \
     TextLabel.cpp Shutdown.cpp SaveLoad.cpp CPbutton.cpp DACchannel.cpp ESI.cpp \
-    Ccontrol.cpp Cpanel.cpp StatusLight.cpp TextMessage.cpp Table.cpp Slider.cpp
+    Ccontrol.cpp Cpanel.cpp StatusLight.cpp TextMessage.cpp Table.cpp Slider.cpp \
+    GAACEDiscovery.cpp
 HEADERS  += mips.h \
     Utilities.h \
     aboutdialog.h \
@@ -98,7 +99,8 @@ HEADERS  += mips.h \
     device.h \
     zmqworker.h \
     TextLabel.h Shutdown.h SaveLoad.h CPbutton.h DACchannel.h ESI.h \
-    Ccontrol.h Cpanel.h StatusLight.h TextMessage.h Table.h Slider.h
+    Ccontrol.h Cpanel.h StatusLight.h TextMessage.h Table.h Slider.h \
+    GAACEDiscovery.h
 FORMS    += mips.ui \
     settingsdialog.ui \
     aboutdialog.ui \

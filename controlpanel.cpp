@@ -381,6 +381,19 @@ void ControlPanel::loadConfig(QString fileName)
                 cpObjects.append("Device");
                 cpObjects.append(QVariant::fromValue(devices.last()));
             }
+            if((resList[0].toUpper() == "DISCOVER") && (resList.length()==2))
+            {
+                if(resList[1].toUpper().trimmed() == "TRUE")
+                {
+                    // Create the discovery object (once, lives for the session).
+                    if(m_discovery == nullptr) m_discovery = new GAACEDiscovery(this);
+                }
+                if(resList[1].toUpper().trimmed() == "FALSE")
+                {
+                    delete m_discovery;
+                    m_discovery = nullptr;
+                }
+            }
             if((resList[0].toUpper() == "TEXTLABEL") && (resList.length()==5))
             {
                 TextLabels.append(new TextLabel(Containers.last(),resList[1],resList[2].toInt(),resList[3].toInt(),resList[4].toInt()));
@@ -1018,7 +1031,69 @@ void ControlPanel::loadConfig(QString fileName)
            Systems[i]->SendCommand("SSERWD," + QString::number(SerialWatchDog) + "\n");
         }
     }
+    if(m_discovery != nullptr)
+    {
+        // Log or act on each new device as it's found within the window.
+        connect(m_discovery, &GAACEDiscovery::newDeviceFound,
+                this, &ControlPanel::onNewDeviceFound);
+
+        // Log when each discovery cycle finishes.
+        connect(m_discovery, &GAACEDiscovery::discoveryComplete,
+                this, [](int count)
+                {
+                    qDebug("Discovery complete: %d new device(s) found", count);
+                });
+
+        // Run discovery immediately on startup, then every 60 seconds.
+        m_discovery->start();
+
+        m_discoveryTimer = new QTimer(this);
+        m_discoveryTimer->setInterval(60000);
+        connect(m_discoveryTimer, &QTimer::timeout,
+                m_discovery, &GAACEDiscovery::start);
+        m_discoveryTimer->start();
+    }
 }
+
+// Called once per new device found in a discovery cycle.
+void ControlPanel::onNewDeviceFound(const GAACEDeviceInfo &info)
+{
+    qDebug("New device: name=%s  type=%s  version=%s  ip=%s  port=%d",
+           qPrintable(info.name),
+           qPrintable(info.type),
+           qPrintable(info.version),
+           qPrintable(info.ip.toString()),
+           info.port);
+
+    // TODO: open your TCP connection here using info.ip and info.port,
+    // then call m_discovery->markConnected(info.name) once it's up,
+    // and m_discovery->markDisconnected(info.name) when it drops.
+    Comms *comms = new Comms(info.ip.toString(), info.port, statusBar);
+
+    connect(&comms->client, &QTcpSocket::connected, this, [=]()
+            {
+                //comms->MIPSname = info.name;
+                Systems.append(comms);
+                m_discovery->markConnected(info.name);
+            });
+
+    connect(&comms->client, &QTcpSocket::disconnected, this, [=]()
+            {
+                m_discovery->markDisconnected(info.name);
+                Systems.removeOne(comms);
+                comms->deleteLater();
+            });
+
+    connect(&comms->client, &QAbstractSocket::errorOccurred, this, [=](QAbstractSocket::SocketError)
+            {
+                // Connection attempt failed — clean up quietly
+                comms->deleteLater();
+            });
+
+    comms->ConnectToDevice(info.ip, info.port, info.name);
+
+}
+
 
 /*! \brief ControlPanel::eventFilter
  * This function is called when an event occurs in the control panel.

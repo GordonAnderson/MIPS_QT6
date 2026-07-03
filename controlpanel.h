@@ -48,6 +48,8 @@
 #include "textmessage.h"
 #include "table.h"
 #include "slider.h"
+#include "GAACEDiscovery.h"
+
 
 // Qt includes
 #include <QDialog>
@@ -208,6 +210,8 @@ private:
     Help                    *comments;
     QMap<QString, QVariant> m_storage;
     QTimer                  *updateTimer;
+    GAACEDiscovery          *m_discovery = nullptr;
+    QTimer                  *m_discoveryTimer;
 
 public slots:
     void pbSD(void);
@@ -240,6 +244,7 @@ public slots:
     void controlChange(QString);
     void slotExtProcessClosed(QString);
     void slotExternalProcessChange(QString);
+    void onNewDeviceFound(const GAACEDeviceInfo &info);
 
     QString  Save(QString Filename);
     QString  Load(QString Filename);
