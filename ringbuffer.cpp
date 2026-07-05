@@ -16,6 +16,8 @@
 // =============================================================================
 #include "ringbuffer.h"
 #include <QElapsedTimer>
+#include <qdebug.h>
+#include <execinfo.h>
 
 // RingBuffer — constructor. Initialises the buffer to the empty state.
 RingBuffer::RingBuffer(void)

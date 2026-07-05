@@ -1384,7 +1384,7 @@ void Comms::readData2RingBuffer(void)
     bool gotData = false;
 
     // --- TCP socket ---
-    if (client.isOpen() && client.bytesAvailable() > 0)
+    if (client.isOpen())
     {
         if(client.bytesAvailable() == 0) client.waitForReadyRead(1);
         if(client.bytesAvailable() > 0)

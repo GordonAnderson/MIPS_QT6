@@ -132,6 +132,7 @@ private:
     TCPserver *tcp;
     void    msDelay(int ms);
     void    loadConfig(QString fileName);
+    void    wireDiscoveredDevice(Comms *comms);
     QMenu   *contextMenu2Dplot;
     QAction *Comments;
     QAction *SaveCP;

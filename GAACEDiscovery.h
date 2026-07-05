@@ -6,6 +6,8 @@
 #include <QHostAddress>
 #include <QStringList>
 
+#include "comms.h"
+
 // Populated from each device's UDP discovery reply.
 struct GAACEDeviceInfo
 {
@@ -48,6 +50,8 @@ public:
     // Call when a TCP connection to a device drops.
     // Allows the device to be re-discovered and reconnected on the next cycle.
     void markDisconnected(const QString &name);
+
+    QList<Comms*> discoveredSystems;  // only the ones we created
 
 signals:
     // Emitted once per new device found during this discovery window.

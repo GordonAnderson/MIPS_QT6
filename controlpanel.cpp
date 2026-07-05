@@ -1069,29 +1069,61 @@ void ControlPanel::onNewDeviceFound(const GAACEDeviceInfo &info)
     // then call m_discovery->markConnected(info.name) once it's up,
     // and m_discovery->markDisconnected(info.name) when it drops.
     Comms *comms = new Comms(info.ip.toString(), info.port, statusBar);
+    bool *wasConnected = new bool(false);  // heap so lambdas share it safely
 
     connect(&comms->client, &QTcpSocket::connected, this, [=]()
             {
-                //comms->MIPSname = info.name;
+                *wasConnected = true;
                 Systems.append(comms);
+                m_discovery->discoveredSystems.append(comms);
                 m_discovery->markConnected(info.name);
+                wireDiscoveredDevice(comms);  // wire Ccontrol objects to this device
             });
 
     connect(&comms->client, &QTcpSocket::disconnected, this, [=]()
             {
-                m_discovery->markDisconnected(info.name);
-                Systems.removeOne(comms);
+                if (*wasConnected)
+                {
+                    // Unwire all Ccontrols that were using this comms
+                    for (int i = 1; i < cpObjects.size(); i += 3)
+                    {
+                        if (cpObjects[i].toString() != "Ccontrol") continue;
+                        Ccontrol *obj = cpObjects[i + 1].value<Ccontrol*>();
+                        if (obj && obj->comms == comms)
+                            obj->comms = nullptr;
+                    }
+                    m_discovery->markDisconnected(info.name);
+                    Systems.removeOne(comms);
+                    m_discovery->discoveredSystems.removeOne(comms);
+                }
+                delete wasConnected;
                 comms->deleteLater();
             });
 
-    connect(&comms->client, &QAbstractSocket::errorOccurred, this, [=](QAbstractSocket::SocketError)
+    connect(&comms->client, &QAbstractSocket::errorOccurred, this,
+            [=](QAbstractSocket::SocketError err)
             {
-                // Connection attempt failed — clean up quietly
-                comms->deleteLater();
+                qDebug() << "GAACEDiscovery connection error:" << err
+                         << comms->client.errorString();
+                // disconnected will fire after this and handle cleanup
             });
 
     comms->ConnectToDevice(info.ip, info.port, info.name);
+}
 
+void ControlPanel::wireDiscoveredDevice(Comms *comms)
+{
+    for (int i = 1; i < cpObjects.size(); i += 3)
+    {
+        if (cpObjects[i].toString() != "Ccontrol") continue;
+
+        Ccontrol *obj = cpObjects[i + 1].value<Ccontrol*>();
+        if (obj && obj->MIPSnm == comms->MIPSname)
+        {
+            obj->comms = comms;
+            qDebug() << "Wired" << obj->MIPSnm << "to discovered device" << comms->MIPSname;
+        }
+    }
 }
 
 
@@ -1163,6 +1195,21 @@ ControlPanel::~ControlPanel()
     for(int i=0;i<plots.count();i++) delete plots[i];
     delete tcp;
     delete ui;
+    if(m_discovery != nullptr)
+    {
+        m_discoveryTimer->deleteLater();
+        m_discovery->deleteLater();
+        // Only clean up what discovery created
+        for (Comms *c : m_discovery->discoveredSystems)
+        {
+            c->DisconnectFromMIPS();
+            Systems.removeOne(c);
+            c->deleteLater();
+        }
+        m_discovery->discoveredSystems.clear();
+        m_discoveryTimer->deleteLater();
+        m_discovery->deleteLater();
+    }
     this->deleteLater();
 }
 
