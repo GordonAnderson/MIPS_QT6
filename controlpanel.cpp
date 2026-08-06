@@ -22,6 +22,9 @@
 #include "Utilities.h"
 
 #include <QPixmap>
+#include <QEventLoop>
+#include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QString>
 #include <QTextEdit>
 #include <QTreeView>
@@ -3107,6 +3110,237 @@ bool ControlPanel::UpdateHalted(bool stop)
     while(cp->parentCP != nullptr) cp = cp->parentCP;
     cp->UpdateStop = stop;
     return cp->UpdateStop;
+}
+
+
+// =============================================================================
+// QSCAN — firmware resident QUAD m/z scan capture
+//
+// QuadScan() runs the whole capture and does not return until the stream has
+// finished, so the script side stays synchronous: one call replaces the per
+// point RFAACQ loop. Structure:
+//
+//   arm the binary route -> send QSCAN -> nested QEventLoop -> release
+//
+// A nested QEventLoop rather than QApplication::processEvents() (the
+// GetMIPSfile pattern) because the loop has to be quit deterministically from
+// three different sources: allScansDone from the reader, the idle watchdog, and
+// a NAK sniffed ahead of the first header. Both approaches dispatch events, so
+// both keep the GUI alive and both are re-entrant; the event loop just makes
+// the exits explicit. Swapping it back is a local change to this function.
+//
+// The idle watchdog times out on SILENCE, not on total duration, so the limit
+// does not need rescaling when ADCnumsamples changes.
+// =============================================================================
+
+#define QUADfirstByteMS     5000    //!< Time allowed for the firmware to answer at all.
+#define QUADidleTimeoutMS   500     //!< Silence, not total duration. Point period is ~3 mS.
+#define QUADsettleTimeoutMS 2000    //!< Wait for an in-flight panel update cycle to finish.
+
+#define QUADSCAN_BUSY      -1       //!< A capture is already running.
+#define QUADSCAN_NOMIPS    -2       //!< Named MIPS system not found.
+#define QUADSCAN_TIMEOUT   -3       //!< Stream went silent before the last trailer.
+#define QUADSCAN_NOPORT    -4       //!< Port not open.
+#define QUADSCAN_NODATA    -5       //!< Valid frame(s) received but carrying no points.
+#define QUADSCAN_FWBASE    -1000    //!< Firmware NAK: return value is QUADSCAN_FWBASE - GERR.
+
+/*! \brief ControlPanel::QuadScan
+ * Captures a complete QSCAN stream from the named MIPS system.
+ *
+ * Returns the total number of points received across all scans, or a negative
+ * error code. A firmware NAK returns QUADSCAN_FWBASE - code, so GERR 127
+ * (RF module not enabled) comes back as -1127. Retrieve the data with
+ * QuadScanCount() and QuadScanPoints().
+ */
+int ControlPanel::QuadScan(QString MIPSname, int module)
+{
+    if(QUADcapturing) return QUADSCAN_BUSY;
+    Comms *cp = FindCommPort(MIPSname, Systems);
+    if(cp == nullptr)      return QUADSCAN_NOMIPS;
+    if(!cp->isConnected()) return QUADSCAN_NOPORT;
+
+    // Halt the panel update state machine. It issues its own commands on this
+    // port, and the nested event loop below would let it run mid capture.
+    ControlPanel *top = this;
+    while(top->parentCP != nullptr) top = top->parentCP;
+    bool savedUpdateStop = top->UpdateStop;
+    top->UpdateStop = true;
+
+    // UpdateStop is only tested at the top of the cycle, so a cycle already in
+    // progress has to be allowed to finish before the port can be taken.
+    QElapsedTimer settle;
+    settle.start();
+    while((top->updateState != 0) && (settle.elapsed() < QUADsettleTimeoutMS))
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 10);
+
+    if(qsReader == nullptr) qsReader = new QUADscanReader(this);
+    qsReader->reset();          // every scan, not just the first
+    QUADscans.clear();
+    QUADcomplete.clear();
+    QUADmessages.clear();
+    QUADcapturing = true;
+    QUADcomms     = cp;
+
+    QEventLoop loop;
+    QTimer     idle;
+    idle.setSingleShot(true);
+    // Two different waits, not one. Before the first byte the firmware still has
+    // to validate, claim the ADC and set the first point, and on a cold system
+    // that is the slowest it will ever be; after the first byte the only thing
+    // being measured is the gap between points. Running both at 500 mS makes a
+    // slow answer indistinguishable from a stalled stream.
+    idle.setInterval(QUADfirstByteMS);
+
+    bool   sawSignature = false;
+    bool   sawNAK       = false;
+    bool   sawAnyByte   = false;
+    int    byteCount    = 0;
+    quint8 prev         = 0;
+
+    QList<QMetaObject::Connection> conn;
+    conn << connect(qsReader, &QUADscanReader::scanReady, this,
+                    [this](int scanNum, const QVector<qint32> &points, bool complete)
+    {
+        Q_UNUSED(scanNum)
+        QUADscans.append(points);
+        QUADcomplete.append(complete);
+    });
+    conn << connect(qsReader, &QUADscanReader::frameError, this,
+                    [this](const QString &message) { QUADmessages.append(message); });
+    conn << connect(qsReader, &QUADscanReader::allScansDone, &loop, &QEventLoop::quit);
+    conn << connect(&idle,    &QTimer::timeout,            &loop, &QEventLoop::quit);
+    conn << connect(cp, &Comms::QUADbytesReceived, this, [&](const QByteArray &data)
+    {
+        byteCount += data.size();
+        if(!sawAnyByte)
+        {
+            sawAnyByte = true;
+            idle.setInterval(QUADidleTimeoutMS);   // switch to the inter byte window
+        }
+        idle.start();                       // restart the silence window
+        if(sawSignature) return;
+        // QSCAN NAKs with "?" before emitting any header when validation fails.
+        // Sniffing is confined to the bytes ahead of the first frame signature,
+        // where the only legitimate traffic is the 1 or 2 byte ACK, so a 0x3F
+        // inside point data can never be mistaken for a NAK.
+        for(int i = 0; i < data.size(); i++)
+        {
+            quint8 c = (quint8)data[i];
+            if((prev == 0x55) && (c == QUADscanHDRBYTE)) { sawSignature = true; return; }
+            if(c == '?') { sawNAK = true; loop.quit(); return; }
+            prev = c;
+        }
+    });
+
+    cp->QUADcaptureArm(qsReader);           // arm BEFORE sending, there is no gap
+    idle.start();
+    cp->SendString("QSCAN," + QString::number(module) + "\n");
+    loop.exec();
+
+    bool timedOut = !qsReader->isDone() && !sawNAK;
+    cp->QUADcaptureRelease();
+    idle.stop();
+    for(const QMetaObject::Connection &c : conn) QObject::disconnect(c);
+    QUADcapturing   = false;
+    QUADcomms       = nullptr;
+    top->UpdateStop = savedUpdateStop;
+
+    if(sawNAK)
+    {
+        int code = cp->SendMess("GERR\n").trimmed().toInt();
+        statusBar->showMessage("QSCAN rejected by firmware, GERR " + QString::number(code), 5000);
+        return QUADSCAN_FWBASE - code;
+    }
+    if(timedOut)
+    {
+        // Say which kind of timeout this was. Silence and garble have completely
+        // different causes and the operator cannot tell them apart from the
+        // return code alone.
+        if(!sawAnyByte) QUADmessages.append("No response to QSCAN, nothing was received");
+        else if(!sawSignature) QUADmessages.append(QString("Received %1 bytes but no frame header was found").arg(byteCount));
+        else QUADmessages.append(QString("Stream stopped after %1 bytes with no trailer").arg(byteCount));
+        statusBar->showMessage("QSCAN timed out: " + QUADmessages.last(), 8000);
+        return QUADSCAN_TIMEOUT;
+    }
+    int total = 0;
+    for(int i = 0; i < QUADscans.count(); i++) total += QUADscans[i].count();
+    // A well formed frame carrying no points is a failure, not a success. The
+    // firmware emits header + abort trailer when the priming acquisition fails,
+    // which is a valid stream the reader parses correctly, so nothing upstream
+    // of here treats it as an error. Returning it as 0 made it silent.
+    if(total == 0)
+    {
+        QUADmessages.append(QString("Firmware returned %1 frame(s) containing no points; "
+                                    "the scan was aborted before the first point")
+                            .arg(QUADscans.count()));
+        statusBar->showMessage("QSCAN returned no data: " + QUADmessages.last(), 8000);
+        return QUADSCAN_NODATA;
+    }
+    // Flag a short scan too. This is a real result worth keeping, but the
+    // operator needs to know the spectrum is partial.
+    for(int i = 0; i < QUADcomplete.count(); i++) if(!QUADcomplete[i])
+        QUADmessages.append(QString("Scan %1 aborted after %2 of %3 points")
+                            .arg(i).arg(QUADscans[i].count()).arg(qsReader->expectedPoints()));
+    return total;
+}
+
+/*! \brief ControlPanel::QuadScanCount
+ * Number of scans captured by the last QuadScan() call.
+ */
+int ControlPanel::QuadScanCount(void)
+{
+    return QUADscans.count();
+}
+
+/*! \brief ControlPanel::QuadScanPoints
+ * Returns one scan as a comma separated list for the script to split. One call
+ * per scan, not per point; the same shape as ReadCSVfile / ReadCSVentry.
+ *
+ * Values are raw sums of ADCnumsamples readings, NOT averages. Divide by the
+ * value from GADCSAMPS for counts.
+ */
+QString ControlPanel::QuadScanPoints(int scan)
+{
+    if((scan < 0) || (scan >= QUADscans.count())) return "";
+    QStringList sl;
+    sl.reserve(QUADscans[scan].count());
+    for(int i = 0; i < QUADscans[scan].count(); i++) sl.append(QString::number(QUADscans[scan][i]));
+    return sl.join(",");
+}
+
+/*! \brief ControlPanel::QuadScanMessages
+ * Framing errors and timeout detail from the last QuadScan call, joined with
+ * "; ". Empty when the capture was clean. The reader reports a corrupt header
+ * point count, a short or over long data block and a resynchronisation through
+ * frameError; without this they are collected and discarded, which makes a
+ * failed capture look like an unexplained timeout.
+ */
+QString ControlPanel::QuadScanMessages(void)
+{
+    return QUADmessages.join("; ");
+}
+
+/*! \brief ControlPanel::QuadScanComplete
+ * False if the matching scan came back short with an abort trailer.
+ */
+bool ControlPanel::QuadScanComplete(int scan)
+{
+    if((scan < 0) || (scan >= QUADcomplete.count())) return false;
+    return QUADcomplete[scan];
+}
+
+/*! \brief ControlPanel::QuadScanAbort
+ * Writes ESC to abort a capture in progress. Callable from a button or from a
+ * second script while QuadScan() is blocked, because the nested event loop
+ * keeps delivering events.
+ *
+ * The firmware tests for ESC once per point, so the scan stops at the end of
+ * the point in progress and the frame comes back short with an abort trailer.
+ */
+void ControlPanel::QuadScanAbort(void)
+{
+    if(!QUADcapturing || (QUADcomms == nullptr)) return;
+    QUADcomms->writeData(QByteArray(1, (char)QUADscanABORTCHAR));
 }
 
 /*! \brief ControlPanel::tcpSocket

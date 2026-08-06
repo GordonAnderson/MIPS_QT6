@@ -53,6 +53,7 @@ qt_add_executable(MIPS WIN32 MACOSX_BUNDLE
     psg.cpp psg.h
     psviewer.cpp psviewer.h psviewer.ui
     qcustomplot.cpp qcustomplot.h
+    quadscanreader.cpp quadscanreader.h
     rfamp.cpp rfamp.h rfamp.ui
     rfdriver.cpp rfdriver.h
     ringbuffer.cpp ringbuffer.h

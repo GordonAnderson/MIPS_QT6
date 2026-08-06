@@ -91,6 +91,12 @@ public:
     Q_INVOKABLE QVariant getValue(const QString &key)                               { QVariant res = emit getValueSig(key); return res; };
     Q_INVOKABLE bool    CreateProcess(QString name, QString program)                { bool res = emit CreateProcessSig(name, program); return res; };
     Q_INVOKABLE QString ZMQ(QString command)                                        { QString res = emit ZMQsig(command); return res; };
+    Q_INVOKABLE int     QuadScan(QString MIPSname, int module)                      { int res = emit QuadScanSig(MIPSname, module); return res; };
+    Q_INVOKABLE int     QuadScanCount(void)                                         { int res = emit QuadScanCountSig(); return res; };
+    Q_INVOKABLE QString QuadScanPoints(int scan)                                    { QString res = emit QuadScanPointsSig(scan); return res; };
+    Q_INVOKABLE bool    QuadScanComplete(int scan)                                  { bool res = emit QuadScanCompleteSig(scan); return res; };
+    Q_INVOKABLE QString QuadScanMessages(void)                                      { QString res = emit QuadScanMessagesSig(); return res; };
+    Q_INVOKABLE void    QuadScanAbort(void)                                         { emit QuadScanAbortSig(); };
 
     QString   script;
     QString   scriptCall;
@@ -152,6 +158,12 @@ signals:
     QVariant getValueSig(const QString &key);
     bool     CreateProcessSig(QString name, QString program);
     QString  ZMQsig(QString command);
+    int      QuadScanSig(QString MIPSname, int module);
+    int      QuadScanCountSig(void);
+    QString  QuadScanPointsSig(int scan);
+    bool     QuadScanCompleteSig(int scan);
+    QString  QuadScanMessagesSig(void);
+    void     QuadScanAbortSig(void);
 };
 
 // Script — executes a named script file without the console UI.

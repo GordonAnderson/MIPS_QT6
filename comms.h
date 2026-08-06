@@ -31,6 +31,8 @@
 #include "ringbuffer.h"
 #include "properties.h"
 
+class QUADscanReader;   // quadscanreader.h, forward declared to keep comms.h light
+
 
 /*! \enum ADCreadStates
  * States for the ADC binary data reception state machine.
@@ -59,6 +61,10 @@ signals:
     void DataReady(void);           //!< Emitted whenever new bytes are placed into the ring buffer.
     void ADCrecordingDone(void);    //!< Emitted when all ADC vectors have been received.
     void ADCvectorReady(void);      //!< Emitted when a single ADC vector is ready to consume.
+    //! Emitted for every chunk received while a QSCAN binary capture is armed.
+    //! Carries the raw bytes so the caller can restart an idle watchdog and
+    //! sniff for a NAK that arrives before the first frame header.
+    void QUADbytesReceived(const QByteArray &data);
 
 public:
     explicit Comms(SettingsDialog *settings, QString Host, QStatusBar *statusbar);
@@ -82,6 +88,9 @@ public:
     char    getchar(void);
     void    GetADCbuffer(quint16 *ADCbuffer, int NumSamples);
     void    ADCrelease(void);
+    void    QUADcaptureArm(QUADscanReader *reader);
+    void    QUADcaptureRelease(void);
+    bool    QUADcaptureActive(void) const { return binaryCapture; }
     void    GetMIPSfile(QString MIPSfile, QString LocalFile);
     void    PutMIPSfile(QString MIPSfile, QString LocalFile);
     void    GetEEPROM(QString FileName, QString Board, int Addr);
@@ -128,6 +137,8 @@ private:
     void    msDelay(int ms);
     bool    serialBusy = false;
     bool    readReadyBusy = false;
+    bool    binaryCapture = false;      //!< True while a QSCAN capture owns the port.
+    QUADscanReader *QUADreader = nullptr;
     QPointer<QSerialPort>    serial;
     SettingsDialog::Settings p;
     Properties              *properties;
@@ -140,6 +151,7 @@ public slots:
 private slots:
     void handleError(QSerialPort::SerialPortError error);
     void readData2ADCBuffer(void);
+    void readData2QUADreader(void);
     void connected(void);
     void connectedDevice(void);
     void disconnected(void);

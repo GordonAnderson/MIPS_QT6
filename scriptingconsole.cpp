@@ -111,6 +111,12 @@ JSengine::JSengine(QWidget *parent)
     connect(this, SIGNAL(getValueSig(const QString &)),              cp, SLOT(getValue(const QString &)),              Qt::BlockingQueuedConnection);
     connect(this, SIGNAL(CreateProcessSig(QString,QString)),         cp, SLOT(CreateProcess(QString,QString)),         Qt::BlockingQueuedConnection);
     connect(this, SIGNAL(ZMQsig(QString)),                           cp, SLOT(ZMQ(QString)),                           Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(QuadScanSig(QString,int)),                  cp, SLOT(QuadScan(QString,int)),                  Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(QuadScanCountSig()),                        cp, SLOT(QuadScanCount()),                        Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(QuadScanPointsSig(int)),                    cp, SLOT(QuadScanPoints(int)),                    Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(QuadScanCompleteSig(int)),                  cp, SLOT(QuadScanComplete(int)),                  Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(QuadScanMessagesSig()),                     cp, SLOT(QuadScanMessages()),                     Qt::BlockingQueuedConnection);
+    connect(this, SIGNAL(QuadScanAbortSig()),                        cp, SLOT(QuadScanAbort()),                        Qt::BlockingQueuedConnection);
 }
 
 /*! \brief initEngine

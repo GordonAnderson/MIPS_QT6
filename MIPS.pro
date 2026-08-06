@@ -51,6 +51,7 @@ SOURCES += main.cpp connection.cpp fileops.cpp\
     cdirselectiondlg.cpp \
     scriptingconsole.cpp \
     rfamp.cpp \
+    quadscanreader.cpp \
     tcpserver.cpp \
     timinggenerator.cpp acquiredata.cpp timingcontrol.cpp eventcontrol.cpp \
     compressor.cpp \
@@ -91,6 +92,7 @@ HEADERS  += mips.h \
     cdirselectiondlg.h \
     scriptingconsole.h \
     rfamp.h \
+    quadscanreader.h \
     tcpserver.h \
     timinggenerator.h \
     compressor.h \

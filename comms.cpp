@@ -28,6 +28,7 @@
 #include <QStringView>
 #include <qeventloop.h>
 #include "comms.h"
+#include "quadscanreader.h"
 
 /*! \brief Comms::Comms
  * Initialises the serial port or TCP socket for communication with MIPS.
@@ -197,6 +198,65 @@ void Comms::ADCrelease(void)
     connect(&client, &QTcpSocket::readyRead, this, &Comms::readData2RingBuffer);
     connect(serial, &QSerialPort::readyRead, this, &Comms::readData2RingBuffer);
     ADCbuf = nullptr;
+}
+
+/*! \brief Comms::QUADcaptureArm
+ * Arms QSCAN binary capture. Every byte that arrives from this point until
+ * QUADcaptureRelease() is fed to the supplied reader and none of it reaches the
+ * command ring buffer.
+ *
+ * Call this BEFORE sending QSCAN. The firmware ACKs and then streams binary
+ * with no gap, so there is no window in which to switch afterwards. The reader
+ * syncs on the frame signature and absorbs the ACK on its own, which also makes
+ * the caller independent of echoMode.
+ */
+void Comms::QUADcaptureArm(QUADscanReader *reader)
+{
+    if(reader == nullptr) return;
+    QUADreader    = reader;
+    binaryCapture = true;
+    disconnect(&client, &QTcpSocket::readyRead, nullptr, nullptr);
+    if(serial) disconnect(serial, &QSerialPort::readyRead, nullptr, nullptr);
+    connect(&client, &QTcpSocket::readyRead, this, &Comms::readData2QUADreader);
+    if(serial) connect(serial, &QSerialPort::readyRead, this, &Comms::readData2QUADreader);
+}
+
+/*! \brief Comms::QUADcaptureRelease
+ * Restores normal ring buffer routing. Anything still in flight is drained and
+ * discarded first: on an early exit there may be bytes left in the port, and a
+ * raw 0x06 followed by binary entering the line oriented parser leaves the
+ * tokenizer stuck mid line.
+ */
+void Comms::QUADcaptureRelease(void)
+{
+    if(client.isOpen())            client.readAll();
+    if(serial && serial->isOpen()) serial->readAll();
+    disconnect(&client, &QTcpSocket::readyRead, nullptr, nullptr);
+    if(serial) disconnect(serial, &QSerialPort::readyRead, nullptr, nullptr);
+    connect(&client, &QTcpSocket::readyRead, this, &Comms::readData2RingBuffer);
+    if(serial) connect(serial, &QSerialPort::readyRead, this, &Comms::readData2RingBuffer);
+    QUADreader    = nullptr;
+    binaryCapture = false;
+    rb.clear();
+}
+
+/*! \brief Comms::readData2QUADreader
+ * Slot: hands every received byte to the QSCAN reader.
+ *
+ * Unlike readData2ADCBuffer this appends both transports rather than letting
+ * the serial read overwrite the socket read, and it null checks serial, which
+ * is a QPointer on this branch.
+ */
+void Comms::readData2QUADreader(void)
+{
+    QByteArray data;
+
+    if(QUADreader == nullptr) return;
+    if(client.isOpen()  && (client.bytesAvailable()  > 0)) data  = client.readAll();
+    if(serial && serial->isOpen() && (serial->bytesAvailable() > 0)) data += serial->readAll();
+    if(data.isEmpty()) return;
+    emit QUADbytesReceived(data);
+    QUADreader->processData(data);
 }
 
 /*! \brief Comms::readData2ADCBuffer
@@ -1379,6 +1439,10 @@ void Comms::readAvailableData2RingBuffer(void)
  */
 void Comms::readData2RingBuffer(void)
 {
+    // A QSCAN capture owns the port. This guard matters because pollLoop()
+    // calls this function directly rather than going through readyRead, so
+    // rewiring the readyRead connections alone does not isolate the stream.
+    if(binaryCapture) return;
     if(readReadyBusy) return;
     readReadyBusy = true;
     bool gotData = false;

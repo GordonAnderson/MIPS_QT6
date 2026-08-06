@@ -48,6 +48,7 @@
 #include "textmessage.h"
 #include "table.h"
 #include "slider.h"
+#include "quadscanreader.h"
 #include "GAACEDiscovery.h"
 
 
@@ -210,6 +211,15 @@ private:
     Help                    *help;
     Help                    *comments;
     QMap<QString, QVariant> m_storage;
+
+    // --- QSCAN (firmware resident QUAD m/z scan) capture state ---
+    QUADscanReader           *qsReader = nullptr;
+    QList<QVector<qint32> >  QUADscans;      //!< One entry per completed scan.
+    QList<bool>              QUADcomplete;   //!< False if the matching scan aborted.
+    QStringList              QUADmessages;   //!< frameError text from the last capture.
+    Comms                    *QUADcomms = nullptr;
+    bool                     QUADcapturing = false;
+
     QTimer                  *updateTimer;
     GAACEDiscovery          *m_discovery = nullptr;
     QTimer                  *m_discoveryTimer;
@@ -284,6 +294,12 @@ public slots:
     QVariant getValue(const QString &key);
     bool     CreateProcess(QString name, QString program);
     QString  ZMQ(QString command);
+    int      QuadScan(QString MIPSname, int module);
+    int      QuadScanCount(void);
+    QString  QuadScanPoints(int scan);
+    bool     QuadScanComplete(int scan);
+    QString  QuadScanMessages(void);
+    void     QuadScanAbort(void);
 
 protected:
     bool    eventFilter(QObject *obj, QEvent *event);
