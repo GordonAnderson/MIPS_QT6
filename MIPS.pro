@@ -130,6 +130,7 @@ macx {
     LIBS += -L/opt/homebrew/lib -lzmq
     QMAKE_TARGET_BUNDLE_PREFIX = com.gaacustom
     QMAKE_BUNDLE = MIPS
+    QMAKE_CXXFLAGS += -include arm_acle.h
 }
 
 # Windows vcpkg paths
