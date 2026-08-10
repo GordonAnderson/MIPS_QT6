@@ -517,6 +517,7 @@
 //	9.) Fixed phantom dotted box after lasso zoom out. Control panel
 //	    drag now grabs the mouse for reliable tracking.
 //     10.) Updated to Qt 6.8.2, APP_VERSION now set from MIPS.pro.
+//  2.25-dev
 //
 
 
