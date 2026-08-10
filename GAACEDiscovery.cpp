@@ -75,10 +75,20 @@ found:
         return;
     }
 
-    // Set SO_BROADCAST on the native socket
+    // Set SO_BROADCAST on the native socket.
+    // Winsock declares setsockopt() as taking const char* and int, POSIX as
+    // const void* and socklen_t, so the call has to be spelled differently.
     int broadcastEnabled = 1;
-    setsockopt(m_socket->socketDescriptor(), SOL_SOCKET, SO_BROADCAST,
+#ifdef Q_OS_WIN
+    setsockopt(static_cast<SOCKET>(m_socket->socketDescriptor()),
+               SOL_SOCKET, SO_BROADCAST,
+               reinterpret_cast<const char *>(&broadcastEnabled),
+               static_cast<int>(sizeof(broadcastEnabled)));
+#else
+    setsockopt(static_cast<int>(m_socket->socketDescriptor()),
+               SOL_SOCKET, SO_BROADCAST,
                &broadcastEnabled, sizeof(broadcastEnabled));
+#endif
 
     qint64 sent = m_socket->writeDatagram(
         kDiscoverMsg,
