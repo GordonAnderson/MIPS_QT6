@@ -53,7 +53,8 @@ void DACchannel::Show(void)
     labels[1] = new QLabel(Units, frmDAC);
     labels[1]->setGeometry(150, 0, 31, 16);
 
-    connect(Vdac, &QLineEdit::returnPressed, this, &DACchannel::VdacChange);
+    connect(Vdac, &QLineEdit::returnPressed,   this, [this]() {Vdac->setModified(true);});
+    connect(Vdac, &QLineEdit::editingFinished, this, &DACchannel::VdacChange);
 
     frmDAC->installEventFilter(this);
     frmDAC->setMouseTracking(true);
@@ -106,7 +107,7 @@ bool DACchannel::SetValues(QString strVals)
     if (resList.count() < 2) return false;
     Vdac->setText(resList[1]);
     Vdac->setModified(true);
-    emit Vdac->returnPressed();
+    emit Vdac->editingFinished();
     return true;
 }
 
@@ -129,7 +130,7 @@ QString DACchannel::ProcessCommand(QString cmd)
     {
         Vdac->setText(resList[1]);
         Vdac->setModified(true);
-        emit Vdac->returnPressed();
+        emit Vdac->editingFinished();
         return "";
     }
     return "?";

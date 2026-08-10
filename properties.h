@@ -57,10 +57,14 @@ public:
     bool AutoFileName;
     bool AutoConnect;
     bool AutoRestore;
+    bool ScrollEdit;
+    bool ControlPanelEdit;
+    bool LassoZoom;
 
     // Numeric settings
     int   MinMIPS;
     float UpdateSecs;
+    float WheelSensitivity;
 
     // TCP/IP connection list
     QStringList MIPS_TCPIP;
@@ -77,5 +81,8 @@ private slots:
     void slotOK(void);
     void slotLogFile(void);
 };
+
+// This makes the pointer visible to any file that includes Properties.h
+extern Properties *pProps;
 
 #endif // PROPERTIES_H

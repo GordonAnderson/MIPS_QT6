@@ -7,15 +7,28 @@
 //
 // Depends on:  comms.h
 // Author:      Gordon Anderson, GAA Custom Electronics, LLC
-// Revised:     March 2026 — Phase 3 refactoring
-//
+// Revised:     March 2026   — Phase 3 refactoring
+//              May 2026     — readData2RingBuffer rewrite:
+//                           - Removed waitForReadyRead(0) (ineffective, misleading)
+//                           - Added serial null guard before port access
+//                           - Added bytesAvailable() pre-check with 1 ms
+//                             waitForReadyRead() to bridge Windows USB-serial
+//                             driver timing gap (readyRead fires before bytes
+//                             are visible to bytesAvailable())
+//                           - DataReady emitted only when bytes actually read
+//                           - pollLoop() calls readData2RingBuffer() directly
+//                             instead of emitting serial->readyRead() externally
+//              July 2026
+//                           - Added support for UPD device scanning and connecting
 // Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
 // =============================================================================
 #include <QElapsedTimer>
+#include <QSerialPort>
 #include <QtSerialPort/QtSerialPort>
 #include <QStringView>
 #include <qeventloop.h>
 #include "comms.h"
+#include "quadscanreader.h"
 
 /*! \brief Comms::Comms
  * Initialises the serial port or TCP socket for communication with MIPS.
@@ -40,6 +53,26 @@ Comms::Comms(SettingsDialog *settings, QString Host, QStatusBar *statusbar)
     connect(keepAliveTimer, &QTimer::timeout, this, &Comms::slotKeepAlive);
     connect(reconnectTimer, &QTimer::timeout, this, &Comms::slotReconnect);
     connect(&pollTimer, &QTimer::timeout, this, &Comms::pollLoop);
+}
+
+Comms::Comms(const QString &host, int port, QStatusBar *statusbar)
+    : QObject(nullptr)
+{
+    sb = statusbar;
+    client_connected = false;
+    this->host = host;
+    properties = nullptr;
+    serial = new QSerialPort(this);
+    keepAliveTimer = new QTimer;
+    reconnectTimer = new QTimer;
+    connect(&client, &QTcpSocket::readyRead,    this, &Comms::readData2RingBuffer);
+    connect(serial,  &QSerialPort::readyRead,   this, &Comms::readData2RingBuffer);
+    connect(&client, &QTcpSocket::connected,    this, &Comms::connectedDevice);
+    connect(&client, &QTcpSocket::disconnected, this, &Comms::disconnected);
+    connect(&client, &QIODevice::aboutToClose,  this, &Comms::slotAboutToClose);
+    connect(keepAliveTimer, &QTimer::timeout,   this, &Comms::slotKeepAlive);
+    connect(reconnectTimer, &QTimer::timeout,   this, &Comms::slotReconnect);
+    connect(&pollTimer,     &QTimer::timeout,   this, &Comms::pollLoop);
 }
 
 /*! \brief Comms::serialPort
@@ -92,10 +125,7 @@ void Comms::setSettings(const SettingsDialog::Settings &s)
  */
 void Comms::pollLoop(void)
 {
-   if(serial->isOpen())
-   {
-       if(serial->bytesAvailable() > 0) emit serial->readyRead();
-   }
+    readData2RingBuffer();
 }
 
 /*! \brief Comms::getchar
@@ -168,6 +198,65 @@ void Comms::ADCrelease(void)
     connect(&client, &QTcpSocket::readyRead, this, &Comms::readData2RingBuffer);
     connect(serial, &QSerialPort::readyRead, this, &Comms::readData2RingBuffer);
     ADCbuf = nullptr;
+}
+
+/*! \brief Comms::QUADcaptureArm
+ * Arms QSCAN binary capture. Every byte that arrives from this point until
+ * QUADcaptureRelease() is fed to the supplied reader and none of it reaches the
+ * command ring buffer.
+ *
+ * Call this BEFORE sending QSCAN. The firmware ACKs and then streams binary
+ * with no gap, so there is no window in which to switch afterwards. The reader
+ * syncs on the frame signature and absorbs the ACK on its own, which also makes
+ * the caller independent of echoMode.
+ */
+void Comms::QUADcaptureArm(QUADscanReader *reader)
+{
+    if(reader == nullptr) return;
+    QUADreader    = reader;
+    binaryCapture = true;
+    disconnect(&client, &QTcpSocket::readyRead, nullptr, nullptr);
+    if(serial) disconnect(serial, &QSerialPort::readyRead, nullptr, nullptr);
+    connect(&client, &QTcpSocket::readyRead, this, &Comms::readData2QUADreader);
+    if(serial) connect(serial, &QSerialPort::readyRead, this, &Comms::readData2QUADreader);
+}
+
+/*! \brief Comms::QUADcaptureRelease
+ * Restores normal ring buffer routing. Anything still in flight is drained and
+ * discarded first: on an early exit there may be bytes left in the port, and a
+ * raw 0x06 followed by binary entering the line oriented parser leaves the
+ * tokenizer stuck mid line.
+ */
+void Comms::QUADcaptureRelease(void)
+{
+    if(client.isOpen())            client.readAll();
+    if(serial && serial->isOpen()) serial->readAll();
+    disconnect(&client, &QTcpSocket::readyRead, nullptr, nullptr);
+    if(serial) disconnect(serial, &QSerialPort::readyRead, nullptr, nullptr);
+    connect(&client, &QTcpSocket::readyRead, this, &Comms::readData2RingBuffer);
+    if(serial) connect(serial, &QSerialPort::readyRead, this, &Comms::readData2RingBuffer);
+    QUADreader    = nullptr;
+    binaryCapture = false;
+    rb.clear();
+}
+
+/*! \brief Comms::readData2QUADreader
+ * Slot: hands every received byte to the QSCAN reader.
+ *
+ * Unlike readData2ADCBuffer this appends both transports rather than letting
+ * the serial read overwrite the socket read, and it null checks serial, which
+ * is a QPointer on this branch.
+ */
+void Comms::readData2QUADreader(void)
+{
+    QByteArray data;
+
+    if(QUADreader == nullptr) return;
+    if(client.isOpen()  && (client.bytesAvailable()  > 0)) data  = client.readAll();
+    if(serial && serial->isOpen() && (serial->bytesAvailable() > 0)) data += serial->readAll();
+    if(data.isEmpty()) return;
+    emit QUADbytesReceived(data);
+    QUADreader->processData(data);
 }
 
 /*! \brief Comms::readData2ADCBuffer
@@ -1190,7 +1279,7 @@ void Comms::reopenPort(void)
  */
 bool Comms::openSerialPort()
 {
-    connect(serial, &QSerialPort::errorOccurred, this, &Comms::handleError);
+    connect(serial, &QSerialPort::errorOccurred, this, &Comms::handleError,Qt::UniqueConnection);
     serial->setPortName(p.name);
     #if defined(Q_OS_MAC)
         serial->setPortName("cu." + p.name);
@@ -1219,9 +1308,6 @@ bool Comms::openSerialPort()
  */
 void Comms::closeSerialPort()
 {
-    if (serial->isOpen()) serial->close();
-    serial->close();
-    serial->close();
     serial->close();
     if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + " Closed!",2000);
     else sb->showMessage("Closed!",2000);
@@ -1234,20 +1320,44 @@ void Comms::closeSerialPort()
  */
 void Comms::handleError(QSerialPort::SerialPortError error)
 {
-    if (error == QSerialPort::ResourceError)
+    if (error == QSerialPort::NoError) return;
+
+    QString errMsg = serial->errorString();
+
+    switch (error)
     {
-        QThread::sleep(1);
+    case QSerialPort::ResourceError:
+    case QSerialPort::PermissionError:
+    case QSerialPort::DeviceNotFoundError:
+    case QSerialPort::UnsupportedOperationError:
+        // Fatal — close the port
         closeSerialPort();
-        if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + tr(" Critical Error, port closing: ") + serial->errorString());
-        else sb->showMessage(tr("Critical Error, port closing: ") + serial->errorString());
-        if(properties != nullptr)
+        if (!MIPSname.isEmpty())
+            sb->showMessage(MIPSname + tr(" Critical Error, port closing: ") + errMsg);
+        else
+            sb->showMessage(tr("Critical Error, port closing: ") + errMsg);
+
+        if (properties != nullptr && properties->AutoRestore)
         {
-            if(properties->AutoRestore)
-            {
-                reconnectTimer->setInterval(2000);
-                reconnectTimer->start();
-            }
+            reconnectTimer->setInterval(2000);
+            reconnectTimer->start();
         }
+        break;
+
+    case QSerialPort::TimeoutError:
+        break;
+    case QSerialPort::ReadError:
+    case QSerialPort::WriteError:
+        // Non-fatal — log it, keep port open
+        if (!MIPSname.isEmpty())
+            sb->showMessage(MIPSname + tr(" Serial error: ") + errMsg);
+        else
+            sb->showMessage(tr("Serial error: ") + errMsg);
+        break;
+
+    default:
+        sb->showMessage(tr("Unknown serial error: ") + errMsg);
+        break;
     }
 }
 
@@ -1310,29 +1420,67 @@ void Comms::readAvailableData2RingBuffer(void)
     }
 }
 
-/*! \brief Comms::readData2RingBuffer
- * Slot: reads incoming bytes into the ring buffer. Waits briefly if no bytes
- * are available. Emits lineAvailable when a complete line is present, and
- * DataReady after every read.
+/* brief Comms::readData2RingBuffer
+ * Slot: drains all available bytes from the open TCP socket and/or serial port
+ * into the ring buffer, then emits the appropriate signals.
+ *
+ * Design notes:
+ *  - Called in two contexts:
+ *      (a) Event-driven: connected to readyRead signals in the constructor, so
+ *          Qt fires this automatically whenever bytes arrive.
+ *      (b) Polling: called directly from waitforline() inside synchronous
+ *          Send/wait loops where the event loop is not running.
+ *  - No waitForReadyRead() is used. In case (a) data is guaranteed present;
+ *    in case (b) the caller loops and retries, so blocking here is wrong.
+ *  - DataReady is emitted only when bytes were actually placed in the buffer,
+ *    preventing spurious wakeups in the consumer.
+ *  - lineAvailable is emitted inside the drain loop so consumers are notified
+ *    promptly on large bursts rather than only after the final byte.
  */
 void Comms::readData2RingBuffer(void)
 {
-    int i;
+    // A QSCAN capture owns the port. This guard matters because pollLoop()
+    // calls this function directly rather than going through readyRead, so
+    // rewiring the readyRead connections alone does not isolate the stream.
+    if(binaryCapture) return;
+    if(readReadyBusy) return;
+    readReadyBusy = true;
+    bool gotData = false;
 
-    if(client.isOpen())
+    // --- TCP socket ---
+    if (client.isOpen())
     {
-        if(client.bytesAvailable() == 0) client.waitForReadyRead(0);
-        QByteArray data = client.readAll();
-        for(i=0;i<data.size();i++) rb.putch(data[i]);
+        if(client.bytesAvailable() == 0) client.waitForReadyRead(1);
+        if(client.bytesAvailable() > 0)
+        {
+            const QByteArray data = client.readAll();
+            for (const char byte : data) rb.putch(byte);
+            if (!data.isEmpty())
+            {
+                gotData = true;
+                if (rb.numLines() > 0) emit lineAvailable();
+            }
+        }
     }
-    if(serial->isOpen())
+
+    // --- Serial port ---
+    if (serial && serial->isOpen())
     {
-        if(serial->bytesAvailable() == 0) serial->waitForReadyRead(0);
-        QByteArray data = serial->readAll();
-        for(i=0;i<data.size();i++) rb.putch(data[i]);
+        if(serial->bytesAvailable() == 0) serial->waitForReadyRead(1);
+        if(serial->bytesAvailable() > 0)
+        {
+            const QByteArray data = serial->readAll();
+            for (const char byte : data) rb.putch(byte);
+            if (!data.isEmpty())
+            {
+                gotData = true;
+                if (rb.numLines() > 0) emit lineAvailable();
+            }
+        }
     }
-    if(rb.numLines() > 0) emit lineAvailable();
-    emit DataReady();
+
+    if (gotData) emit DataReady();
+    readReadyBusy = false;
 }
 
 /*! \brief Comms::connected
@@ -1343,6 +1491,14 @@ void Comms::connected(void)
     if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + tr(" MIPS connected"));
     else sb->showMessage(tr("MIPS connected"));
     client_connected = true;
+}
+
+void Comms::connectedDevice(void)
+{
+    client_connected = true;
+    keepAliveTimer->start(600000);
+    sb->showMessage(MIPSname + tr(" connected"));
+    //GetMIPSnameAndVersion();
 }
 
 /*! \brief Comms::isConnected
@@ -1409,11 +1565,11 @@ void Comms::slotKeepAlive(void)
  */
 void Comms::slotReconnect(void)
 {
+    connect(serial, &QSerialPort::errorOccurred, this, &Comms::handleError,Qt::UniqueConnection);
     if(!serial->isOpen())
     {
         serial->open(QIODevice::ReadWrite);
         serial->setDataTerminalReady(true);
-        connect(serial, &QSerialPort::errorOccurred, this, &Comms::handleError);
     }
     if(serial->isOpen())
     {
@@ -1421,4 +1577,26 @@ void Comms::slotReconnect(void)
         if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + tr(" Serial port reconnected!"));
         else sb->showMessage(tr("Serial port reconnected!"));
     }
+}
+
+/*! \brief Comms::ConnectToDevice
+ * Opens a TCP connection to a GAACE device discovered via UDP broadcast.
+ * Equivalent to ConnectToMIPS() but takes an IP and port directly rather
+ * than reading from SettingsDialog. Called from GAACEDiscovery's onReadyRead
+ * slot when a new device replies to the broadcast.
+ */
+bool Comms::ConnectToDevice(const QHostAddress &ip, int port, const QString &name)
+{
+    if (client.isOpen() || serial->isOpen()) return false;
+
+    MIPSname = name;
+    host = ip.toString();
+
+    client_connected = false;
+    client.setSocketOption(QAbstractSocket::KeepAliveOption, 1);
+    client.connectToHost(ip.toString(), port);
+    sb->showMessage(tr("Connecting to ") + name + "...");
+
+    // Don't block — the connected() slot handles the rest
+    return true;
 }

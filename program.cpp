@@ -195,7 +195,8 @@ void Program::programMIPS(void)
     msgBox.setStandardButtons(QMessageBox::Ok);
     msgBox.exec();
 
-    QString cmd = appPath + "/bossac -e -w -v -b " + fileName + " -R";
+    //QString cmd = appPath + "/bossac -e -w -v -b " + fileName + " -R";
+    QString cmd = appPath + "/bossac -e -w -v -b --port=" + comms->serialPort()->portName() + " " + fileName + " -R";
     executeProgrammerCommand(cmd);
 }
 

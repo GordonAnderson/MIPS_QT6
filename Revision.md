@@ -482,7 +482,43 @@
 //  2.22, March 4, 2026
 //      1.) Added ZMQ interface to scripting system.
 //  2.23, March 20, 2026
-//      2.) Fixed a crash in the scripting system cuased by where the 
+//      1.) Fixed a crash in the scripting system cuased by where the 
 //          engine was created.
+//  2.24, May 16, 2026
+//	1.) Added properties options for the following:
+//	    - mouse wheel editing
+//	    - Control panel editing
+//	    - lasso zoom mode enable
+//	2.) Fixed the lasso zoom out phatom dotted box
+//	3.) Improved the line entry box data entry. Enter now forces
+//	    an update.
+//	4.) Updated Ccontrol to not update non visible controls.
+//	5.) Fixed scripting system bugs in creation of threads.
+//  2.25, August 9, 2026
+//	1.) Added QSCAN support for firmware resident QUAD m/z scans:
+//	    - New QUADscanReader binary frame reader
+//	    - Comms binary capture mode (arm/release/active)
+//	    - Six new scripting functions: QuadScan, QuadScanCount,
+//	      QuadScanPoints, QuadScanComplete, QuadScanMessages,
+//	      QuadScanAbort
+//	2.) Added UDP device discovery (GAACEDiscovery) with automatic
+//	    connection of newly discovered GAACE devices.
+//	3.) Fixed USB disconnect crash caused by a blocking sleep in the
+//	    serial error handler.
+//	4.) Fixed Windows serial driver timing gap in the ring buffer read
+//	    path.
+//	5.) Fixed several memory leaks in the connection search and connect
+//	    logic, and a double disconnect on system 0.
+//	6.) Fixed script engine threading; the JS engine is now created on
+//	    the worker thread. Fixed hang when deleting a script button.
+//	7.) Ccontrol no longer polls hardware for non visible controls.
+//	    Checkbox now supports one additional parameter.
+//	8.) Line entry boxes now update on Enter and on changed value only.
+//	9.) Fixed phantom dotted box after lasso zoom out. Control panel
+//	    drag now grabs the mouse for reliable tracking.
+//     10.) Updated to Qt 6.8.2, APP_VERSION now set from MIPS.pro.
+//  2.25-dev
+//
+
 
 

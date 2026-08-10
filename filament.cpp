@@ -36,7 +36,8 @@ Filament::Filament(Ui::MIPS *w, Comms *c)
         if(w->objectName().startsWith("leS"))
         {
             ((QLineEdit *)w)->setValidator(new QDoubleValidator);
-            connect(((QLineEdit *)w), SIGNAL(editingFinished()), this, SLOT(FilamentUpdated()));
+            connect(((QLineEdit *)w), &QLineEdit::returnPressed,   this, [le=(QLineEdit *)w]() {le->setModified(true);});
+            connect(((QLineEdit *)w), &QLineEdit::editingFinished, this, &Filament::FilamentUpdated);
         }
     }
     connect(fui->chkEnableFilament1, SIGNAL(toggled(bool)), this, SLOT(Filament1Enable()));

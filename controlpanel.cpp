@@ -9,6 +9,9 @@
 // Depends on:  controlpanel.h, Utilities.h
 // Author:      Gordon Anderson, GAA Custom Electronics, LLC
 // Revised:     March 2026 — Phase 3 refactoring (loadConfig extraction)
+//              May 2026 - removed single-shot update timer and replaced with
+//              qtimer that is restarted at the end of each UpdateStateMachine() call.
+//              fixed bugs in string processing.
 //
 // Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
 // =============================================================================
@@ -19,6 +22,9 @@
 #include "Utilities.h"
 
 #include <QPixmap>
+#include <QEventLoop>
+#include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QString>
 #include <QTextEdit>
 #include <QTreeView>
@@ -111,6 +117,11 @@ ControlPanel::ControlPanel(QWidget *parent, QString CPfileName, QList<Comms*> S,
     else fileName = CPfileName;
     if((fileName == "") || (fileName.isEmpty())) return;
     loadConfig(fileName);
+
+    updateTimer = new QTimer(this);
+    updateTimer->setSingleShot(true);
+    updateTimer->setInterval(10);
+    connect(updateTimer, &QTimer::timeout, this, &ControlPanel::UpdateStateMachine);
 }
 
 // -----------------------------------------------------------------------------
@@ -372,6 +383,19 @@ void ControlPanel::loadConfig(QString fileName)
                 cpObjects.append(stream.pos());
                 cpObjects.append("Device");
                 cpObjects.append(QVariant::fromValue(devices.last()));
+            }
+            if((resList[0].toUpper() == "DISCOVER") && (resList.length()==2))
+            {
+                if(resList[1].toUpper().trimmed() == "TRUE")
+                {
+                    // Create the discovery object (once, lives for the session).
+                    if(m_discovery == nullptr) m_discovery = new GAACEDiscovery(this);
+                }
+                if(resList[1].toUpper().trimmed() == "FALSE")
+                {
+                    delete m_discovery;
+                    m_discovery = nullptr;
+                }
             }
             if((resList[0].toUpper() == "TEXTLABEL") && (resList.length()==5))
             {
@@ -1010,7 +1034,101 @@ void ControlPanel::loadConfig(QString fileName)
            Systems[i]->SendCommand("SSERWD," + QString::number(SerialWatchDog) + "\n");
         }
     }
+    if(m_discovery != nullptr)
+    {
+        // Log or act on each new device as it's found within the window.
+        connect(m_discovery, &GAACEDiscovery::newDeviceFound,
+                this, &ControlPanel::onNewDeviceFound);
+
+        // Log when each discovery cycle finishes.
+        connect(m_discovery, &GAACEDiscovery::discoveryComplete,
+                this, [](int count)
+                {
+                    qDebug("Discovery complete: %d new device(s) found", count);
+                });
+
+        // Run discovery immediately on startup, then every 60 seconds.
+        m_discovery->start();
+
+        m_discoveryTimer = new QTimer(this);
+        m_discoveryTimer->setInterval(60000);
+        connect(m_discoveryTimer, &QTimer::timeout,
+                m_discovery, &GAACEDiscovery::start);
+        m_discoveryTimer->start();
+    }
 }
+
+// Called once per new device found in a discovery cycle.
+void ControlPanel::onNewDeviceFound(const GAACEDeviceInfo &info)
+{
+    qDebug("New device: name=%s  type=%s  version=%s  ip=%s  port=%d",
+           qPrintable(info.name),
+           qPrintable(info.type),
+           qPrintable(info.version),
+           qPrintable(info.ip.toString()),
+           info.port);
+
+    // TODO: open your TCP connection here using info.ip and info.port,
+    // then call m_discovery->markConnected(info.name) once it's up,
+    // and m_discovery->markDisconnected(info.name) when it drops.
+    Comms *comms = new Comms(info.ip.toString(), info.port, statusBar);
+    bool *wasConnected = new bool(false);  // heap so lambdas share it safely
+
+    connect(&comms->client, &QTcpSocket::connected, this, [=]()
+            {
+                *wasConnected = true;
+                Systems.append(comms);
+                m_discovery->discoveredSystems.append(comms);
+                m_discovery->markConnected(info.name);
+                wireDiscoveredDevice(comms);  // wire Ccontrol objects to this device
+            });
+
+    connect(&comms->client, &QTcpSocket::disconnected, this, [=]()
+            {
+                if (*wasConnected)
+                {
+                    // Unwire all Ccontrols that were using this comms
+                    for (int i = 1; i < cpObjects.size(); i += 3)
+                    {
+                        if (cpObjects[i].toString() != "Ccontrol") continue;
+                        Ccontrol *obj = cpObjects[i + 1].value<Ccontrol*>();
+                        if (obj && obj->comms == comms)
+                            obj->comms = nullptr;
+                    }
+                    m_discovery->markDisconnected(info.name);
+                    Systems.removeOne(comms);
+                    m_discovery->discoveredSystems.removeOne(comms);
+                }
+                delete wasConnected;
+                comms->deleteLater();
+            });
+
+    connect(&comms->client, &QAbstractSocket::errorOccurred, this,
+            [=](QAbstractSocket::SocketError err)
+            {
+                qDebug() << "GAACEDiscovery connection error:" << err
+                         << comms->client.errorString();
+                // disconnected will fire after this and handle cleanup
+            });
+
+    comms->ConnectToDevice(info.ip, info.port, info.name);
+}
+
+void ControlPanel::wireDiscoveredDevice(Comms *comms)
+{
+    for (int i = 1; i < cpObjects.size(); i += 3)
+    {
+        if (cpObjects[i].toString() != "Ccontrol") continue;
+
+        Ccontrol *obj = cpObjects[i + 1].value<Ccontrol*>();
+        if (obj && obj->MIPSnm == comms->MIPSname)
+        {
+            obj->comms = comms;
+            qDebug() << "Wired" << obj->MIPSnm << "to discovered device" << comms->MIPSname;
+        }
+    }
+}
+
 
 /*! \brief ControlPanel::eventFilter
  * This function is called when an event occurs in the control panel.
@@ -1080,6 +1198,21 @@ ControlPanel::~ControlPanel()
     for(int i=0;i<plots.count();i++) delete plots[i];
     delete tcp;
     delete ui;
+    if(m_discovery != nullptr)
+    {
+        m_discoveryTimer->deleteLater();
+        m_discovery->deleteLater();
+        // Only clean up what discovery created
+        for (Comms *c : m_discovery->discoveredSystems)
+        {
+            c->DisconnectFromMIPS();
+            Systems.removeOne(c);
+            c->deleteLater();
+        }
+        m_discovery->discoveredSystems.clear();
+        m_discoveryTimer->deleteLater();
+        m_discovery->deleteLater();
+    }
     this->deleteLater();
 }
 
@@ -1709,7 +1842,7 @@ void ControlPanel::LogDataFile(void)
    if(LogStartTime == 0)
    {
        LogStartTime = qt.currentDateTime().toMSecsSinceEpoch();
-       NextSampleTime = LogStartTime;
+       NextSampleTime = qt.currentDateTime().toSecsSinceEpoch();
        // Write the file header
        header = QDateTime().currentDateTime().toString() + "\n";
        // Build the CSV header record
@@ -2028,11 +2161,10 @@ void ControlPanel::UpdateStateMachine(void)
                 {
                     // Read all the setpoints and readbacks and parse the strings
                     QString VspRes;
-                    if(updateCount == 1)
-                    {
-                        VspRes = Systems[i]->SendMess("GDCBALL\n");
-                    }
-                    QStringList VspResList = VspRes.split(",");
+                    QStringList VspResList;
+                    if(updateCount == 1) VspRes = Systems[i]->SendMess("GDCBALL\n");
+                    if(VspRes.isEmpty()) VspResList.clear();
+                    else VspResList = VspRes.split(",");
                     if(VspResList.count() <= 1) VspResList.clear();
                     QString VrbRes = Systems[i]->SendMess("GDCBALLV\n");
                     QStringList VrbResList = VrbRes.split(",");
@@ -2043,22 +2175,33 @@ void ControlPanel::UpdateStateMachine(void)
                         // This support old MIPS firmware that did not have the DCB group commands
                         for(k=0;k<DCBchans.count();k++) if(DCBchans[k]->comms == Systems[i]) DCBchans[k]->Update();
                     }
-                    else if((VspResList.count() == 0))
+                    else if (VspResList.count() == 0)
                     {
                         // build strings and update the readbacks for all channels that use this comm port
-                        for(k=0;k<DCBchans.count();k++) if(DCBchans[k]->comms == Systems[i])
+                        for (k = 0; k < DCBchans.count(); k++)
+                        {
+                            if (DCBchans[k]->comms == Systems[i])
                             {
-                                DCBchans[k]->Update("," + VrbResList[DCBchans[k]->Channel - 1]);
+                                if (VrbResList.count() < DCBchans[k]->Channel)
+                                    DCBchans[k]->Update();
+                                else
+                                    DCBchans[k]->Update("," + VrbResList[DCBchans[k]->Channel - 1]);
                             }
+                        }
                     }
                     else
                     {
                         // build strings and update all channels that use this comm port
-                        for(k=0;k<DCBchans.count();k++) if(DCBchans[k]->comms == Systems[i])
+                        for (k = 0; k < DCBchans.count(); k++)
+                        {
+                            if (DCBchans[k]->comms == Systems[i])
                             {
-                                if(VspResList.count() < (DCBchans[k]->Channel)) DCBchans[k]->Update();
-                                else DCBchans[k]->Update(VspResList[DCBchans[k]->Channel - 1] + "," + VrbResList[DCBchans[k]->Channel - 1]);
+                                if (VspResList.count() < DCBchans[k]->Channel || VrbResList.count() < DCBchans[k]->Channel)
+                                    DCBchans[k]->Update();
+                                else
+                                    DCBchans[k]->Update(VspResList[DCBchans[k]->Channel - 1] + "," + VrbResList[DCBchans[k]->Channel - 1]);
                             }
+                        }
                     }
                     break;
                 }
@@ -2080,7 +2223,7 @@ void ControlPanel::UpdateStateMachine(void)
             if(updateIndex >= Ccontrols.count()) break;
             if(updateIndex > 0 && updateIndex % 10 == 0)
             {
-                QTimer::singleShot(10, this, &ControlPanel::UpdateStateMachine);
+                updateTimer->start();
                 return;
             }
         }
@@ -2105,7 +2248,7 @@ void ControlPanel::UpdateStateMachine(void)
     // Advance to next state and restart this function after a delay
     updateState++;
     updateIndex=0;
-    QTimer::singleShot(10, this, &ControlPanel::UpdateStateMachine);
+    updateTimer->start();
 }
 
 /*! \brief Save is the main save method for the control panel.
@@ -2269,7 +2412,7 @@ QString ControlPanel::Save(QString Filename)
         return "Settings saved to " + Filename;
     }
     UpdateHoldOff = 1;
-    return "Can't open file!";
+    return "Can't save file!";
 }
 
 /*! \brief Load is the main load method for the control panel.
@@ -2464,8 +2607,8 @@ QString ControlPanel::Load(QString Filename)
         file.close();
         return "Settings loaded from " + Filename;
     }
-    return "Can't open file!";
     UpdateHoldOff = 1;
+    return "Can't open file!";
 }
 
 /*! \brief ControlPanel::slotDataAcquired
@@ -2967,6 +3110,237 @@ bool ControlPanel::UpdateHalted(bool stop)
     while(cp->parentCP != nullptr) cp = cp->parentCP;
     cp->UpdateStop = stop;
     return cp->UpdateStop;
+}
+
+
+// =============================================================================
+// QSCAN — firmware resident QUAD m/z scan capture
+//
+// QuadScan() runs the whole capture and does not return until the stream has
+// finished, so the script side stays synchronous: one call replaces the per
+// point RFAACQ loop. Structure:
+//
+//   arm the binary route -> send QSCAN -> nested QEventLoop -> release
+//
+// A nested QEventLoop rather than QApplication::processEvents() (the
+// GetMIPSfile pattern) because the loop has to be quit deterministically from
+// three different sources: allScansDone from the reader, the idle watchdog, and
+// a NAK sniffed ahead of the first header. Both approaches dispatch events, so
+// both keep the GUI alive and both are re-entrant; the event loop just makes
+// the exits explicit. Swapping it back is a local change to this function.
+//
+// The idle watchdog times out on SILENCE, not on total duration, so the limit
+// does not need rescaling when ADCnumsamples changes.
+// =============================================================================
+
+#define QUADfirstByteMS     5000    //!< Time allowed for the firmware to answer at all.
+#define QUADidleTimeoutMS   500     //!< Silence, not total duration. Point period is ~3 mS.
+#define QUADsettleTimeoutMS 2000    //!< Wait for an in-flight panel update cycle to finish.
+
+#define QUADSCAN_BUSY      -1       //!< A capture is already running.
+#define QUADSCAN_NOMIPS    -2       //!< Named MIPS system not found.
+#define QUADSCAN_TIMEOUT   -3       //!< Stream went silent before the last trailer.
+#define QUADSCAN_NOPORT    -4       //!< Port not open.
+#define QUADSCAN_NODATA    -5       //!< Valid frame(s) received but carrying no points.
+#define QUADSCAN_FWBASE    -1000    //!< Firmware NAK: return value is QUADSCAN_FWBASE - GERR.
+
+/*! \brief ControlPanel::QuadScan
+ * Captures a complete QSCAN stream from the named MIPS system.
+ *
+ * Returns the total number of points received across all scans, or a negative
+ * error code. A firmware NAK returns QUADSCAN_FWBASE - code, so GERR 127
+ * (RF module not enabled) comes back as -1127. Retrieve the data with
+ * QuadScanCount() and QuadScanPoints().
+ */
+int ControlPanel::QuadScan(QString MIPSname, int module)
+{
+    if(QUADcapturing) return QUADSCAN_BUSY;
+    Comms *cp = FindCommPort(MIPSname, Systems);
+    if(cp == nullptr)      return QUADSCAN_NOMIPS;
+    if(!cp->isConnected()) return QUADSCAN_NOPORT;
+
+    // Halt the panel update state machine. It issues its own commands on this
+    // port, and the nested event loop below would let it run mid capture.
+    ControlPanel *top = this;
+    while(top->parentCP != nullptr) top = top->parentCP;
+    bool savedUpdateStop = top->UpdateStop;
+    top->UpdateStop = true;
+
+    // UpdateStop is only tested at the top of the cycle, so a cycle already in
+    // progress has to be allowed to finish before the port can be taken.
+    QElapsedTimer settle;
+    settle.start();
+    while((top->updateState != 0) && (settle.elapsed() < QUADsettleTimeoutMS))
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 10);
+
+    if(qsReader == nullptr) qsReader = new QUADscanReader(this);
+    qsReader->reset();          // every scan, not just the first
+    QUADscans.clear();
+    QUADcomplete.clear();
+    QUADmessages.clear();
+    QUADcapturing = true;
+    QUADcomms     = cp;
+
+    QEventLoop loop;
+    QTimer     idle;
+    idle.setSingleShot(true);
+    // Two different waits, not one. Before the first byte the firmware still has
+    // to validate, claim the ADC and set the first point, and on a cold system
+    // that is the slowest it will ever be; after the first byte the only thing
+    // being measured is the gap between points. Running both at 500 mS makes a
+    // slow answer indistinguishable from a stalled stream.
+    idle.setInterval(QUADfirstByteMS);
+
+    bool   sawSignature = false;
+    bool   sawNAK       = false;
+    bool   sawAnyByte   = false;
+    int    byteCount    = 0;
+    quint8 prev         = 0;
+
+    QList<QMetaObject::Connection> conn;
+    conn << connect(qsReader, &QUADscanReader::scanReady, this,
+                    [this](int scanNum, const QVector<qint32> &points, bool complete)
+    {
+        Q_UNUSED(scanNum)
+        QUADscans.append(points);
+        QUADcomplete.append(complete);
+    });
+    conn << connect(qsReader, &QUADscanReader::frameError, this,
+                    [this](const QString &message) { QUADmessages.append(message); });
+    conn << connect(qsReader, &QUADscanReader::allScansDone, &loop, &QEventLoop::quit);
+    conn << connect(&idle,    &QTimer::timeout,            &loop, &QEventLoop::quit);
+    conn << connect(cp, &Comms::QUADbytesReceived, this, [&](const QByteArray &data)
+    {
+        byteCount += data.size();
+        if(!sawAnyByte)
+        {
+            sawAnyByte = true;
+            idle.setInterval(QUADidleTimeoutMS);   // switch to the inter byte window
+        }
+        idle.start();                       // restart the silence window
+        if(sawSignature) return;
+        // QSCAN NAKs with "?" before emitting any header when validation fails.
+        // Sniffing is confined to the bytes ahead of the first frame signature,
+        // where the only legitimate traffic is the 1 or 2 byte ACK, so a 0x3F
+        // inside point data can never be mistaken for a NAK.
+        for(int i = 0; i < data.size(); i++)
+        {
+            quint8 c = (quint8)data[i];
+            if((prev == 0x55) && (c == QUADscanHDRBYTE)) { sawSignature = true; return; }
+            if(c == '?') { sawNAK = true; loop.quit(); return; }
+            prev = c;
+        }
+    });
+
+    cp->QUADcaptureArm(qsReader);           // arm BEFORE sending, there is no gap
+    idle.start();
+    cp->SendString("QSCAN," + QString::number(module) + "\n");
+    loop.exec();
+
+    bool timedOut = !qsReader->isDone() && !sawNAK;
+    cp->QUADcaptureRelease();
+    idle.stop();
+    for(const QMetaObject::Connection &c : conn) QObject::disconnect(c);
+    QUADcapturing   = false;
+    QUADcomms       = nullptr;
+    top->UpdateStop = savedUpdateStop;
+
+    if(sawNAK)
+    {
+        int code = cp->SendMess("GERR\n").trimmed().toInt();
+        statusBar->showMessage("QSCAN rejected by firmware, GERR " + QString::number(code), 5000);
+        return QUADSCAN_FWBASE - code;
+    }
+    if(timedOut)
+    {
+        // Say which kind of timeout this was. Silence and garble have completely
+        // different causes and the operator cannot tell them apart from the
+        // return code alone.
+        if(!sawAnyByte) QUADmessages.append("No response to QSCAN, nothing was received");
+        else if(!sawSignature) QUADmessages.append(QString("Received %1 bytes but no frame header was found").arg(byteCount));
+        else QUADmessages.append(QString("Stream stopped after %1 bytes with no trailer").arg(byteCount));
+        statusBar->showMessage("QSCAN timed out: " + QUADmessages.last(), 8000);
+        return QUADSCAN_TIMEOUT;
+    }
+    int total = 0;
+    for(int i = 0; i < QUADscans.count(); i++) total += QUADscans[i].count();
+    // A well formed frame carrying no points is a failure, not a success. The
+    // firmware emits header + abort trailer when the priming acquisition fails,
+    // which is a valid stream the reader parses correctly, so nothing upstream
+    // of here treats it as an error. Returning it as 0 made it silent.
+    if(total == 0)
+    {
+        QUADmessages.append(QString("Firmware returned %1 frame(s) containing no points; "
+                                    "the scan was aborted before the first point")
+                            .arg(QUADscans.count()));
+        statusBar->showMessage("QSCAN returned no data: " + QUADmessages.last(), 8000);
+        return QUADSCAN_NODATA;
+    }
+    // Flag a short scan too. This is a real result worth keeping, but the
+    // operator needs to know the spectrum is partial.
+    for(int i = 0; i < QUADcomplete.count(); i++) if(!QUADcomplete[i])
+        QUADmessages.append(QString("Scan %1 aborted after %2 of %3 points")
+                            .arg(i).arg(QUADscans[i].count()).arg(qsReader->expectedPoints()));
+    return total;
+}
+
+/*! \brief ControlPanel::QuadScanCount
+ * Number of scans captured by the last QuadScan() call.
+ */
+int ControlPanel::QuadScanCount(void)
+{
+    return QUADscans.count();
+}
+
+/*! \brief ControlPanel::QuadScanPoints
+ * Returns one scan as a comma separated list for the script to split. One call
+ * per scan, not per point; the same shape as ReadCSVfile / ReadCSVentry.
+ *
+ * Values are raw sums of ADCnumsamples readings, NOT averages. Divide by the
+ * value from GADCSAMPS for counts.
+ */
+QString ControlPanel::QuadScanPoints(int scan)
+{
+    if((scan < 0) || (scan >= QUADscans.count())) return "";
+    QStringList sl;
+    sl.reserve(QUADscans[scan].count());
+    for(int i = 0; i < QUADscans[scan].count(); i++) sl.append(QString::number(QUADscans[scan][i]));
+    return sl.join(",");
+}
+
+/*! \brief ControlPanel::QuadScanMessages
+ * Framing errors and timeout detail from the last QuadScan call, joined with
+ * "; ". Empty when the capture was clean. The reader reports a corrupt header
+ * point count, a short or over long data block and a resynchronisation through
+ * frameError; without this they are collected and discarded, which makes a
+ * failed capture look like an unexplained timeout.
+ */
+QString ControlPanel::QuadScanMessages(void)
+{
+    return QUADmessages.join("; ");
+}
+
+/*! \brief ControlPanel::QuadScanComplete
+ * False if the matching scan came back short with an abort trailer.
+ */
+bool ControlPanel::QuadScanComplete(int scan)
+{
+    if((scan < 0) || (scan >= QUADcomplete.count())) return false;
+    return QUADcomplete[scan];
+}
+
+/*! \brief ControlPanel::QuadScanAbort
+ * Writes ESC to abort a capture in progress. Callable from a button or from a
+ * second script while QuadScan() is blocked, because the nested event loop
+ * keeps delivering events.
+ *
+ * The firmware tests for ESC once per point, so the scan stops at the end of
+ * the point in progress and the frame comes back short with an abort trailer.
+ */
+void ControlPanel::QuadScanAbort(void)
+{
+    if(!QUADcapturing || (QUADcomms == nullptr)) return;
+    QUADcomms->writeData(QByteArray(1, (char)QUADscanABORTCHAR));
 }
 
 /*! \brief ControlPanel::tcpSocket

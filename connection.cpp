@@ -7,7 +7,24 @@
 // Depends on:  mips.h
 // Author:      Gordon Anderson, GAA Custom Electronics, LLC
 // Revised:     March 2026 — Phase 3 extraction
-//
+//              May 2026   — Bug fixes:
+//                           - MIPSsearch: QMessageBox was leaked; replaced
+//                             with QScopedPointer for guaranteed cleanup
+//                           - FindAllMIPSsystems: previous Systems entries
+//                             were leaked on repeated search; heap-allocated
+//                             Comms objects (those != member comms) are now
+//                             deleted before Systems.clear()
+//                           - FindAllMIPSsystems: failed port probes (isMIPS/
+//                             isAMPS returning false, or ConnectToMIPS failing)
+//                             now delete the probed Comms* immediately
+//                           - MIPSconnect: same guarded delete applied before
+//                             Systems.clear() in case a prior search left
+//                             heap objects in the list
+//                           - MIPSdisconnect: removed separate
+//                             comms->DisconnectFromMIPS() call that
+//                             double-disconnected Systems[0]; single loop
+//                             over Systems now covers all including comms
+//                           - UpdateSystem: added bounds check on combo index//
 // Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
 // =============================================================================
 #include "mips.h"
@@ -138,12 +155,16 @@ void MIPS::MIPSconnect(void)
     comms->setHost(ui->comboMIPSnetNames->currentText());
     if(comms->ConnectToMIPS())
     {
-       Systems.clear();
-       Systems << comms;
-       console->setEnabled(true);
-       console->setLocalEchoEnabled(settings->settings().localEchoEnabled);
-       ui->lblMIPSconnectionNotes->setHidden(true);
-       MIPSsetup();
+        // FIX: delete any heap-allocated Comms objects from a prior search
+        // before clearing. comms is member-owned so skip it.
+        for(int j = 0; j < Systems.count(); j++)
+            if(Systems.at(j) != comms) delete Systems.at(j);
+        Systems.clear();
+        Systems << comms;
+        console->setEnabled(true);
+        console->setLocalEchoEnabled(settings->settings().localEchoEnabled);
+        ui->lblMIPSconnectionNotes->setHidden(true);
+        MIPSsetup();
     }
 }
 
@@ -152,7 +173,8 @@ void MIPS::MIPSconnect(void)
  */
 void MIPS::MIPSsearch(void)
 {
-    QMessageBox *msg = new QMessageBox();
+    // FIX: use a scoped pointer so the dialog is always deleted
+    QScopedPointer<QMessageBox> msg(new QMessageBox());
     msg->setText("Searching for MIPS system(s)...");
     msg->setStandardButtons(QMessageBox::NoButton);
     msg->setWindowModality(Qt::NonModal);
@@ -161,7 +183,9 @@ void MIPS::MIPSsearch(void)
     settings->fillPortsParameters();
     settings->fillPortsInfo();
     FindMIPSandConnect();
+
     msg->hide();
+    // QScopedPointer deletes msg here automatically
 }
 
 /*! \brief MIPS::FindAllMIPSsystems
@@ -172,7 +196,17 @@ void MIPS::FindAllMIPSsystems(void)
     Comms *cp;
 
     disconnect(ui->comboSystems, &QComboBox::currentIndexChanged, nullptr, nullptr);
+
+    // FIX: delete heap-allocated Comms objects from any previous search before clearing
+    // Only delete entries that were heap-allocated (not the member-owned comms pointer).
+    // We track this by checking whether each pointer equals the member comms.
+    for(int j = 0; j < Systems.count(); j++)
+    {
+        if(Systems.at(j) != comms)
+            delete Systems.at(j);
+    }
     Systems.clear();
+
     // If there are a defined list of net names or IP addresses
     // then use them and do not search for USB connected systems
     if(ui->comboMIPSnetNames->count() > 0)
@@ -184,7 +218,12 @@ void MIPS::FindAllMIPSsystems(void)
             cp->setHost(ui->comboMIPSnetNames->itemText(j));
             if(cp->ConnectToMIPS())
             {
-               Systems << (cp);
+                Systems << (cp);
+            }
+            else
+            {
+                // FIX: delete failed probe immediately to avoid leak
+                delete cp;
             }
         }
     }
@@ -194,38 +233,43 @@ void MIPS::FindAllMIPSsystems(void)
         settings->fillPortsInfo();
         for(int j=0;j<i;j++)
         {
-          if(settings->getPortName(j).contains("Bluetooth-Incoming-Port")) continue;
-          ui->statusBar->showMessage("Trying: " + settings->getPortName(j));
-          QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
-          cp = new Comms(settings,"",ui->statusBar);
-          cp->setProperties(properties);
-          if(cp->isMIPS(settings->getPortName(j)))
-          {
-            delay();
+            if(settings->getPortName(j).contains("Bluetooth-Incoming-Port")) continue;
+            ui->statusBar->showMessage("Trying: " + settings->getPortName(j));
             QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
-            cp->setHost("");
-            cp->SendString("ECHO,FALSE\n");
-            if(cp->ConnectToMIPS())
+            cp = new Comms(settings,"",ui->statusBar);
+            cp->setProperties(properties);
+            bool added = false;
+            if(cp->isMIPS(settings->getPortName(j)))
             {
-               Systems << (cp);
+                delay();
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+                cp->setHost("");
+                cp->SendString("ECHO,FALSE\n");
+                if(cp->ConnectToMIPS())
+                {
+                    Systems << (cp);
+                    added = true;
+                }
             }
-          }
-          else if(properties != nullptr)
-          {
-              if(properties->SearchAMPS)
-              {
-                  if(cp->isAMPS(settings->getPortName(j),properties->AMPSbaud))
-                  {
-                    delay();
-                    QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
-                    cp->setHost("");
-                    if(cp->ConnectToMIPS())
+            else if(properties != nullptr)
+            {
+                if(properties->SearchAMPS)
+                {
+                    if(cp->isAMPS(settings->getPortName(j),properties->AMPSbaud))
                     {
-                       Systems << (cp);
-                            }
-                  }
-              }
-          }
+                        delay();
+                        QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+                        cp->setHost("");
+                        if(cp->ConnectToMIPS())
+                        {
+                            Systems << (cp);
+                            added = true;
+                        }
+                    }
+                }
+            }
+            // FIX: delete probe object if it was never added to Systems
+            if(!added) delete cp;
         }
     }
     ui->comboSystems->clear();
@@ -245,21 +289,21 @@ void MIPS::FindAllMIPSsystems(void)
  */
 void MIPS::FindMIPSandConnect(void)
 {
-  ui->pbSearchandConnect->setDown(false);
-  QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
-  FindAllMIPSsystems();
-  if(ui->comboSystems->count() > 0)
-  {
-      delay();
-      comms = Systems.at(0);
-      console->setEnabled(true);
-      console->setLocalEchoEnabled(settings->settings().localEchoEnabled);
-      ui->lblMIPSconnectionNotes->setHidden(true);
-      MIPSsetup();
-      connect(ui->comboSystems, &QComboBox::currentIndexChanged, this, [this](int){ UpdateSystem(); });
-  }
-  else ui->statusBar->showMessage(tr("Can't find MIPS system!"));
-  return;
+    ui->pbSearchandConnect->setDown(false);
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+    FindAllMIPSsystems();
+    if(ui->comboSystems->count() > 0)
+    {
+        delay();
+        comms = Systems.at(0);
+        console->setEnabled(true);
+        console->setLocalEchoEnabled(settings->settings().localEchoEnabled);
+        ui->lblMIPSconnectionNotes->setHidden(true);
+        MIPSsetup();
+        connect(ui->comboSystems, &QComboBox::currentIndexChanged, this, [this](int){ UpdateSystem(); });
+    }
+    else ui->statusBar->showMessage(tr("Can't find MIPS system!"));
+    return;
 }
 
 /*! \brief MIPS::MIPSdisconnect
@@ -276,14 +320,24 @@ void MIPS::MIPSdisconnect(void)
     AddTab("FAIMS");
     AddTab("Filament");
     AddTab("Pulse Sequence Generation");
-    comms->DisconnectFromMIPS();
+
+    // FIX: disconnect through the list to avoid double-disconnecting comms.
+    // comms == Systems[0] after any successful connect, so one loop covers all.
     for(int j=0;j<Systems.count();j++)
     {
         Systems.at(j)->DisconnectFromMIPS();
     }
+
+    // FIX: delete heap-allocated search objects without touching member-owned comms
+    for(int j = 0; j < Systems.count(); j++)
+    {
+        if(Systems.at(j) != comms)
+            delete Systems.at(j);
+    }
+    Systems.clear();
+
     ui->comboSystems->setVisible(false);
     ui->lblSystems->setVisible(false);
-
     ui->lblMIPSconfig->setText("");
     ui->lblMIPSconnectionNotes->setHidden(false);
 }
@@ -294,7 +348,10 @@ void MIPS::MIPSdisconnect(void)
  */
 void MIPS::UpdateSystem(void)
 {
-   if(Systems.count() == 0) return;
-   comms = Systems.at(ui->comboSystems->currentIndex());
-   MIPSsetup();
+    // FIX: guard against empty list and out-of-range index
+    if(Systems.isEmpty()) return;
+    int idx = ui->comboSystems->currentIndex();
+    if(idx < 0 || idx >= Systems.count()) return;
+    comms = Systems.at(idx);
+    MIPSsetup();
 }

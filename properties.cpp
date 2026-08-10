@@ -16,11 +16,16 @@
 // Depends on:  ui_properties.h
 // Author:      Gordon Anderson, GAA Custom Electronics, LLC
 // Revised:     March 2026 — documented for host app v2.22
+//              May 2026 - added wheelsensitivity property and applied it
+//                         to adjustValue() in Utilities.cpp.
 //
 // Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
 // =============================================================================
 #include "properties.h"
 #include "ui_properties.h"
+
+// Define the pointer (it starts as null)
+Properties *pProps = nullptr;
 
 // setSystemFontSize — applies a global application font at the given point
 // size. Uses the system font on macOS; Tahoma on Windows/Linux.
@@ -73,6 +78,9 @@ Properties::Properties(QWidget *parent) :
     connect(ui->pbClear,            SIGNAL(pressed()), this, SLOT(slotClear()));
     connect(ui->pbOK,               SIGNAL(pressed()), this, SLOT(slotOK()));
     connect(ui->pbLogFile,          SIGNAL(pressed()), this, SLOT(slotLogFile()));
+
+    // When created, point the global pointer to THIS instance
+    pProps = this;
 }
 
 // ~Properties — destructor. Releases the UI form.
@@ -113,6 +121,10 @@ void Properties::UpdateVars(void)
     AutoConnect      = ui->chkAutoConnect->isChecked();
     AutoRestore      = ui->chkAutoRestore->isChecked();
     AutoFileName     = ui->chkAutoFileName->isChecked();
+    ScrollEdit       = ui->chkEnableScrollChange->isChecked();
+    WheelSensitivity = ui->leWheelSensitivity->text().toFloat();
+    ControlPanelEdit = ui->chkEnableControlEdit->isChecked();
+    LassoZoom        = ui->chkEnableLasso->isChecked();
     MIPS_TCPIP.clear();
     for(int i = 0; i < ui->comboTCPIPlist->count(); i++)
         MIPS_TCPIP.append(ui->comboTCPIPlist->itemText(i));
@@ -203,10 +215,14 @@ bool Properties::Save(QString fileName)
         stream << "LogFile,"          + LogFile          + "\n";
         stream << "SysFontSize,"      + sysFontSize      + "\n";
         stream << "AMPSbaud,"         + AMPSbaud         + "\n";
-        stream << "SearchAMPS,"   + QString(SearchAMPS   ? "TRUE" : "FALSE") + "\n";
-        stream << "AutoFileName," + QString(AutoFileName ? "TRUE" : "FALSE") + "\n";
-        stream << "AutoConnect,"  + QString(AutoConnect  ? "TRUE" : "FALSE") + "\n";
-        stream << "AutoRestore,"  + QString(AutoRestore  ? "TRUE" : "FALSE") + "\n";
+        stream << "SearchAMPS,"       + QString(SearchAMPS       ? "TRUE" : "FALSE") + "\n";
+        stream << "AutoFileName,"     + QString(AutoFileName     ? "TRUE" : "FALSE") + "\n";
+        stream << "AutoConnect,"      + QString(AutoConnect      ? "TRUE" : "FALSE") + "\n";
+        stream << "AutoRestore,"      + QString(AutoRestore      ? "TRUE" : "FALSE") + "\n";
+        stream << "ScrollEdit,"       + QString(ScrollEdit       ? "TRUE" : "FALSE") + "\n";
+        stream << "WheelSensitivity," + QString::number(WheelSensitivity)   + "\n";
+        stream << "ControlPanelEdit," + QString(ControlPanelEdit ? "TRUE" : "FALSE") + "\n";
+        stream << "LassoZoom,"        + QString(LassoZoom        ? "TRUE" : "FALSE") + "\n";
         stream << "MIPS_TCPIP";
         for(int i = 0; i < MIPS_TCPIP.count(); i++) stream << "," + MIPS_TCPIP[i];
         stream << "\n";
@@ -232,20 +248,24 @@ bool Properties::Load(QString fileName)
             QStringList r = line.split(",");
             if(r.count() == 2)
             {
-                if(r[0] == "DataFilePath")     ui->leDataFilePath->setText(r[1]);
-                else if(r[0] == "MethodesPath")     ui->leMethodesPath->setText(r[1]);
-                else if(r[0] == "ScriptPath")       ui->leScriptPath->setText(r[1]);
-                else if(r[0] == "LoadControlPanel") ui->leControlPanel->setText(r[1]);
+                if(r[0] == "DataFilePath")           ui->leDataFilePath->setText(r[1]);
+                else if(r[0] == "MethodesPath")      ui->leMethodesPath->setText(r[1]);
+                else if(r[0] == "ScriptPath")        ui->leScriptPath->setText(r[1]);
+                else if(r[0] == "LoadControlPanel")  ui->leControlPanel->setText(r[1]);
                 else if(r[0] == "FileName")          ui->leFileName->setText(r[1]);
                 else if(r[0] == "MinMIPS")           ui->leMinMIPS->setText(r[1]);
                 else if(r[0] == "UpdateSecs")        ui->leUpdateSecs->setText(r[1]);
                 else if(r[0] == "LogFile")           ui->leLogFile->setText(r[1]);
                 else if(r[0] == "SysFontSize")       ui->leSysFontSize->setText(r[1]);
                 else if(r[0] == "AMPSbaud")          ui->leAMPSbaud->setText(r[1]);
-                else if(r[0] == "SearchAMPS")   ui->chkSearchAMPS->setChecked(r[1] == "TRUE");
-                else if(r[0] == "AutoFileName") ui->chkAutoFileName->setChecked(r[1] == "TRUE");
-                else if(r[0] == "AutoConnect")  ui->chkAutoConnect->setChecked(r[1] == "TRUE");
-                else if(r[0] == "AutoRestore")  ui->chkAutoRestore->setChecked(r[1] == "TRUE");
+                else if(r[0] == "SearchAMPS")        ui->chkSearchAMPS->setChecked(r[1]   == "TRUE");
+                else if(r[0] == "AutoFileName")      ui->chkAutoFileName->setChecked(r[1] == "TRUE");
+                else if(r[0] == "AutoConnect")       ui->chkAutoConnect->setChecked(r[1]  == "TRUE");
+                else if(r[0] == "AutoRestore")       ui->chkAutoRestore->setChecked(r[1]  == "TRUE");
+                else if(r[0] == "ScrollEdit")        ui->chkEnableScrollChange->setChecked(r[1] == "TRUE");
+                else if(r[0] == "WheelSensitivity")  ui->leWheelSensitivity->setText(r[1]);
+                else if(r[0] == "ControlPanelEdit")  ui->chkEnableControlEdit->setChecked(r[1]  == "TRUE");
+                else if(r[0] == "LassoZoom")         ui->chkEnableLasso->setChecked(r[1]        == "TRUE");
             }
             else if(r.count() >= 1 && r[0] == "MIPS_TCPIP")
             {
@@ -259,3 +279,4 @@ bool Properties::Load(QString fileName)
     }
     return false;
 }
+

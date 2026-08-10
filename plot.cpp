@@ -25,16 +25,13 @@
 // =============================================================================
 #include "plot.h"
 #include "ui_plot.h"
+#include "properties.h"
 #include <QScreen>
 
 #include <QFile>
 #include <QDataStream>
 #include <QTextStream>
 #include <QList>
-
-// Define LassoMode to use rubber-band selection rect for zoom (recommended).
-// Comment this out to revert to the legacy scroll-wheel zoom interaction.
-#define LassoMode
 
 // --- Binary Save/Load Functions for a single PlotGraph ---
 
@@ -409,10 +406,11 @@ Plot::Plot(QWidget *parent, QString Title, QString Yaxis, QString Xaxis, int Num
     connect(ui->HeatMap1, SIGNAL(mousePress(QMouseEvent*)), this, SLOT(mousePressedHM(QMouseEvent*)));
     connect(ui->HeatMap2, SIGNAL(mousePress(QMouseEvent*)), this, SLOT(mousePressedHM(QMouseEvent*)));
     connect(ui->pbCloseComments, SIGNAL(pressed()), this, SLOT(slotCloseComments()));
-#ifdef LassoMode
-    connect(ui->Graph->xAxis, SIGNAL(rangeChanged(QCPRange)), this, SLOT(slotSaveRangeHistory(QCPRange)));
-    connect(ui->Graph->yAxis, SIGNAL(rangeChanged(QCPRange)), this, SLOT(slotSaveRangeHistory(QCPRange)));
-#endif
+    if((pProps != nullptr) && pProps->LassoZoom)
+    {
+        connect(ui->Graph->xAxis, SIGNAL(rangeChanged(QCPRange)), this, SLOT(slotSaveRangeHistory(QCPRange)));
+        connect(ui->Graph->yAxis, SIGNAL(rangeChanged(QCPRange)), this, SLOT(slotSaveRangeHistory(QCPRange)));
+    }
     // -----------------------
     // Plot popup menu options
     SaveOption = new QAction("Save", this);
@@ -429,14 +427,15 @@ Plot::Plot(QWidget *parent, QString Title, QString Yaxis, QString Xaxis, int Num
     YaxisZoomOption = new QAction("Yaxis zoom", this);
     YaxisZoomOption->setCheckable(true);
     connect(YaxisZoomOption, SIGNAL(triggered()), this, SLOT(slotYaxisZoomOption()));
-#ifdef LassoMode
-    ZoomOutFullOption = new QAction("Zoom Out (Full View)", this); // Renamed for clarity
-    connect(ZoomOutFullOption, SIGNAL(triggered()), this, SLOT(slotZoomOut()));
-    ZoomOutOneLevelOption = new QAction("Zoom Out (One Level)", this);
-    connect(ZoomOutOneLevelOption, SIGNAL(triggered()), this, SLOT(slotZoomOutOneLevel()));
-    XaxisZoomOption->setChecked(true);
-    ZoomSelect();
-#endif
+    if((pProps != nullptr) && pProps->LassoZoom)
+    {
+        ZoomOutFullOption = new QAction("Zoom Out (Full View)", this); // Renamed for clarity
+        connect(ZoomOutFullOption, SIGNAL(triggered()), this, SLOT(slotZoomOut()));
+        ZoomOutOneLevelOption = new QAction("Zoom Out (One Level)", this);
+        connect(ZoomOutOneLevelOption, SIGNAL(triggered()), this, SLOT(slotZoomOutOneLevel()));
+        XaxisZoomOption->setChecked(true);
+        ZoomSelect();
+    }
     FilterOption = new QAction("Filter", this);
     connect(FilterOption, SIGNAL(triggered()), this, SLOT(slotFilterOption()));
     TrackOption = new QAction("Track", this);
@@ -447,6 +446,19 @@ Plot::Plot(QWidget *parent, QString Title, QString Yaxis, QString Xaxis, int Num
     HeatOption = new QAction("Heatmap", this);
     HeatOption->setCheckable(true);
     connect(HeatOption, SIGNAL(triggered()), this, SLOT(slotHeatMap()));
+    if((pProps != nullptr) && pProps->LassoZoom)
+    {
+        connect(ui->Graph, &QCustomPlot::mousePress, this, [this](QMouseEvent *event) {
+            if(event->button() == Qt::LeftButton) {
+                if(ui->Graph->selectionRectMode() == QCP::srmNone) {
+                    ui->Graph->setSelectionRectMode(QCP::srmZoom);
+                    if(ui->Graph->selectionRect()) {
+                        ui->Graph->selectionRect()->setVisible(true);
+                    }
+                }
+            }
+        });
+    }
 }
 
 /*!
@@ -749,6 +761,9 @@ void Plot::slotSaveRangeHistory(QCPRange newRange)
         {
             if(XaxisZoomOption->isChecked())
             {
+                if(!m_xAxisRangeHistory.isEmpty() &&
+                    m_xAxisRangeHistory.top().lower == newRange.lower &&
+                    m_xAxisRangeHistory.top().upper == newRange.upper) return;
                 if(m_xAxisRangeHistory.count() > 20) m_xAxisRangeHistory.pop_front();
                 m_xAxisRangeHistory.push(newRange);
             }
@@ -757,6 +772,9 @@ void Plot::slotSaveRangeHistory(QCPRange newRange)
         {
             if(YaxisZoomOption->isChecked())
             {
+                if(!m_yAxisRangeHistory.isEmpty() &&
+                    m_yAxisRangeHistory.top().lower == newRange.lower &&
+                    m_yAxisRangeHistory.top().upper == newRange.upper) return;
                 if(m_yAxisRangeHistory.count() > 20) m_yAxisRangeHistory.pop_front();
                 m_yAxisRangeHistory.push(newRange);
             }
@@ -771,20 +789,23 @@ void Plot::slotSaveRangeHistory(QCPRange newRange)
 void Plot::slotZoomOut(void)
 {
     m_isUndoingZoom = true;
+
+    ui->Graph->setSelectionRectMode(QCP::srmNone);
+
     if(XaxisZoomOption->isChecked())
     {
         ui->Graph->xAxis->rescale(true);
-        ui->Graph->replot();
         m_xAxisRangeHistory.clear();
-        statusBar->showMessage("Zoomed out to full data range.");
     }
     if(YaxisZoomOption->isChecked())
     {
         ui->Graph->yAxis->rescale(true);
-        ui->Graph->replot();
         m_yAxisRangeHistory.clear();
-        statusBar->showMessage("Zoomed out to full data range.");
     }
+
+    ui->Graph->replot(QCustomPlot::rpImmediateRefresh);
+    statusBar->showMessage("Zoomed out to full data range.");
+
     m_isUndoingZoom = false;
 }
 
@@ -794,32 +815,46 @@ void Plot::slotZoomOut(void)
  */
 void Plot::slotZoomOutOneLevel(void)
 {
+    ui->Graph->setSelectionRectMode(QCP::srmNone);
     if(XaxisZoomOption->isChecked())
     {
-        if (m_xAxisRangeHistory.count() > 1)
+        if (!m_xAxisRangeHistory.isEmpty())
         {
-            m_isUndoingZoom = true;
-            m_xAxisRangeHistory.pop();                          // Remove the current state
-            QCPRange prevXRange = m_xAxisRangeHistory.top();    // Get the previous state
-            ui->Graph->xAxis->setRange(prevXRange);
-            ui->Graph->replot();
-            statusBar->showMessage("Zoomed out one level.");
-            m_isUndoingZoom = false;
-        } else statusBar->showMessage("No more zoom history available.");
+            m_xAxisRangeHistory.pop();  // Remove current zoom level
+            if (!m_xAxisRangeHistory.isEmpty())
+            {
+                ui->Graph->xAxis->setRange(m_xAxisRangeHistory.top());
+                statusBar->showMessage("Zoomed out one level.");
+            }
+            else
+            {
+                ui->Graph->xAxis->rescale(true);  // Back to full range
+                statusBar->showMessage("Zoomed out to full data range.");
+            }
+        }
+        else statusBar->showMessage("No more zoom history available.");
     }
+
     if(YaxisZoomOption->isChecked())
     {
-        if (m_yAxisRangeHistory.count() > 1)
+        if (!m_yAxisRangeHistory.isEmpty())
         {
-            m_isUndoingZoom = true;
-            m_yAxisRangeHistory.pop();                          // Remove the current state
-            QCPRange prevYRange = m_yAxisRangeHistory.top();    // Get the previous state
-            ui->Graph->yAxis->setRange(prevYRange);
-            ui->Graph->replot();
-            statusBar->showMessage("Zoomed out one level.");
-            m_isUndoingZoom = false;
-        } else statusBar->showMessage("No more zoom history available.");
+            m_yAxisRangeHistory.pop();
+            if (!m_yAxisRangeHistory.isEmpty())
+            {
+                ui->Graph->yAxis->setRange(m_yAxisRangeHistory.top());
+                statusBar->showMessage("Zoomed out one level.");
+            }
+            else
+            {
+                ui->Graph->yAxis->rescale(true);
+                statusBar->showMessage("Zoomed out to full data range.");
+            }
+        }
+        else statusBar->showMessage("No more zoom history available.");
     }
+
+    ui->Graph->replot(QCustomPlot::rpImmediateRefresh);
 }
 
 // SavitzkyGolayFilter — applies the Savitzky-Golay smoothing filter of the given
@@ -1395,47 +1430,56 @@ void Plot::ZoomSelect(void)
 {
     if(XaxisZoomOption->isChecked() && YaxisZoomOption->isChecked())
     {
-#ifdef LassoMode
-        ui->Graph->yAxis->axisRect()->setRangeZoom(Qt::Vertical | Qt::Horizontal);
-        ui->Graph->yAxis->axisRect()->setRangeDrag(Qt::Vertical | Qt::Horizontal);
-        ui->Graph->axisRect()->setRangeZoomAxes(ui->Graph->xAxis, ui->Graph->yAxis);
-        ui->Graph->setSelectionRectMode(QCP::srmZoom);
-        m_xAxisRangeHistory.push(ui->Graph->xAxis->range());
-        m_yAxisRangeHistory.push(ui->Graph->xAxis->range());
-#else
-        ui->Graph->xAxis->axisRect()->setRangeZoom(Qt::Vertical | Qt::Horizontal);
-        ui->Graph->xAxis->axisRect()->setRangeDrag(Qt::Vertical | Qt::Horizontal);
-        ui->Graph->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
-#endif
+        if((pProps != nullptr) && pProps->LassoZoom)
+        {
+            ui->Graph->yAxis->axisRect()->setRangeZoom(Qt::Vertical | Qt::Horizontal);
+            ui->Graph->yAxis->axisRect()->setRangeDrag(Qt::Vertical | Qt::Horizontal);
+            ui->Graph->axisRect()->setRangeZoomAxes(ui->Graph->xAxis, ui->Graph->yAxis);
+            ui->Graph->setSelectionRectMode(QCP::srmZoom);
+            //m_xAxisRangeHistory.push(ui->Graph->xAxis->range());
+            //m_yAxisRangeHistory.push(ui->Graph->xAxis->range());
+        }
+        else
+        {
+            ui->Graph->xAxis->axisRect()->setRangeZoom(Qt::Vertical | Qt::Horizontal);
+            ui->Graph->xAxis->axisRect()->setRangeDrag(Qt::Vertical | Qt::Horizontal);
+            ui->Graph->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
+        }
     }
     else if(XaxisZoomOption->isChecked())
     {
-#ifdef LassoMode
-        ui->Graph->yAxis->axisRect()->setRangeZoom(Qt::Horizontal);
-        ui->Graph->yAxis->axisRect()->setRangeDrag(Qt::Horizontal);
-        ui->Graph->axisRect()->setRangeZoomAxes(ui->Graph->xAxis, NULL);
-        ui->Graph->setSelectionRectMode(QCP::srmZoom);
-        connect(ui->Graph->xAxis, SIGNAL(rangeChanged(QCPRange)), this, SLOT(slotRescaleYToDataInRange(QCPRange)));
-        m_xAxisRangeHistory.push(ui->Graph->xAxis->range());
-#else
-        ui->Graph->xAxis->axisRect()->setRangeZoom(Qt::Horizontal);
-        ui->Graph->xAxis->axisRect()->setRangeDrag(Qt::Horizontal);
-        ui->Graph->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
-#endif
+        if((pProps != nullptr) && pProps->LassoZoom)
+        {
+            ui->Graph->yAxis->axisRect()->setRangeZoom(Qt::Horizontal);
+            ui->Graph->yAxis->axisRect()->setRangeDrag(Qt::Horizontal);
+            ui->Graph->axisRect()->setRangeZoomAxes(ui->Graph->xAxis, NULL);
+            ui->Graph->setSelectionRectMode(QCP::srmZoom);
+            connect(ui->Graph->xAxis, SIGNAL(rangeChanged(QCPRange)), this, SLOT(slotRescaleYToDataInRange(QCPRange)));
+            //m_xAxisRangeHistory.push(ui->Graph->xAxis->range());
+        }
+        else
+        {
+            ui->Graph->xAxis->axisRect()->setRangeZoom(Qt::Horizontal);
+            ui->Graph->xAxis->axisRect()->setRangeDrag(Qt::Horizontal);
+            ui->Graph->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
+        }
     }
     else if(YaxisZoomOption->isChecked())
     {
-#ifdef LassoMode
-        ui->Graph->yAxis->axisRect()->setRangeZoom(Qt::Vertical);
-        ui->Graph->yAxis->axisRect()->setRangeDrag(Qt::Vertical);
-        ui->Graph->axisRect()->setRangeZoomAxes(NULL, ui->Graph->yAxis);
-        ui->Graph->setSelectionRectMode(QCP::srmZoom);
-        m_yAxisRangeHistory.push(ui->Graph->yAxis->range());
-#else
-        ui->Graph->yAxis->axisRect()->setRangeZoom(Qt::Vertical);
-        ui->Graph->yAxis->axisRect()->setRangeDrag(Qt::Vertical);
-        ui->Graph->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
-#endif
+        if((pProps != nullptr) && pProps->LassoZoom)
+        {
+            ui->Graph->yAxis->axisRect()->setRangeZoom(Qt::Vertical);
+            ui->Graph->yAxis->axisRect()->setRangeDrag(Qt::Vertical);
+            ui->Graph->axisRect()->setRangeZoomAxes(NULL, ui->Graph->yAxis);
+            ui->Graph->setSelectionRectMode(QCP::srmZoom);
+            //m_yAxisRangeHistory.push(ui->Graph->yAxis->range());
+        }
+        else
+        {
+            ui->Graph->yAxis->axisRect()->setRangeZoom(Qt::Vertical);
+            ui->Graph->yAxis->axisRect()->setRangeDrag(Qt::Vertical);
+            ui->Graph->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
+        }
     }
     else ui->Graph->setInteractions(QCP::iNone);
 }

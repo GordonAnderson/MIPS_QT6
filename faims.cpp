@@ -54,7 +54,8 @@ FAIMS::FAIMS(Ui::MIPS *w, Comms *c)
         {
             QLineEdit *le = qobject_cast<QLineEdit *>(w);
             le->setValidator(new QDoubleValidator);
-            connect(le, &QLineEdit::returnPressed, this, &FAIMS::FAIMSUpdated);
+            connect(le, &QLineEdit::returnPressed,   this, [le]() {le->setModified(true);});
+            connect(le, &QLineEdit::editingFinished, this, &FAIMS::FAIMSUpdated);
         }
     }
 

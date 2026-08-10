@@ -92,7 +92,7 @@ jobs:
       - name: Delete unsigned asset from release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |     
+        run: |
           VERSION="${{ github.event.inputs.version }}"
           ASSET_NAME="MIPS-macOS-${VERSION}.zip"
           

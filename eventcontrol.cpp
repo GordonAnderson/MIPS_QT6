@@ -39,7 +39,8 @@ void EventControl::Show(void)
     EventValue = new QLineEdit(frmEvent); EventValue->setGeometry(70,0,70,21);
     label = new QLabel(Title,frmEvent); label->setGeometry(0,0,59,16);
     EventValue->setToolTip("Timing generator event value editor, " + ECname);
-    connect(EventValue, &QLineEdit::returnPressed, this, &EventControl::EventChange);
+    connect(EventValue, &QLineEdit::returnPressed,   this, [this]() {EventValue->setModified(true);});
+    connect(EventValue, &QLineEdit::editingFinished, this, &EventControl::EventChange);
 }
 
 /*! \brief EventControl::Update
@@ -127,7 +128,6 @@ void EventControl::EventChange(void)
     if(Scommand.isEmpty()) return;
     if(!EventValue->isModified()) return;
     QString res = Scommand + "," + EventValue->text() + "\n";
-//    qDebug() << res;
     if(comms != nullptr) comms->SendCommand(res.toLocal8Bit());
     EventValue->setModified(false);
 }

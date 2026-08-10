@@ -9,10 +9,15 @@
 // Author:      Gordon Anderson, GAA Custom Electronics, LLC
 // Created:     2021
 // Revised:     March 2026 — documented for host app v2.22
+//              May 2026 - added test for validator presence in adjustValue().
+//                         only adjust is double or float.
+//                       - Added wheel sensitivity to control wheel delta.
 //
 // Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
 // =============================================================================
 #include "Utilities.h"
+#include "properties.h"
+#include <QtGui/qvalidator.h>
 #include <random>
 #include <ctime>
 
@@ -22,29 +27,63 @@ static const int KEY_DOWN_ARROW = 16777237;
 
 // moveWidget — enables right-click drag repositioning of floating widgets.
 // Attach to an event filter: returns true if the event was consumed.
-bool moveWidget(QObject *obj, QWidget *frame, QObject *hook , QEvent *event)
+bool moveWidget(QObject *obj, QWidget *frame, QObject *hook, QEvent *event)
 {
-    if((obj == hook) && (event->type() == QEvent::MouseButtonPress))
+    if((pProps != nullptr) && pProps->ControlPanelEdit)
     {
-        QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
-        if (mouseEvent->button() == Qt::RightButton)
+        if((obj == hook) && (event->type() == QEvent::MouseButtonPress))
         {
-            if(mouseEvent->position().rx() > 25) return false;
-            if(mouseEvent->position().ry() > 25) return false;
-            frame->raise();
-            if(obj->property("moving").toBool())obj->setProperty("moving", false);
-            else obj->setProperty("moving", true);
-            return true;
+            QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
+            if(mouseEvent->button() == Qt::RightButton)
+            {
+                if(mouseEvent->position().rx() > 25) return false;
+                if(mouseEvent->position().ry() > 25) return false;
+                frame->raise();
+                if(obj->property("moving").toBool())
+                {
+                    obj->setProperty("moving", false);
+                    // Release the mouse grab when done moving
+                    static_cast<QWidget*>(hook)->releaseMouse();
+                }
+                else
+                {
+                    obj->setProperty("moving", true);
+                    QPoint globalPos = mouseEvent->globalPosition().toPoint();
+                    obj->setProperty("grabX", globalPos.x());
+                    obj->setProperty("grabY", globalPos.y());
+                    // Grab the mouse so all events come here even if cursor
+                    // moves outside the hook widget
+                    static_cast<QWidget*>(hook)->grabMouse();
+                }
+                return true;
+            }
         }
-    }
-    if((obj == hook) && (event->type() == QEvent::MouseMove))
-    {
-        if(obj->property("moving").toBool())
+        if((obj == hook) && (event->type() == QEvent::MouseMove))
         {
-            frame->raise();
-            QMouseEvent *mouse = static_cast<QMouseEvent *>(event);
-            frame->setGeometry(frame->pos().x() + mouse->pos().rx() - 10, frame->pos().y() + mouse->pos().ry() - 10, frame->width(),frame->height());
-            return true;
+            if(obj->property("moving").toBool())
+            {
+                frame->raise();
+                QMouseEvent *mouse = static_cast<QMouseEvent*>(event);
+                QPoint globalPos = mouse->globalPosition().toPoint();
+                int lastX = obj->property("grabX").toInt();
+                int lastY = obj->property("grabY").toInt();
+                int dx = globalPos.x() - lastX;
+                int dy = globalPos.y() - lastY;
+                frame->move(frame->pos().x() + dx, frame->pos().y() + dy);
+                obj->setProperty("grabX", globalPos.x());
+                obj->setProperty("grabY", globalPos.y());
+                return true;
+            }
+        }
+        if((obj == hook) && (event->type() == QEvent::MouseButtonRelease))
+        {
+            QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
+            if(mouseEvent->button() == Qt::LeftButton)
+            {
+                obj->setProperty("moving", false);
+                static_cast<QWidget*>(hook)->releaseMouse();
+                return true;
+            }
         }
     }
     return false;
@@ -60,6 +99,8 @@ bool adjustValue(QObject *obj,QLineEdit *Vsp, QEvent *event,float multiplier)
 
     if (((obj == Vsp) && (event->type() == QEvent::KeyPress)) || ((obj == Vsp) && (event->type() == QEvent::Wheel)))
     {
+        const QValidator *validator = Vsp->validator();
+        if (!validator) return false;
         if(event->type() == QEvent::KeyPress)
         {
             QKeyEvent *key = static_cast<QKeyEvent *>(event);
@@ -71,18 +112,34 @@ bool adjustValue(QObject *obj,QLineEdit *Vsp, QEvent *event,float multiplier)
         }
         else if(event->type() == QEvent::Wheel)
         {
-            QWheelEvent *wheel = static_cast<QWheelEvent *>(event);
-            delta = (float)wheel->angleDelta().ry()/10.0;
+            if((pProps != nullptr) && pProps->ScrollEdit)
+            {
+                QWheelEvent *wheel = static_cast<QWheelEvent *>(event);
+                delta = (float)wheel->angleDelta().ry()/100.0;
+                delta *= pProps->WheelSensitivity;
+            }
         }
         if(delta != 0)
         {
             QString myString;
-            if(abs(multiplier) <= 0.01) myString = myString.asprintf("%3.3f", Vsp->text().toFloat() + delta * multiplier);
-            else                        myString = myString.asprintf("%3.2f", Vsp->text().toFloat() + delta * multiplier);
-            Vsp->setText(myString);
-            Vsp->setModified(true);
-            emit Vsp->editingFinished();
-            return true;
+            if (qobject_cast<const QDoubleValidator*>(validator))
+            {
+                if(abs(multiplier) <= 0.01) myString = myString.asprintf("%3.3f", Vsp->text().toFloat() + delta * multiplier);
+                else                        myString = myString.asprintf("%3.2f", Vsp->text().toFloat() + delta * multiplier);
+                Vsp->setText(myString);
+                Vsp->setModified(true);
+                emit Vsp->editingFinished();
+                return true;
+            }
+            if (qobject_cast<const QIntValidator*>(validator))
+            {
+                if(abs(multiplier) <= 0.01) myString = myString.asprintf("%d", Vsp->text().toInt() + (int)(delta * multiplier));
+                else                        myString = myString.asprintf("%d", Vsp->text().toInt() + (int)(delta * multiplier));
+                Vsp->setText(myString);
+                Vsp->setModified(true);
+                emit Vsp->editingFinished();
+                return true;
+            }
         }
     }
     return false;

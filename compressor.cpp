@@ -42,8 +42,12 @@ Compressor::Compressor(QWidget *parent, QString name, QString MIPSname):
     widgetList += ui->gbARBtiming->children();
     foreach(QObject *w, widgetList)
     {
-        if(w->objectName().contains("leS"))
-            connect(((QLineEdit *)w), &QLineEdit::returnPressed, this, &Compressor::Updated);
+        QLineEdit *le = qobject_cast<QLineEdit *>(w);
+        if(le && le->objectName().contains("leS"))
+        {
+            connect(le, &QLineEdit::returnPressed,   this, [le]() {le->setModified(true);});
+            connect(le, &QLineEdit::editingFinished, this, &Compressor::Updated);
+        }
         else if(w->objectName().contains("chk"))
             connect(((QCheckBox *)w), &QCheckBox::toggled, this, &Compressor::Updated);
         else if(w->objectName().contains("rb"))
