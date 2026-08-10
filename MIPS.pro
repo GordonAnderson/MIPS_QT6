@@ -131,6 +131,8 @@ macx {
     QMAKE_TARGET_BUNDLE_PREFIX = com.gaacustom
     QMAKE_BUNDLE = MIPS
     QMAKE_CXXFLAGS += -include arm_acle.h
+    # AGL was removed in the macOS 26 SDK; Qt 6.8.2's mkspec still requests it
+    QMAKE_LIBS_OPENGL = -framework OpenGL
 }
 
 # Windows vcpkg paths
