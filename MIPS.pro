@@ -139,6 +139,7 @@ macx {
 win32 {
     INCLUDEPATH += C:/vcpkg/installed/x64-windows/include
     LIBS += -LC:/vcpkg/installed/x64-windows/lib -llibzmq-mt-4_3_5
+    LIBS += -lws2_32
 }
 
 # These two commands allow memory leak testing
