@@ -131,12 +131,15 @@ macx {
     QMAKE_TARGET_BUNDLE_PREFIX = com.gaacustom
     QMAKE_BUNDLE = MIPS
     QMAKE_CXXFLAGS += -include arm_acle.h
+    # AGL was removed in the macOS 26 SDK; Qt 6.8.2's mkspec still requests it
+    QMAKE_LIBS_OPENGL = -framework OpenGL
 }
 
 # Windows vcpkg paths
 win32 {
     INCLUDEPATH += C:/vcpkg/installed/x64-windows/include
     LIBS += -LC:/vcpkg/installed/x64-windows/lib -llibzmq-mt-4_3_5
+    LIBS += -lws2_32
 }
 
 # These two commands allow memory leak testing
