@@ -24,7 +24,9 @@
 #include <QMessageBox>
 #include <QProcess>
 #include <QThread>
+#include <QElapsedTimer>
 #include <QtSerialPort/QSerialPort>
+#include <QtSerialPort/QSerialPortInfo>
 
 // -----------------------------------------------------------------------------
 // Program — firmware programmer for MIPS and RFmega boards. Uses the bundled
