@@ -133,20 +133,28 @@ void Program::executeProgrammerCommand(QString cmd)
     console->putData("\n");
     QApplication::processEvents();
 
-    QStringList arguments;
-    arguments << "-c" << cmd;
-#if defined(Q_OS_MAC)
-    process.start("/bin/bash", arguments);
-#else
-    process.start(cmd);
-#endif
-    console->putData("Operation should start soon...\n");
     // Disconnect any connections left over from a previous run before
-    // reconnecting, so repeated attempts don't stack duplicate output.
+    // reconnecting, so repeated attempts don't stack duplicate output/errors.
     disconnect(&process, &QProcess::readyReadStandardOutput, this, &Program::readProcessOutput);
     disconnect(&process, &QProcess::readyReadStandardError,  this, &Program::readProcessOutput);
+    disconnect(&process, &QProcess::errorOccurred,            this, &Program::processErrorOccurred);
     connect(&process, &QProcess::readyReadStandardOutput, this, &Program::readProcessOutput);
     connect(&process, &QProcess::readyReadStandardError,  this, &Program::readProcessOutput);
+    connect(&process, &QProcess::errorOccurred,            this, &Program::processErrorOccurred);
+
+#if defined(Q_OS_MAC)
+    process.start("/bin/bash", QStringList() << "-c" << cmd);
+#else
+    // Don't hand the whole command line to the single-string start()
+    // overload — it has to re-split and re-quote it into a Windows command
+    // line internally, which is fragile. Split it ourselves and use the
+    // explicit program+arguments overload so bossac.exe gets exactly the
+    // argv a manually-typed command at a prompt would produce.
+    QStringList tokens = QProcess::splitCommand(cmd);
+    QString bossacProgram = tokens.isEmpty() ? cmd : tokens.takeFirst();
+    process.start(bossacProgram, tokens);
+#endif
+    console->putData("Operation should start soon...\n");
 }
 
 // setBootloaderBootBit — sets the SAM bootloader boot flag via bossac -b.
@@ -274,4 +282,35 @@ void Program::readProcessOutput(void)
 {
     console->putData(process.readAllStandardOutput());
     console->putData(process.readAllStandardError());
+}
+
+// processErrorOccurred — reports a QProcess launch/runtime failure to the
+// console. Without this, a failed bossac launch (bad path, couldn't start,
+// crashed, etc.) happened silently — the console would just stop updating
+// right after the command line was printed, with no indication why.
+void Program::processErrorOccurred(QProcess::ProcessError error)
+{
+    QString msg;
+    switch(error)
+    {
+    case QProcess::FailedToStart:
+        msg = "bossac failed to start (not found or not executable).\n";
+        break;
+    case QProcess::Crashed:
+        msg = "bossac crashed.\n";
+        break;
+    case QProcess::Timedout:
+        msg = "bossac timed out.\n";
+        break;
+    case QProcess::WriteError:
+        msg = "Error writing to bossac.\n";
+        break;
+    case QProcess::ReadError:
+        msg = "Error reading from bossac.\n";
+        break;
+    default:
+        msg = "Unknown error running bossac.\n";
+        break;
+    }
+    console->putData(msg.toStdString().c_str());
 }

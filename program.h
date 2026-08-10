@@ -53,6 +53,7 @@ private slots:
     void setBootloaderBootBit(void);
     void saveMIPSfirmware(void);
     void readProcessOutput(void);
+    void processErrorOccurred(QProcess::ProcessError error);
 };
 
 #endif // PROGRAM_H
