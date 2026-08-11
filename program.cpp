@@ -47,6 +47,13 @@ Program::Program(Ui::MIPS *w, Comms *c, Console *con)
 // executeProgrammerCommand — common entry point for all bossac operations.
 // Triggers the SAM bootloader via a 1200-baud DTR-low pulse, then launches
 // bossac via QProcess with the provided command string.
+//
+// The bootloader reset commonly causes the board to re-enumerate under a
+// *different* serial port (reliably on Windows, intermittently on macOS), so
+// the caller must not bake a --port= value into cmd. Instead cmd should
+// contain the literal placeholder "%PORT%" where the port name belongs; this
+// function fills it in with whatever port the board actually comes back on,
+// discovered by diffing the available-ports list before and after the reset.
 void Program::executeProgrammerCommand(QString cmd)
 {
     console->clear();
@@ -71,6 +78,14 @@ void Program::executeProgrammerCommand(QString cmd)
         return;
     }
 
+    // Snapshot the port we're on and the full set of available ports. The
+    // bootloader reset below typically makes the board re-enumerate under a
+    // new port name, so the pre-reset name can't be trusted after the reset.
+    QString originalPort = comms->serialPort()->portName();
+    QStringList portsBefore;
+    for(const QSerialPortInfo &info : QSerialPortInfo::availablePorts())
+        portsBefore << info.portName();
+
     // Trigger SAM bootloader: close port, reopen at 1200 baud with DTR low, close again
     console->putData("MIPS bootloader enabled!\n");
     comms->closeSerialPort();
@@ -84,7 +99,33 @@ void Program::executeProgrammerCommand(QString cmd)
     QThread::sleep(1);
     comms->serialPort()->close();
     QApplication::processEvents();
-    QThread::sleep(5);
+
+    // Wait for the board to reset into the bootloader and rediscover which
+    // port it came back on. Poll rather than assuming a fixed delay is long
+    // enough, and prefer a port that wasn't present before the reset (the
+    // usual sign of a re-enumeration) over the original port name.
+    QString bootPort = originalPort;
+    bool foundNewPort = false;
+    QElapsedTimer timer;
+    timer.start();
+    while(timer.elapsed() < 10000 && !foundNewPort)
+    {
+        QApplication::processEvents();
+        QThread::msleep(250);
+        for(const QSerialPortInfo &info : QSerialPortInfo::availablePorts())
+        {
+            if(!portsBefore.contains(info.portName()))
+            {
+                bootPort = info.portName();
+                foundNewPort = true;
+                break;
+            }
+        }
+    }
+    // Give the OS a moment to finish settling the port before bossac opens it
+    QThread::sleep(foundNewPort ? 1 : 3);
+
+    cmd.replace("%PORT%", bootPort);
 
     // Launch bossac
     QApplication::processEvents();
@@ -92,16 +133,28 @@ void Program::executeProgrammerCommand(QString cmd)
     console->putData("\n");
     QApplication::processEvents();
 
-    QStringList arguments;
-    arguments << "-c" << cmd;
+    // Disconnect any connections left over from a previous run before
+    // reconnecting, so repeated attempts don't stack duplicate output/errors.
+    disconnect(&process, &QProcess::readyReadStandardOutput, this, &Program::readProcessOutput);
+    disconnect(&process, &QProcess::readyReadStandardError,  this, &Program::readProcessOutput);
+    disconnect(&process, &QProcess::errorOccurred,            this, &Program::processErrorOccurred);
+    connect(&process, &QProcess::readyReadStandardOutput, this, &Program::readProcessOutput);
+    connect(&process, &QProcess::readyReadStandardError,  this, &Program::readProcessOutput);
+    connect(&process, &QProcess::errorOccurred,            this, &Program::processErrorOccurred);
+
 #if defined(Q_OS_MAC)
-    process.start("/bin/bash", arguments);
+    process.start("/bin/bash", QStringList() << "-c" << cmd);
 #else
-    process.start(cmd);
+    // Don't hand the whole command line to the single-string start()
+    // overload — it has to re-split and re-quote it into a Windows command
+    // line internally, which is fragile. Split it ourselves and use the
+    // explicit program+arguments overload so bossac.exe gets exactly the
+    // argv a manually-typed command at a prompt would produce.
+    QStringList tokens = QProcess::splitCommand(cmd);
+    QString bossacProgram = tokens.isEmpty() ? cmd : tokens.takeFirst();
+    process.start(bossacProgram, tokens);
 #endif
     console->putData("Operation should start soon...\n");
-    connect(&process, SIGNAL(readyReadStandardOutput()), this, SLOT(readProcessOutput()));
-    connect(&process, SIGNAL(readyReadStandardError()),  this, SLOT(readProcessOutput()));
 }
 
 // setBootloaderBootBit — sets the SAM bootloader boot flag via bossac -b.
@@ -130,7 +183,7 @@ void Program::setBootloaderBootBit(void)
     msgBox.setStandardButtons(QMessageBox::Ok);
     msgBox.exec();
 
-    QString cmd = appPath + "/bossac -b --port=" + comms->serialPort()->portName() + " -R";
+    QString cmd = appPath + "/bossac -b --port=%PORT% -R";
     executeProgrammerCommand(cmd);
 }
 
@@ -162,7 +215,7 @@ void Program::saveMIPSfirmware(void)
     msgBox.setStandardButtons(QMessageBox::Ok);
     msgBox.exec();
 
-    QString cmd = appPath + "/bossac -r -b --port=" + comms->serialPort()->portName() + " " + fileName + " -R";
+    QString cmd = appPath + "/bossac -r -b --port=%PORT% " + fileName + " -R";
     executeProgrammerCommand(cmd);
 }
 
@@ -195,8 +248,7 @@ void Program::programMIPS(void)
     msgBox.setStandardButtons(QMessageBox::Ok);
     msgBox.exec();
 
-    //QString cmd = appPath + "/bossac -e -w -v -b " + fileName + " -R";
-    QString cmd = appPath + "/bossac -e -w -v -b --port=" + comms->serialPort()->portName() + " " + fileName + " -R";
+    QString cmd = appPath + "/bossac -e -w -v -b --port=%PORT% " + fileName + " -R";
     executeProgrammerCommand(cmd);
 }
 
@@ -221,8 +273,7 @@ void Program::programRFmega(void)
         tr("Load RFmega firmware .bin file"), "", tr("Files (*.bin *.*)"));
     if(fileName.isEmpty()) return;
 
-    QString cmd = appPath + "/bossac -e -w -v -b --offset=0x4000 --port="
-                + comms->serialPort()->portName() + " " + fileName + " -R";
+    QString cmd = appPath + "/bossac -e -w -v -b --offset=0x4000 --port=%PORT% " + fileName + " -R";
     executeProgrammerCommand(cmd);
 }
 
@@ -231,4 +282,35 @@ void Program::readProcessOutput(void)
 {
     console->putData(process.readAllStandardOutput());
     console->putData(process.readAllStandardError());
+}
+
+// processErrorOccurred — reports a QProcess launch/runtime failure to the
+// console. Without this, a failed bossac launch (bad path, couldn't start,
+// crashed, etc.) happened silently — the console would just stop updating
+// right after the command line was printed, with no indication why.
+void Program::processErrorOccurred(QProcess::ProcessError error)
+{
+    QString msg;
+    switch(error)
+    {
+    case QProcess::FailedToStart:
+        msg = "bossac failed to start (not found or not executable).\n";
+        break;
+    case QProcess::Crashed:
+        msg = "bossac crashed.\n";
+        break;
+    case QProcess::Timedout:
+        msg = "bossac timed out.\n";
+        break;
+    case QProcess::WriteError:
+        msg = "Error writing to bossac.\n";
+        break;
+    case QProcess::ReadError:
+        msg = "Error reading from bossac.\n";
+        break;
+    default:
+        msg = "Unknown error running bossac.\n";
+        break;
+    }
+    console->putData(msg.toStdString().c_str());
 }

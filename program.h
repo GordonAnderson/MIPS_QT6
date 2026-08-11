@@ -24,7 +24,9 @@
 #include <QMessageBox>
 #include <QProcess>
 #include <QThread>
+#include <QElapsedTimer>
 #include <QtSerialPort/QSerialPort>
+#include <QtSerialPort/QSerialPortInfo>
 
 // -----------------------------------------------------------------------------
 // Program — firmware programmer for MIPS and RFmega boards. Uses the bundled
@@ -51,6 +53,7 @@ private slots:
     void setBootloaderBootBit(void);
     void saveMIPSfirmware(void);
     void readProcessOutput(void);
+    void processErrorOccurred(QProcess::ProcessError error);
 };
 
 #endif // PROGRAM_H
