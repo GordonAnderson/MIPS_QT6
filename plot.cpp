@@ -557,12 +557,10 @@ bool Plot::eventFilter(QObject *obj, QEvent *event)
 // heatmap context menu with the Heatmap toggle action.
 void Plot::mousePressedHM(QMouseEvent* event)
 {
-    if (event->button() == Qt::RightButton)
-    {
-        popupMenu = new QMenu(tr("Plot options"), this);
-        popupMenu->addAction(HeatOption);
-        popupMenu->exec(event->globalPosition().toPoint());
-    }
+    if (event->button() != Qt::RightButton) return;
+    QMenu popupMenu(tr("Plot options"), this);
+    if(HeatOption) popupMenu.addAction(HeatOption);
+    popupMenu.exec(event->globalPosition().toPoint());
 }
 
 // mouseMove — updates the status bar with X/Y coordinates when Track mode is active.
@@ -580,23 +578,22 @@ void Plot::mouseMove(QMouseEvent*event)
 // context menu with save, export, load, zoom, filter, and heatmap options.
 void Plot::mousePressed(QMouseEvent* event)
 {
-    if (event->button() == Qt::RightButton)
-    {
-        popupMenu = new QMenu(tr("Plot options"), this);
-        popupMenu->addAction(SaveOption);
-        popupMenu->addAction(ExportOption);
-        popupMenu->addAction(LoadOption);
-        popupMenu->addAction(XaxisZoomOption);
-        popupMenu->addAction(YaxisZoomOption);
-        popupMenu->addAction(ZoomOutFullOption); // Full View
-        popupMenu->addAction(ZoomOutOneLevelOption); // <-- NEW: One Level Zoom Out
-        popupMenu->addAction(FilterOption);
-        popupMenu->addAction(TrackOption);
-        popupMenu->addAction(ClipboardOption);
-        popupMenu->addAction(CommentOption);
-        popupMenu->addAction(HeatOption);
-        popupMenu->exec(event->globalPosition().toPoint());
-    }
+    if (event->button() != Qt::RightButton) return;
+    QMenu popupMenu(tr("Plot options"), this);
+    if(SaveOption)             popupMenu.addAction(SaveOption);
+    if(ExportOption)           popupMenu.addAction(ExportOption);
+    if(LoadOption)             popupMenu.addAction(LoadOption);
+    if(XaxisZoomOption)        popupMenu.addAction(XaxisZoomOption);
+    if(YaxisZoomOption)        popupMenu.addAction(YaxisZoomOption);
+    // The ZoomOut actions only exist when lasso zoom is enabled in properties.
+    if(ZoomOutFullOption)      popupMenu.addAction(ZoomOutFullOption);     // Full View
+    if(ZoomOutOneLevelOption)  popupMenu.addAction(ZoomOutOneLevelOption); // One Level Zoom Out
+    if(FilterOption)           popupMenu.addAction(FilterOption);
+    if(TrackOption)            popupMenu.addAction(TrackOption);
+    if(ClipboardOption)        popupMenu.addAction(ClipboardOption);
+    if(CommentOption)          popupMenu.addAction(CommentOption);
+    if(HeatOption)             popupMenu.addAction(HeatOption);
+    popupMenu.exec(event->globalPosition().toPoint());
 }
 
 // Save — writes the entire comment/command block to filename as a .plot text file
