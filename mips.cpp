@@ -333,14 +333,18 @@ void MIPS::DisplayProperties(void)
  */
 void MIPS::slotPlotDialogClosed(Plot *thisPlot)
 {
-    // Find this plot object in the list and then
-    // delete the objet and remove from the list
+    // Find this plot object in the list and then remove it from the list and
+    // schedule it for deletion. deleteLater() is required: this slot is called
+    // from Plot::closeEvent(), so the Plot object is still on the call stack
+    // (and may have a QMenu::exec() nested event loop running inside it).
+    // Deleting it synchronously destroys an object Qt is still using.
     for(int i=0;i<plots.count();i++)
     {
         if(plots[i] == thisPlot)
         {
-            delete plots[i];
             plots.removeAt(i);
+            thisPlot->deleteLater();
+            break;
         }
     }
 }

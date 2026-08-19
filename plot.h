@@ -87,23 +87,25 @@ private:
     QWidget *p;
     QCPTextElement *plotFile = NULL;
     Ui::Plot *ui;
-    int  CurrentIndex;
-    int  Filter;
+    int  CurrentIndex = 0;
+    int  Filter = -1;
     float m,b;
     QList<PlotGraph *> plotGraphs;    // All graphs
-    QMenu   *popupMenu;
-    QAction *SaveOption;
-    QAction *ExportOption;
-    QAction *LoadOption;
-    QAction *XaxisZoomOption;
-    QAction *YaxisZoomOption;
-    QAction *ZoomOutFullOption;
-    QAction *ZoomOutOneLevelOption;
-    QAction *FilterOption;
-    QAction *TrackOption;
-    QAction *ClipboardOption;
-    QAction *CommentOption;
-    QAction *HeatOption;
+    // NOTE: these actions are conditionally allocated (see Plot::Plot); the
+    // ZoomOut* pair only exists when pProps->LassoZoom is set. They MUST be
+    // null-initialised here and null-checked before use.
+    QAction *SaveOption = nullptr;
+    QAction *ExportOption = nullptr;
+    QAction *LoadOption = nullptr;
+    QAction *XaxisZoomOption = nullptr;
+    QAction *YaxisZoomOption = nullptr;
+    QAction *ZoomOutFullOption = nullptr;
+    QAction *ZoomOutOneLevelOption = nullptr;
+    QAction *FilterOption = nullptr;
+    QAction *TrackOption = nullptr;
+    QAction *ClipboardOption = nullptr;
+    QAction *CommentOption = nullptr;
+    QAction *HeatOption = nullptr;
     QStack<QCPRange> m_xAxisRangeHistory;
     QStack<QCPRange> m_yAxisRangeHistory;
     bool m_isUndoingZoom = false; // Flag to prevent infinite loop when setting range from history
