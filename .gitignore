@@ -31,3 +31,5 @@ CLAUDE.md
 # Windows temp files
 *.TMP
 ~$*
+.qtcreator/
+.claude/
