@@ -190,11 +190,20 @@ bool parseSlotStatus(const QString &line, SlotStatus &out)
 {
     const QStringList f = line.trimmed().split(',');
     if(f.count() != 2) return false;
-    bool okLoaded = false, okStatus = false;
-    const int loaded = f.at(0).toInt(&okLoaded);
+
+    // The firmware prints the loaded flag with commandProcessor::print(bool),
+    // i.e. "TRUE" / "FALSE" (found on real hardware; its own comments and
+    // README said 0|1). Accept either spelling.
+    const QString word = f.at(0).trimmed().toUpper();
+    bool loaded;
+    if(word == "TRUE" || word == "1")        loaded = true;
+    else if(word == "FALSE" || word == "0")  loaded = false;
+    else return false;
+
+    bool okStatus = false;
     const int status = f.at(1).toInt(&okStatus);
-    if(!okLoaded || !okStatus || (loaded != 0 && loaded != 1)) return false;
-    out.loaded = (loaded == 1);
+    if(!okStatus) return false;
+    out.loaded = loaded;
     out.lastStatus = status;
     return true;
 }

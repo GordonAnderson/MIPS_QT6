@@ -122,7 +122,7 @@ QList<CommandEntry> parseCommands(const QStringList &lines);
 //! Parses a GSCRIPTLIMITS reply ("slots,maxCodeLen,stackSize,varSlots,maxSyscalls").
 bool parseLimits(const QString &line, Limits &out);
 
-//! Parses a GSCRIPTST reply ("loaded,lastStatus").
+//! Parses a GSCRIPTST reply ("TRUE|FALSE,lastStatus"; 1|0 is accepted too).
 bool parseSlotStatus(const QString &line, SlotStatus &out);
 
 //! The first non-empty line of a reply, or an empty string.

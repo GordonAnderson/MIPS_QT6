@@ -367,7 +367,11 @@ bool DeviceScriptDialog::uploadPayload(Comms *comms, const QByteArray &payload, 
     }
 
     SlotStatus before;
-    if(DeviceScriptClient::slotStatus(comms, slot, before).ok && before.loaded)
+    const DeviceScriptClient::Result beforeResult = DeviceScriptClient::slotStatus(comms, slot, before);
+    if(!beforeResult.ok)
+        log("Could not tell whether slot " + QString::number(slot) + " already has a script (" +
+            beforeResult.message + "); sending without asking.");
+    else if(before.loaded)
     {
         if(QMessageBox::question(this, "Replace script?",
                                  QString("Slot %1 on %2 already has a script. Replace it?")

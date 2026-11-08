@@ -61,7 +61,6 @@ QString GscRunner::findPython()
     const QStringList bundled = {
         appDir() + "/python/python.exe",
         appDir() + "/../Resources/python/bin/python3",
-        appDir() + "/python/bin/python3",
     };
     for(const QString &p : bundled)
         if(isExecutableFile(p)) return p;
@@ -87,7 +86,8 @@ QString GscRunner::findGsc()
     QStringList candidates;
     const QByteArray env = qgetenv("GSC_PATH");
     if(!env.isEmpty()) candidates << QString::fromLocal8Bit(env);
-    candidates << appDir() + "/gsc.py" << appDir() + "/../Resources/gsc.py";
+    // Resources first: an older build may have left a stale copy in Contents/MacOS.
+    candidates << appDir() + "/../Resources/gsc.py" << appDir() + "/gsc.py";
 #ifdef GSC_SOURCE_DIR
     candidates << QString(GSC_SOURCE_DIR) + "/gsc.py";
 #endif

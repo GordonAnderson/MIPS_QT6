@@ -135,6 +135,21 @@ private slots:
         QVERIFY(!parseSlotStatus("2,0", s));
         QVERIFY(!parseSlotStatus("1", s));
     }
+    void parsesSlotStatusAsTheFirmwarePrintsIt()
+    {
+        // Real hardware (USBrepeater, 2026-11-08): the loaded flag is TRUE / FALSE.
+        SlotStatus s;
+        QVERIFY(parseSlotStatus("TRUE,0", s));
+        QVERIFY(s.loaded);
+        QCOMPARE(s.lastStatus, 0);
+        QVERIFY(parseSlotStatus("FALSE,3", s));
+        QVERIFY(!s.loaded);
+        QCOMPARE(s.lastStatus, 3);
+        QVERIFY(parseSlotStatus(" true , 1 ", s));   // case and spaces do not matter
+        QVERIFY(s.loaded);
+        QVERIFY(!parseSlotStatus("MAYBE,0", s));
+        QVERIFY(!parseSlotStatus("TRUE,x", s));
+    }
     void firstLineSkipsBlanks()
     {
         QCOMPARE(firstLine({ "", "  ", " 4,2048,32,16,32 ", "x" }), QString("4,2048,32,16,32"));
