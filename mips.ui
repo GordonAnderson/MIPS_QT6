@@ -8339,6 +8339,7 @@ number on each trigger</string>
     <addaction name="actionSelect"/>
     <addaction name="separator"/>
     <addaction name="actionScripting"/>
+    <addaction name="actionDeviceScripts"/>
    </widget>
    <addaction name="menuAbout"/>
    <addaction name="menuFile"/>
@@ -8447,6 +8448,11 @@ number on each trigger</string>
   <action name="actionScripting">
    <property name="text">
     <string>Scripting...</string>
+   </property>
+  </action>
+  <action name="actionDeviceScripts">
+   <property name="text">
+    <string>Device Scripts...</string>
    </property>
   </action>
   <action name="actionProperties">

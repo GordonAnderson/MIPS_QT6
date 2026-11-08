@@ -45,6 +45,9 @@ jobs:
           rm -f .qmake.stash
           mkdir build
  
+      - name: Fetch Python runtime (Device Scripts compiler)
+        run: tools/python/fetch_python.sh
+
       - name: Build
         working-directory: build
         run: |
@@ -67,6 +70,9 @@ jobs:
             codesign --force --sign - "$f"
           done
  
+      - name: Sign bundled Python runtime
+        run: tools/python/sign_macos_python.sh build/MIPS.app
+
       - name: Sign app bundle
         working-directory: build
         run: |
@@ -118,6 +124,10 @@ jobs:
           if exist .qmake.stash del .qmake.stash
           if not exist build mkdir build
  
+      - name: Fetch Python runtime (Device Scripts compiler)
+        shell: pwsh
+        run: ./tools/python/fetch_python.ps1
+
       - name: Build
         shell: cmd
         working-directory: build
@@ -132,6 +142,8 @@ jobs:
           mkdir deploy
           copy release\MIPS.exe deploy\
           copy release\bossac.exe deploy\
+          copy release\gsc.py deploy\
+          xcopy /E /I /Y /Q release\python deploy\python
           windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw deploy\MIPS.exe
           copy C:\vcpkg\installed\x64-windows\bin\libzmq*.dll deploy\
           

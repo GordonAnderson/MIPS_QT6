@@ -518,6 +518,30 @@
 //	    drag now grabs the mouse for reliable tracking.
 //     10.) Updated to Qt 6.8.2, APP_VERSION now set from MIPS.pro.
 //  2.25-dev
+//	1.) Added Tools -> Device Scripts: write, check and send a GAACE_Script
+//	    program to a script slot on a connected serial system. The dialog has
+//	    a source editor (line numbers, error line highlighted), Open/Save of
+//	    .gs files wherever the user chooses, Check and Send. Compiling runs
+//	    tools/gsc/gsc.py with Python against the device's own syscall table and
+//	    command list (read from the device when it is selected, never stored),
+//	    so compiling needs a connected device; errors and warnings (such as an
+//	    unknown cmd() name) are listed with line and column. A script that uses
+//	    syscalls is sent stamped with the table hash so the device refuses it
+//	    if its syscalls differ. Also shows the device's script limits and
+//	    syscall table, starts/stops/queries slots, and can send a precompiled
+//	    .hex file. These scripts run on the device, unlike the JavaScript
+//	    scripting console. New files: devicescript*, gscrunner*, codeeditor*
+//	    (unit tests in tests/devicescriptproto_test). Needs Python 3 until a
+//	    runtime is bundled (see MIPS_HOST_APP_INTEGRATION.md in GAACE_Script).
+//	2.) The Device Scripts compiler now ships with its own Python (3.14.10)
+//	    so users need not install one: tools/python/ has the fetch scripts
+//	    (not committed, ~50 MB per platform), MIPS.pro copies the runtime and
+//	    gsc.py into the build (Contents/Resources on macOS, beside MIPS.exe on
+//	    Windows), the release workflows fetch it, copy it into the Windows
+//	    deploy folder and sign it on macOS. About shows the gsc and Python
+//	    versions. See tools/python/README.md.
+//	3.) Comms::Transact() added: sends one command and reports ACK, NAK or
+//	    timeout, and can collect a multi-line reply of any length.
 //
 
 

@@ -31,6 +31,7 @@
 #include "adc.h"
 #include "controlpanel.h"
 #include "scriptingconsole.h"
+#include "devicescriptdialog.h"
 #include "properties.h"
 #include "aboutdialog.h"
 
@@ -116,6 +117,7 @@ MIPS::MIPS(QWidget *parent, QString CPfilename) :
     ui->actionSelect->setEnabled(true);
     ui->menuTerminal->setEnabled(false);
     ui->actionScripting->setEnabled(true);
+    ui->actionDeviceScripts->setEnabled(true);
 
     connect(ui->actionProperties, &QAction::triggered, this, &MIPS::DisplayProperties);
     connect(ui->actionOpen, &QAction::triggered, this, &MIPS::loadSettings);
@@ -141,6 +143,7 @@ MIPS::MIPS(QWidget *parent, QString CPfilename) :
     connect(ui->actionARB_upload, &QAction::triggered, this, &MIPS::ARBupload);
     connect(ui->actionSelect, &QAction::triggered, this, [this](){ SelectCP(); });
     connect(ui->actionScripting, &QAction::triggered, this, &MIPS::slotScripting);
+    connect(ui->actionDeviceScripts, &QAction::triggered, this, &MIPS::slotDeviceScripts);
     connect(ui->statusBar, &QStatusBar::messageChanged, this, &MIPS::slotLogStatusBarMessage);
 
     ui->comboMIPSnetNames->installEventFilter(new DeleteHighlightedItemWhenShiftDelPressedEventFilter);
@@ -733,6 +736,19 @@ void MIPS::slotScripting(void)
 {
     if(!scriptconsole) scriptconsole = new ScriptingConsole(this,properties);
     scriptconsole->show();
+}
+
+/*! \brief MIPS::slotDeviceScripts
+ * Opens the Device Scripts dialog: loads compiled GAACE_Script programs into
+ * script slots on the connected systems (the scripts run on the device, unlike
+ * the JavaScript console above). The dialog is given the Systems list itself,
+ * not copies of its Comms pointers, because the list is rebuilt on a search.
+ */
+void MIPS::slotDeviceScripts(void)
+{
+    if(!deviceScripts) deviceScripts = new DeviceScriptDialog(this, &Systems, properties);
+    deviceScripts->show();
+    deviceScripts->raise();
 }
 
 // Returns a pointer to the comm port for the MIPS system defined my its name.

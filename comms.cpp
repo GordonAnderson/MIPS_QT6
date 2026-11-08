@@ -999,6 +999,159 @@ QString Comms::SendMess(QString message)
     return SendMessage(message);
 }
 
+/*! \brief Comms::Transact sends one command and reports ACK / NAK / timeout.
+ *
+ * Unlike SendMessage() and SendCommand() this tells the three outcomes apart
+ * (an ACK-only reply is a success here, not a timeout, and a timeout is never
+ * reported as success) and can collect a multi-line reply, which GSYSCALLS and
+ * GCMDS need. It makes a single attempt: the caller decides whether a retry is
+ * safe.
+ *
+ * \param message    The command, including its trailing "\n".
+ * \param lines      If not null, receives the reply's data lines (ACK/NAK bytes
+ *                   and line endings removed). The data that follows the ACK on
+ *                   its own line is the first element.
+ * \param timeoutMs  How long to wait for the ACK/NAK (raised to 3 s for lines
+ *                   over 100 characters, as SendMessage does).
+ * \param idleMs     0: return as soon as the first reply line is complete.
+ *                   >0: keep collecting lines until the device has been silent
+ *                   for this long (replies with no terminator, like GCMDS).
+ *                   The reply is read straight from the port (not through the
+ *                   10,000 character ring buffer), so its length is unlimited.
+ *
+ * Lines that arrive before the ACK/NAK are device chatter (an echoed command,
+ * an unsolicited message): they go to the async message buffer if there is
+ * one and are otherwise dropped.
+ */
+Comms::ReplyStatus Comms::Transact(const QString &message, QStringList *lines, int timeoutMs, int idleMs)
+{
+    if(lines != nullptr) lines->clear();
+    if(serialBusy)
+    {
+        if(properties != nullptr) properties->Log("Transact is busy!");
+        return ReplyTimeout;
+    }
+    if (!serial->isOpen() && !client.isOpen())
+    {
+        if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + " TX Disconnected!",2000);
+        else sb->showMessage("TX Disconnected!",2000);
+        return ReplyTimeout;
+    }
+    if(binaryCapture) return ReplyTimeout;   // a QSCAN capture owns the port
+    serialBusy = true;
+    if(client.isOpen()) keepAliveTimer->setInterval(600000);
+    processAsyncMessages();
+    rb.clear();
+
+    // Send, pacing long lines the same way SendMessage does (the firmware's
+    // serial buffer is small).
+    if (serial->isOpen())
+    {
+        if(message.length() > 100) for(int j=0;j<message.length();j++)
+        {
+            serial->write(message.mid(j, 1).toLocal8Bit());
+            if(((j+1) % 100) == 0)
+            {
+                if(serial->isOpen()) serial->waitForBytesWritten();
+                if(client.isOpen()) client.waitForBytesWritten();
+                msDelay(10);
+            }
+        }
+        else serial->write(message.toLocal8Bit());
+    }
+    if (client.isOpen()) client.write(message.toLocal8Bit());
+
+    int firstWait = timeoutMs;
+    if(message.length() > 100 && firstWait < 3000) firstWait = 3000;
+
+    // Read straight from the port into a local buffer rather than through the
+    // 10,000 character ring buffer, which silently drops characters when full
+    // and so cannot take a long reply like GCMDS arriving in one burst.
+    // waitForReadyRead() emits readyRead, whose slot would otherwise move the
+    // bytes into the ring buffer before we see them; readReadyBusy makes
+    // readData2RingBuffer() stand down for the duration.
+    const bool wasReadBusy = readReadyBusy;
+    readReadyBusy = true;
+    ReplyStatus status = ReplyTimeout;
+    QByteArray pending;
+    bool gotFirst = false;
+    bool done = false;
+    QElapsedTimer total, quiet;
+    total.start();
+    quiet.start();
+    while(!done)
+    {
+        if(client.isOpen())
+        {
+            if(client.bytesAvailable() == 0) client.waitForReadyRead(1);
+            pending += client.readAll();
+        }
+        if(serial && serial->isOpen())
+        {
+            if(serial->bytesAvailable() == 0) serial->waitForReadyRead(1);
+            pending += serial->readAll();
+        }
+
+        int nl;
+        while(!done && (nl = pending.indexOf('\n')) >= 0)
+        {
+            // One line. Keep the ACK / NAK bytes long enough to tell them
+            // apart (RingBuffer::getline() merges them into one flag).
+            bool ack = false, nak = false;
+            QString line;
+            for(int i = 0; i < nl; i++)
+            {
+                const char c = pending.at(i);
+                if(c == 0x06)      ack = true;
+                else if(c == 0x15) nak = true;
+                else if(c != '\r') line += QChar::fromLatin1(c);
+            }
+            pending.remove(0, nl + 1);
+
+            if(!gotFirst)
+            {
+                if(!ack && !nak)
+                {
+                    if(mrb != nullptr) mrb->putString(line + "\n");
+                    continue;
+                }
+                gotFirst = true;
+                if(nak)
+                {
+                    status = ReplyNak;
+                    done = true;
+                    break;
+                }
+                status = ReplyAck;
+                if(lines != nullptr && !line.trimmed().isEmpty()) lines->append(line);
+                if(idleMs <= 0)
+                {
+                    done = true;
+                    break;
+                }
+            }
+            else if(lines != nullptr && !line.trimmed().isEmpty())
+            {
+                lines->append(line);
+            }
+            quiet.restart();
+        }
+        if(done) break;
+        if(!gotFirst) { if(total.elapsed() >= firstWait) break; }
+        else if(quiet.elapsed() >= idleMs) break;
+    }
+
+    readReadyBusy = wasReadBusy;
+    if(status == ReplyTimeout)
+    {
+        QString res = message.trimmed() + " :Timeout";
+        if(!MIPSname.isEmpty()) sb->showMessage(MIPSname + ", " + res, 2000);
+        else sb->showMessage(res, 2000);
+    }
+    serialBusy = false;
+    return status;
+}
+
 // This function is called after a connection to MIPS is established. The function
 // reads the MIPS name, its version and optionally sets the MIPS time and date based
 // on version number.

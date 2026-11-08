@@ -1,0 +1,20 @@
+# The Python runtime bundled with the application for the Device Scripts
+# compiler (gsc.py). Read by fetch_python.sh (bash `source`) and
+# fetch_python.ps1 (KEY=VALUE lines), so keep it to plain KEY=VALUE.
+#
+# To update: change the version and the checksums together, run the fetch
+# script, and run tools/gsc.py's tests (python3 -m unittest tools/test_gsc.py in
+# the GAACE_Script repository) with the new runtime.
+
+PY_VERSION=3.14.10
+
+# macOS (Apple silicon): python-build-standalone,
+# https://github.com/astral-sh/python-build-standalone/releases
+# SHA-256 as published by the release.
+PBS_TAG=20261026
+PBS_MACOS_ARM64_SHA256=95eb8c87d16af37c54e9765e31d8c56c0d8ffa9968ea0f704f73a9b83f84e9f9
+
+# Windows (x64): the "embeddable package" from python.org.
+# SHA-256 computed from the download of 2026-11-07 (python.org publishes
+# signatures, not SHA-256 sums, next to the file).
+PY_WINDOWS_EMBED_SHA256=90905e64a840557d8c1bc4f5b74db3d7ee85e3ffb217611cac1c7813acea4159

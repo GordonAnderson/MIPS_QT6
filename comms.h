@@ -77,6 +77,17 @@ public:
     QString SendMessage(QString message);
     QString SendMess(QString name, QString message);
     QString SendMess(QString message);
+
+    //! Outcome of Transact().
+    enum ReplyStatus
+    {
+        ReplyAck,       //!< The device answered with ACK (any data follows in `lines`).
+        ReplyNak,       //!< The device answered with NAK.
+        ReplyTimeout    //!< No ACK/NAK within the timeout, or the port was busy/closed.
+    };
+    ReplyStatus Transact(const QString &message, QStringList *lines = nullptr,
+                         int timeoutMs = 1000, int idleMs = 0);
+
     bool    SendString(QString name, QString message);
     bool    SendString(QString message);
     void    writeData(const QByteArray &data);

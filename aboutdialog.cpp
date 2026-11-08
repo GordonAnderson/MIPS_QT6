@@ -12,6 +12,7 @@
 // Copyright 2026 GAA Custom Electronics, LLC. All rights reserved.
 // =============================================================================
 #include "aboutdialog.h"
+#include "gscrunner.h"
 #include <ui_aboutdialog.h>
 
 // AboutDialog — constructor. Populates all dynamic labels from compile-time
@@ -22,7 +23,7 @@ AboutDialog::AboutDialog(QWidget *parent) :
     ui(new Ui::AboutDialog)
 {
     ui->setupUi(this);
-    setFixedSize(440, 360);
+    setFixedSize(440, 376);   // room for the Device Scripts compiler line below
 
     // ── Logo ─────────────────────────────────────────────────────────────
     // GAACElogo.ico is registered in files.qrc under the "/" prefix.
@@ -48,6 +49,10 @@ AboutDialog::AboutDialog(QWidget *parent) :
             .arg(__DATE__)
             .arg(__TIME__)
     );
+
+    // The Device Scripts compiler (gsc.py and the Python that runs it).
+    ui->lblBuildInfo->setText(ui->lblBuildInfo->text() +
+                              "\nDevice Scripts compiler: " + GscRunner::versionText());
 
     // ── Hyperlinks ────────────────────────────────────────────────────────
     // QLabel renders rich text and opens URLs in the system browser when

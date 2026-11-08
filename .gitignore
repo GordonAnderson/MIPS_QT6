@@ -34,3 +34,7 @@ CLAUDE.md
 .qtcreator/
 .claude/
 .qmake.stash
+
+# Device Scripts compiler: the downloaded Python runtimes (see tools/python/README.md)
+tools/python/macos/
+tools/python/windows/

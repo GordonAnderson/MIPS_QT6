@@ -32,6 +32,9 @@ jobs:
           rm -f .qmake.stash
           mkdir build
         
+      - name: Fetch Python runtime (Device Scripts compiler)
+        run: tools/python/fetch_python.sh
+
       - name: Build
         run: |
           qmake ../MIPS.pro CONFIG+=release

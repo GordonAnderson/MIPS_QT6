@@ -47,6 +47,7 @@ class ARBwaveformEdit;
 class ADC;
 class ControlPanel;
 class ScriptingConsole;
+class DeviceScriptDialog;
 class Properties;
 class Plot;
 
@@ -113,6 +114,7 @@ public slots:
     void SelectCP(QString fileName = "");
     void CloseControlPanel(QString);
     void slotScripting(void);
+    void slotDeviceScripts(void);
     void DisplayProperties(void);
     void slotLogStatusBarMessage(QString);
     void slotPlotDialogClosed(Plot *thisPlot);
@@ -150,6 +152,7 @@ private:
     QString          RepeatMessage;
     QList<Comms*>    Systems;
     ScriptingConsole *scriptconsole;
+    DeviceScriptDialog *deviceScripts = nullptr;
     QString          NextCP;
     QList<Plot *>    plots;
 };

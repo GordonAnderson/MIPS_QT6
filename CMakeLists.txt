@@ -58,6 +58,11 @@ qt_add_executable(MIPS WIN32 MACOSX_BUNDLE
     rfdriver.cpp rfdriver.h
     ringbuffer.cpp ringbuffer.h
     scriptingconsole.cpp scriptingconsole.h scriptingconsole.ui
+    devicescript.cpp devicescript.h
+    codeeditor.cpp codeeditor.h
+    gscrunner.cpp gscrunner.h
+    devicescriptdialog.cpp devicescriptdialog.h
+    devicescriptproto.cpp devicescriptproto.h
     settingsdialog.cpp settingsdialog.h settingsdialog.ui
     tcpserver.cpp tcpserver.h
     timinggenerator.cpp timinggenerator.h timinggenerator.ui

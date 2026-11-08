@@ -14,6 +14,8 @@ greaterThan(QT_MAJOR_VERSION, 5): QT += qml
 QT       += serialbus serialport widgets
 APP_VERSION = 2.25-dev
 DEFINES += APP_VERSION=\\\"$$APP_VERSION\\\"
+# Development builds find gsc.py (the Device Scripts compiler) in the source tree.
+DEFINES += GSC_SOURCE_DIR=\\\"$$PWD/tools/gsc\\\"
 win32:RC_ICONS += GAACElogo.ico
 ICON = GAACElogo.icns
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
@@ -50,6 +52,11 @@ SOURCES += main.cpp connection.cpp fileops.cpp\
     cmdlineapp.cpp \
     cdirselectiondlg.cpp \
     scriptingconsole.cpp \
+    devicescript.cpp \
+    codeeditor.cpp \
+    gscrunner.cpp \
+    devicescriptdialog.cpp \
+    devicescriptproto.cpp \
     rfamp.cpp \
     quadscanreader.cpp \
     tcpserver.cpp \
@@ -91,6 +98,11 @@ HEADERS  += mips.h \
     cmdlineapp.h \
     cdirselectiondlg.h \
     scriptingconsole.h \
+    devicescript.h \
+    codeeditor.h \
+    gscrunner.h \
+    devicescriptdialog.h \
+    devicescriptproto.h \
     rfamp.h \
     quadscanreader.h \
     tcpserver.h \
@@ -158,10 +170,39 @@ macx {
                           chmod +x $$OUT_PWD/$${TARGET}.app/Contents/MacOS/bossac
     QMAKE_EXTRA_TARGETS += copyBossac
     POST_TARGETDEPS += copyBossac
+
+    # The GAACE_Script compiler used by Tools -> Device Scripts (run with Python).
+    copyGsc.commands = mkdir -p $$OUT_PWD/$${TARGET}.app/Contents/Resources && \
+                       cp -f $$PWD/tools/gsc/gsc.py $$OUT_PWD/$${TARGET}.app/Contents/Resources/gsc.py
+    QMAKE_EXTRA_TARGETS += copyGsc
+    POST_TARGETDEPS += copyGsc
+
+    # The Python runtime that runs gsc.py (fetched, not committed: run
+    # tools/python/fetch_python.sh first; see tools/python/README.md). It has to be
+    # in Contents/Resources: codesign rejects it in Contents/MacOS or Frameworks.
+    # Without it the app falls back to a system python3.
+    copyPython.commands = if [ -d $$PWD/tools/python/macos/python ]; then \
+                              mkdir -p $$OUT_PWD/$${TARGET}.app/Contents/Resources/python && \
+                              rsync -a --delete $$PWD/tools/python/macos/python/ $$OUT_PWD/$${TARGET}.app/Contents/Resources/python/; \
+                          else \
+                              echo \"note: no bundled Python (run tools/python/fetch_python.sh)\"; \
+                          fi
+    QMAKE_EXTRA_TARGETS += copyPython
+    POST_TARGETDEPS += copyPython
 }
 
 win32 {
     copyBossac.commands = copy /Y $$shell_path($$PWD/tools/bossac.exe) $$shell_path($$OUT_PWD/release/bossac.exe)
     QMAKE_EXTRA_TARGETS += copyBossac
     POST_TARGETDEPS += copyBossac
+
+    copyGsc.commands = copy /Y $$shell_path($$PWD/tools/gsc/gsc.py) $$shell_path($$OUT_PWD/release/gsc.py)
+    QMAKE_EXTRA_TARGETS += copyGsc
+    POST_TARGETDEPS += copyGsc
+
+    # The Python runtime that runs gsc.py (fetched, not committed: run
+    # tools\python\fetch_python.ps1 first; see tools/python/README.md).
+    copyPython.commands = if exist $$shell_path($$PWD/tools/python/windows/python) xcopy /E /I /Y /Q $$shell_path($$PWD/tools/python/windows/python) $$shell_path($$OUT_PWD/release/python)
+    QMAKE_EXTRA_TARGETS += copyPython
+    POST_TARGETDEPS += copyPython
 }
