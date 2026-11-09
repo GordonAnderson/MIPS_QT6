@@ -3,7 +3,8 @@
 //
 // Implements the AboutDialog — a fixed-size dialog showing application
 // version, Qt build info, copyright, author contact, and two clickable
-// hyperlinks (GitHub source and GAA Google Drive documentation).
+// hyperlinks (GitHub source; documentation on www.GAACustom.com and install
+// files on the GitHub releases page).
 //
 // Depends on:  ui_aboutdialog.h  (generated from aboutdialog.ui)
 // Author:      Gordon Anderson, GAA Custom Electronics, LLC
@@ -23,7 +24,7 @@ AboutDialog::AboutDialog(QWidget *parent) :
     ui(new Ui::AboutDialog)
 {
     ui->setupUi(this);
-    setFixedSize(440, 376);   // room for the Device Scripts compiler line below
+    setFixedSize(440, 392);   // room for the Device Scripts compiler line and two doc/install links
 
     // ── Logo ─────────────────────────────────────────────────────────────
     // GAACElogo.ico is registered in files.qrc under the "/" prefix.
@@ -65,9 +66,9 @@ AboutDialog::AboutDialog(QWidget *parent) :
     ui->lblGitHub->setOpenExternalLinks(true);
 
     ui->lblDocs->setText(
-        "<a href=\"https://drive.google.com/drive/folders/"
-        "0B3IchPRNYqYIcjZhdGFVMVR1VzQ\">"
-        "GAA Google Drive — documentation &amp; install files</a>"
+        "Documentation: <a href=\"https://www.gaacustom.com\">www.GAACustom.com</a><br>"
+        "Install files: <a href=\"https://github.com/GordonAnderson/MIPS_QT6/releases\">"
+        "MIPS_QT6 releases on GitHub</a>"
     );
     ui->lblDocs->setOpenExternalLinks(true);
 }
