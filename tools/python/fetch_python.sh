@@ -1,7 +1,7 @@
 #!/bin/bash
 # Fetches the pinned Python runtime for the Device Scripts compiler into
 # tools/python/macos/python/ (macOS, Apple silicon). The result is not committed
-# (see .gitignore); MIPS.pro copies it into MIPS.app/Contents/MacOS/python.
+# (see .gitignore); MIPS.pro copies it into MIPS.app/Contents/Resources/python.
 #
 # Usage: tools/python/fetch_python.sh
 set -euo pipefail
