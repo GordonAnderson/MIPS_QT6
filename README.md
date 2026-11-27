@@ -2,7 +2,7 @@
 
 **Host application for the MIPS modular instrument control platform.**
 
-MIPS (Modular Intelligent Power System) controllers are used in scientific
+MIPS (Module Intelligent Power Supplies) controllers are used in scientific
 instruments — particularly mass spectrometry and ion mobility systems — to
 generate and control high-voltage DC bias outputs, RF drive signals,
 traveling-wave ion guides, FAIMS separation fields, and precisely timed pulse

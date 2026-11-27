@@ -67,7 +67,7 @@
 
         <item>
          <widget class="QLabel" name="lblTagline">
-          <property name="text"><string>Modular Intelligent Power System — Host Application</string></property>
+          <property name="text"><string>Module Intelligent Power Supplies — Host Application</string></property>
           <property name="styleSheet">
            <string notr="true">color:#ADD8F7; font-size:9pt; background:transparent;</string>
           </property>
