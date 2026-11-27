@@ -84,10 +84,10 @@ Below is a list of functions available from the mips class that are only availab
 when the scripting system is started from the MIPS Tool menu:
 
 mips.SendCommand(cmd);
-   This function will send a command string to the connected MIPS system. Any valid 
-   command string can be sent to a MIPS system. Make sure you terminate the command 
-   with the end of line character \n. This function it intended to send commands 
-   that do not return data. Example mips.SendCommand(“SDCB,1,10\n”); will set 
+   This function will send a command string to the MIPS system selected on the 
+   System tab. Any valid command string can be sent to a MIPS system. Make sure you 
+   terminate the command with the end of line character \n. This function it 
+   intended to send commands that do not return data. Example mips.SendCommand(“SDCB,1,10\n”); will set 
    DCbias channel 1 to 10 volts.
 
    Returns true if the command was accepted and false if rejected.
@@ -166,6 +166,12 @@ mips.DismissAcquire();
    This function will destroy the Acquire program popup console IO dialog box. 
    This console IO dialog box is not automatically destroyed when the Acquire 
    application finished so this function should be used to remove the dialog.
+
+Control panel scripts can also use many more functions, including mips.Command(), 
+the plotting, file, CSV and TCP helpers, the global value store, ZMQ and the QSCAN 
+capture functions. These are listed in the MIPS Host Application User Manual, 
+section 13. When the scripting window is opened from the Tools menu these 
+functions return an empty value (false, 0 or an empty string).
 
 Below are a few example scripts you can use to learn how the system works and 
 build on to address your specific needs. Scripting is a powerful capability and 

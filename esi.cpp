@@ -152,7 +152,7 @@ QString ESI::ProcessCommand(QString cmd)
     QStringList resList = cmd.split("=");
     if (resList.count() == 2)
     {
-        if (resList[0] == Title)
+        if (resList[0] == res)
         {
             ESIsp->setText(resList[1]);
             ESIsp->setModified(true);

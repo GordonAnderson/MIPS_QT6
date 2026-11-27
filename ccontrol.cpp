@@ -268,11 +268,11 @@ QString Ccontrol::Report(void)
     {
         if (!ReadbackCmd.isEmpty())
         {
-            QStringList resList = ReadbackCmd.split("_");
-            if (resList.count() == 3)
+            QStringList resList = ReadbackCmd.split(",");
+            if (resList.count() >= 3)
             {
-                if (chkBox->isChecked()) return resList[1];
-                else                     return resList[2];
+                if (chkBox->isChecked()) return res + "," + resList[resList.count() - 2];
+                else                     return res + "," + resList[resList.count() - 1];
             }
         }
         if (chkBox->isChecked()) return res + "," + "TRUE";
@@ -321,13 +321,12 @@ bool Ccontrol::SetValues(QString strVals)
         if (!ReadbackCmd.isEmpty())
         {
             QStringList resCmd = ReadbackCmd.split(",");
-            if (resCmd.count() == 3)
+            if (resCmd.count() >= 3)
             {
-                bool returnstate = true;
-                if      (resCmd[1] == resList[1]) chkBox->setChecked(true);
-                else if (resCmd[2] == resList[1]) chkBox->setChecked(false);
-                else returnstate = false;
-                return returnstate;
+                // Mapped responses first; TRUE/FALSE is still accepted below so
+                // method files written by earlier versions load correctly.
+                if (resCmd[resCmd.count() - 2] == resList[1]) { chkBox->setChecked(true);  return true; }
+                if (resCmd[resCmd.count() - 1] == resList[1]) { chkBox->setChecked(false); return true; }
             }
         }
         bool returnstate = true;
@@ -511,14 +510,16 @@ QString Ccontrol::ProcessCommand(QString cmd)
         if (!cmd.startsWith(res)) return "?";
         if (cmd == res)
         {
+            // Underscores were converted to commas in the constructor, so the
+            // readback mapping is COMMAND[,arg1[,arg2]],CHECKED,UNCHECKED.
             if (!ReadbackCmd.isEmpty())
             {
-                QStringList resCmd = ReadbackCmd.split("_");
-                if (resCmd.count() == 3)
+                QStringList resCmd = ReadbackCmd.split(",");
+                if (resCmd.count() >= 3)
                 {
                     firstUpdate = true;
-                    if (chkBox->isChecked()) return resCmd[1];
-                    else                     return resCmd[2];
+                    if (chkBox->isChecked()) return resCmd[resCmd.count() - 2];
+                    else                     return resCmd[resCmd.count() - 1];
                 }
             }
             if (chkBox->isChecked()) return "TRUE";
@@ -527,16 +528,14 @@ QString Ccontrol::ProcessCommand(QString cmd)
         QStringList resList = cmd.split("=");
         if ((resList.count() == 2) && !SetCmd.isEmpty() && (resList[0] == res))
         {
+            // Accept the mapped responses (e.g. HIGH/LOW) as well as TRUE/FALSE.
             if (!ReadbackCmd.isEmpty())
             {
-                QStringList resCmd = ReadbackCmd.split("_");
-                if (resCmd.count() == 3)
+                QStringList resCmd = ReadbackCmd.split(",");
+                if (resCmd.count() >= 3)
                 {
-                    firstUpdate = true;
-                    if      (resCmd[1] == resList[1]) chkBox->setChecked(true);
-                    else if (resCmd[2] == resList[1]) chkBox->setChecked(false);
-                    else return "?";
-                    return "";
+                    if      (resCmd[resCmd.count() - 2] == resList[1]) { firstUpdate = true; chkBox->setChecked(true);  return ""; }
+                    else if (resCmd[resCmd.count() - 1] == resList[1]) { firstUpdate = true; chkBox->setChecked(false); return ""; }
                 }
             }
             if      (resList[1] == "TRUE")  chkBox->setChecked(true);

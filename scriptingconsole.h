@@ -58,6 +58,9 @@ public:
     Q_INVOKABLE bool    SendString(QString MIPSname, QString message)               { bool res = emit SendStringSig(MIPSname, message); return res; };
     Q_INVOKABLE bool    SendCommand(QString MIPSname, QString message)              { bool res = emit SendCommandSig(MIPSname, message); return res; };
     Q_INVOKABLE QString SendMess(QString MIPSname, QString message)                 { QString res = emit SendMessSig(MIPSname, message); return res; };
+    // Single-system forms (Tools > Scripting only; see JSengine constructor).
+    Q_INVOKABLE bool    SendCommand(QString message)                                { bool res = emit SendCommand1Sig(message); return res; };
+    Q_INVOKABLE QString SendMess(QString message)                                   { QString res = emit SendMess1Sig(message); return res; };
     Q_INVOKABLE void    SystemEnable(void)                                          { emit SystemEnableSig(); };
     Q_INVOKABLE void    SystemShutdown(void)                                        { emit SystemShutdownSig(); };
     Q_INVOKABLE bool    isShutDown(void)                                            { bool res = emit isShutDownSig(); return res; };
@@ -124,6 +127,8 @@ signals:
     bool     SendStringSig(QString MIPSname, QString message);
     bool     SendCommandSig(QString MIPSname, QString message);
     QString  SendMessSig(QString MIPSname, QString message);
+    bool     SendCommand1Sig(QString message);
+    QString  SendMess1Sig(QString message);
     void     SystemEnableSig(void);
     void     SystemShutdownSig(void);
     bool     isShutDownSig(void);

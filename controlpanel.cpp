@@ -365,7 +365,7 @@ void ControlPanel::loadConfig(QString fileName)
                 if(resList[1].startsWith("~")) resList[1] = QDir::homePath() + "/" + resList[1].mid(2);
                 #endif
                 QPixmap img(findFile(resList[1],QFileInfo(ControlPanelFile).canonicalPath()));
-                img = img.scaled(resList[3].toInt(),resList[3].toInt(), Qt::IgnoreAspectRatio);
+                img = img.scaled(resList[2].toInt(),resList[3].toInt(), Qt::IgnoreAspectRatio);
                 iBox.last()->clear();
                 iBox.last()->setPixmap(img);
                 iBox.last()->show();
@@ -916,6 +916,14 @@ void ControlPanel::loadConfig(QString fileName)
                 #ifdef Q_OS_MAC
                 if(HelpFile.startsWith("~")) HelpFile = QDir::homePath() + "/" + HelpFile.mid(2);
                 #endif
+                // Look for the help file the same way as the other file
+                // commands: as given, then in the cfg file's folder, then in
+                // the application folder. If it is not found the name is kept
+                // and a status message reports it when help is requested.
+                {
+                    QString found = findFile(HelpFile,QFileInfo(ControlPanelFile).canonicalPath());
+                    if(!found.isEmpty()) HelpFile = found;
+                }
             }
             if((resList[0].toUpper() == "TCPSERVER") && (resList.length()==2))
             {
@@ -1257,6 +1265,8 @@ void ControlPanel::controlChange(QString scriptName)
             if(cc != nullptr) scrpt->scriptCall = cc->scriptCall;
             Table *tbl = qobject_cast<Table*>(callingObject);
             if(tbl != nullptr) scrpt->scriptCall = tbl->scriptCall;
+            Slider *sld = qobject_cast<Slider*>(callingObject);
+            if(sld != nullptr) scrpt->scriptCall = sld->scriptCall;
             scrpt->run();
         }
     }
@@ -1767,6 +1777,8 @@ void ControlPanel::slotScriptHelp(void)
  */
 void ControlPanel::slotThisControlPanelHelp(void)
 {
+    if(!QFileInfo::exists(HelpFile) && (statusBar != nullptr))
+        statusBar->showMessage("Help file not found: " + HelpFile, 5000);
     help->SetTitle("This Control panel help");
     help->LoadHelpText(HelpFile);
     help->show();
@@ -3369,6 +3381,7 @@ QString ControlPanel::tcpSocket(QString cmd, QString arg1, QString arg2)
             socket->flush();
             socket->write(arg1.toLocal8Bit());
             socket->waitForBytesWritten();
+            return "";
         }
         return "Not connected!";
     }

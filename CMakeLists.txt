@@ -12,6 +12,7 @@ qt_standard_project_setup()
 
 qt_add_executable(MIPS WIN32 MACOSX_BUNDLE
     Utilities.cpp Utilities.h
+    aboutdialog.cpp aboutdialog.h aboutdialog.ui
     adc.cpp adc.h
     arb.cpp arb.h
     arbwaveformedit.cpp arbwaveformedit.h arbwaveformedit.ui
@@ -70,7 +71,30 @@ qt_add_executable(MIPS WIN32 MACOSX_BUNDLE
     eventcontrol.cpp
     timingcontrol.cpp
     twave.cpp twave.h
+    zmqworker.cpp zmqworker.h
+    GAACEDiscovery.cpp GAACEDiscovery.h
 )
+
+# Keep in step with MIPS.pro: APP_VERSION is the application version string and
+# GSC_SOURCE_DIR lets development builds find the Device Scripts compiler.
+set(APP_VERSION "2.25-dev")
+target_compile_definitions(MIPS PRIVATE
+    APP_VERSION="${APP_VERSION}"
+    GSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tools/gsc"
+)
+
+# ZeroMQ is required (zmqworker.h defines UseZmQ)
+if(APPLE)
+    target_include_directories(MIPS PRIVATE /opt/homebrew/include)
+    target_link_directories(MIPS PRIVATE /opt/homebrew/lib)
+    target_link_libraries(MIPS PRIVATE zmq)
+elseif(WIN32)
+    target_include_directories(MIPS PRIVATE C:/vcpkg/installed/x64-windows/include)
+    target_link_directories(MIPS PRIVATE C:/vcpkg/installed/x64-windows/lib)
+    target_link_libraries(MIPS PRIVATE libzmq-mt-4_3_5 ws2_32)
+else()
+    target_link_libraries(MIPS PRIVATE zmq)
+endif()
 target_link_libraries(MIPS PRIVATE
     Qt::Core
     Qt::Gui

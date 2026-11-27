@@ -124,9 +124,9 @@ QString DACchannel::ProcessCommand(QString cmd)
     if (p->objectName() != "") res = p->objectName() + ".";
     res += Title;
     if (!cmd.startsWith(res)) return "?";
-    if (cmd == Title) return Vdac->text();
+    if (cmd == res) return Vdac->text();
     QStringList resList = cmd.split("=");
-    if (resList.count() == 2)
+    if ((resList.count() == 2) && (resList[0] == res))
     {
         Vdac->setText(resList[1]);
         Vdac->setModified(true);

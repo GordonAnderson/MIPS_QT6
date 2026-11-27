@@ -66,8 +66,8 @@ SOURCES += main.cpp connection.cpp fileops.cpp\
     plot.cpp \
     device.cpp \
     zmqworker.cpp \
-    TextLabel.cpp Shutdown.cpp SaveLoad.cpp CPbutton.cpp DACchannel.cpp ESI.cpp \
-    Ccontrol.cpp Cpanel.cpp StatusLight.cpp TextMessage.cpp Table.cpp Slider.cpp \
+    textlabel.cpp shutdown.cpp saveload.cpp cpbutton.cpp dacchannel.cpp esi.cpp \
+    ccontrol.cpp cpanel.cpp statuslight.cpp textmessage.cpp table.cpp slider.cpp \
     GAACEDiscovery.cpp
 HEADERS  += mips.h \
     Utilities.h \
@@ -112,8 +112,8 @@ HEADERS  += mips.h \
     plot.h \
     device.h \
     zmqworker.h \
-    TextLabel.h Shutdown.h SaveLoad.h CPbutton.h DACchannel.h ESI.h \
-    Ccontrol.h Cpanel.h StatusLight.h TextMessage.h Table.h Slider.h \
+    textlabel.h shutdown.h saveload.h cpbutton.h dacchannel.h esi.h \
+    ccontrol.h cpanel.h statuslight.h textmessage.h table.h slider.h \
     GAACEDiscovery.h
 FORMS    += mips.ui \
     settingsdialog.ui \
@@ -152,6 +152,11 @@ win32 {
     INCLUDEPATH += C:/vcpkg/installed/x64-windows/include
     LIBS += -LC:/vcpkg/installed/x64-windows/lib -llibzmq-mt-4_3_5
     LIBS += -lws2_32
+}
+
+# Linux: ZeroMQ from the distribution packages (libzmq3-dev / cppzmq)
+unix:!macx {
+    LIBS += -lzmq
 }
 
 # These two commands allow memory leak testing

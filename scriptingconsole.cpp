@@ -34,6 +34,7 @@
 // =============================================================================
 
 #include "scriptingconsole.h"
+#include <QMetaMethod>
 #include "ui_scriptingconsole.h"
 #include "help.h"
 #include "Utilities.h"
@@ -71,52 +72,70 @@
 JSengine::JSengine(QWidget *parent)
 {
     p = parent;
-    ControlPanel *cp = (ControlPanel *)p;
+    QObject *cp = p;
 
-    connect(this, SIGNAL(SaveSig(QString)),                          cp, SLOT(Save(QString)),                          Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(LoadSig(QString)),                          cp, SLOT(Load(QString)),                          Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(GetLineSig(QString)),                       cp, SLOT(GetLine(QString)),                       Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(SendStringSig(QString,QString)),            cp, SLOT(SendString(QString,QString)),            Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(SendCommandSig(QString,QString)),           cp, SLOT(SendCommand(QString,QString)),           Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(SendMessSig(QString,QString)),              cp, SLOT(SendMess(QString,QString)),              Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(SystemEnableSig()),                         cp, SLOT(SystemEnable()),                         Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(SystemShutdownSig()),                       cp, SLOT(SystemShutdown()),                       Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(isShutDownSig()),                           cp, SLOT(isShutDown()),                           Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(AcquireSig(QString)),                       cp, SLOT(Acquire(QString)),                       Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(isAcquiringSig()),                          cp, SLOT(isAcquiring()),                          Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(DismissAcquireSig()),                       cp, SLOT(DismissAcquire()),                       Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(statusMessageSig(QString)),                 cp, SLOT(statusMessage(QString)),                 Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(popupMessageSig(QString)),                  cp, SLOT(popupMessage(QString)),                  Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(popupYesNoMessageSig(QString)),             cp, SLOT(popupYesNoMessage(QString)),             Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(popupUserInputSig(QString,QString)),        cp, SLOT(popupUserInput(QString,QString)),        Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(sysUpdatingSig()),                          cp, SLOT(sysUpdating()),                          Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(UpdateHaltedSig(bool)),                     cp, SLOT(UpdateHalted(bool)),                     Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(UpdateHaltedSigNB(bool)),                   cp, SLOT(UpdateHalted(bool)));
-    connect(this, SIGNAL(SelectFileSig(QString,QString,QString)),    cp, SLOT(SelectFile(QString,QString,QString)),    Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(ReadCSVfileSig(QString,QString)),           cp, SLOT(ReadCSVfile(QString,QString)),           Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(ReadCSVentrySig(int,int)),                  cp, SLOT(ReadCSVentry(int,int)),                  Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(CommandSig(QString)),                       cp, SLOT(Command(QString)),                       Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(CreatePlotSig(QString,QString,QString,int)),cp, SLOT(CreatePlot(QString,QString,QString,int)),Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(PlotCommandSig(QString)),                   cp, SLOT(PlotCommand(QString)),                   Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(isCommsSig()),                              cp, SLOT(isComms()),                              Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(MakePathNameUniqueSig(QString)),            cp, SLOT(MakePathNameUnique(QString)),            Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(GenerateUniqueFileNameSig()),               cp, SLOT(GenerateUniqueFileName()),               Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(MakeFileNameUniqueSig(QString)),            cp, SLOT(MakeFileNameUnique(QString)),            Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(AppendToFileSig(QString,QString)),          cp, SLOT(AppendToFile(QString,QString)),          Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(ReadFileLineSig(QString,int)),              cp, SLOT(ReadFileLine(QString,int)),              Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(ReadFileSig(QString)),                      cp, SLOT(ReadFile(QString)),                      Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(elapsedTimeSig(bool)),                      cp, SLOT(elapsedTime(bool)),                      Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(tcpSocketSig(QString,QString,QString)),     cp, SLOT(tcpSocket(QString,QString,QString)),     Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(setValueSig(const QString &,const QVariant &)), cp, SLOT(setValue(const QString &,const QVariant &)), Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(getValueSig(const QString &)),              cp, SLOT(getValue(const QString &)),              Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(CreateProcessSig(QString,QString)),         cp, SLOT(CreateProcess(QString,QString)),         Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(ZMQsig(QString)),                           cp, SLOT(ZMQ(QString)),                           Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(QuadScanSig(QString,int)),                  cp, SLOT(QuadScan(QString,int)),                  Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(QuadScanCountSig()),                        cp, SLOT(QuadScanCount()),                        Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(QuadScanPointsSig(int)),                    cp, SLOT(QuadScanPoints(int)),                    Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(QuadScanCompleteSig(int)),                  cp, SLOT(QuadScanComplete(int)),                  Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(QuadScanMessagesSig()),                     cp, SLOT(QuadScanMessages()),                     Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(QuadScanAbortSig()),                        cp, SLOT(QuadScanAbort()),                        Qt::BlockingQueuedConnection);
+    // The parent is normally a ControlPanel, but Tools > Scripting on the main
+    // window passes the MIPS object, which implements only some of these
+    // slots. Connect a signal only when the receiver really has the slot, so
+    // no "No such slot" warnings are produced; an unconnected signal returns a
+    // default value (false, 0 or an empty string) to the script.
+    auto link = [this, cp](const char *signal, const char *slot,
+                           Qt::ConnectionType type = Qt::AutoConnection)
+    {
+        if(cp == nullptr) return;
+        QByteArray slotSig = QMetaObject::normalizedSignature(slot + 1);
+        if(cp->metaObject()->indexOfSlot(slotSig.constData()) < 0) return;
+        connect(this, signal, cp, slot, type);
+    };
+
+    link(SIGNAL(SaveSig(QString)), SLOT(Save(QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(LoadSig(QString)), SLOT(Load(QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(GetLineSig(QString)), SLOT(GetLine(QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(SendStringSig(QString,QString)), SLOT(SendString(QString,QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(SendCommandSig(QString,QString)), SLOT(SendCommand(QString,QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(SendMessSig(QString,QString)), SLOT(SendMess(QString,QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(SystemEnableSig()), SLOT(SystemEnable()), Qt::BlockingQueuedConnection);
+    link(SIGNAL(SystemShutdownSig()), SLOT(SystemShutdown()), Qt::BlockingQueuedConnection);
+    link(SIGNAL(isShutDownSig()), SLOT(isShutDown()), Qt::BlockingQueuedConnection);
+    link(SIGNAL(AcquireSig(QString)), SLOT(Acquire(QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(isAcquiringSig()), SLOT(isAcquiring()), Qt::BlockingQueuedConnection);
+    link(SIGNAL(DismissAcquireSig()), SLOT(DismissAcquire()), Qt::BlockingQueuedConnection);
+    link(SIGNAL(statusMessageSig(QString)), SLOT(statusMessage(QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(popupMessageSig(QString)), SLOT(popupMessage(QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(popupYesNoMessageSig(QString)), SLOT(popupYesNoMessage(QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(popupUserInputSig(QString,QString)), SLOT(popupUserInput(QString,QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(sysUpdatingSig()), SLOT(sysUpdating()), Qt::BlockingQueuedConnection);
+    link(SIGNAL(UpdateHaltedSig(bool)), SLOT(UpdateHalted(bool)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(UpdateHaltedSigNB(bool)), SLOT(UpdateHalted(bool)));
+    link(SIGNAL(SelectFileSig(QString,QString,QString)), SLOT(SelectFile(QString,QString,QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(ReadCSVfileSig(QString,QString)), SLOT(ReadCSVfile(QString,QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(ReadCSVentrySig(int,int)), SLOT(ReadCSVentry(int,int)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(CommandSig(QString)), SLOT(Command(QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(CreatePlotSig(QString,QString,QString,int)), SLOT(CreatePlot(QString,QString,QString,int)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(PlotCommandSig(QString)), SLOT(PlotCommand(QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(isCommsSig()), SLOT(isComms()), Qt::BlockingQueuedConnection);
+    link(SIGNAL(MakePathNameUniqueSig(QString)), SLOT(MakePathNameUnique(QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(GenerateUniqueFileNameSig()), SLOT(GenerateUniqueFileName()), Qt::BlockingQueuedConnection);
+    link(SIGNAL(MakeFileNameUniqueSig(QString)), SLOT(MakeFileNameUnique(QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(AppendToFileSig(QString,QString)), SLOT(AppendToFile(QString,QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(ReadFileLineSig(QString,int)), SLOT(ReadFileLine(QString,int)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(ReadFileSig(QString)), SLOT(ReadFile(QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(elapsedTimeSig(bool)), SLOT(elapsedTime(bool)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(tcpSocketSig(QString,QString,QString)), SLOT(tcpSocket(QString,QString,QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(setValueSig(const QString &,const QVariant &)), SLOT(setValue(const QString &,const QVariant &)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(getValueSig(const QString &)), SLOT(getValue(const QString &)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(CreateProcessSig(QString,QString)), SLOT(CreateProcess(QString,QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(ZMQsig(QString)), SLOT(ZMQ(QString)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(QuadScanSig(QString,int)), SLOT(QuadScan(QString,int)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(QuadScanCountSig()), SLOT(QuadScanCount()), Qt::BlockingQueuedConnection);
+    link(SIGNAL(QuadScanPointsSig(int)), SLOT(QuadScanPoints(int)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(QuadScanCompleteSig(int)), SLOT(QuadScanComplete(int)), Qt::BlockingQueuedConnection);
+    link(SIGNAL(QuadScanMessagesSig()), SLOT(QuadScanMessages()), Qt::BlockingQueuedConnection);
+    link(SIGNAL(QuadScanAbortSig()), SLOT(QuadScanAbort()), Qt::BlockingQueuedConnection);
+    // Single-system forms: implemented by MIPS (Tools > Scripting), which sends
+    // to the system selected on the System tab. A ControlPanel has no such slot.
+    link(SIGNAL(SendCommand1Sig(QString)),                       SLOT(SendCommand(QString)),                       Qt::BlockingQueuedConnection);
+    link(SIGNAL(SendMess1Sig(QString)),                          SLOT(SendMess(QString)),                          Qt::BlockingQueuedConnection);
 }
 
 /*! \brief initEngine
@@ -145,6 +164,10 @@ void JSengine::doMsDelay(int ms)
 // Polls sysUpdating() to detect a false→true→false transition.
 void JSengine::doWaitForUpdate(void)
 {
+    // Without a control panel there is no update cycle to wait for (and
+    // sysUpdating() would always return false), so return at once.
+    static const QMetaMethod sysUpdatingSignal = QMetaMethod::fromSignal(&JSengine::sysUpdatingSig);
+    if(!isSignalConnected(sysUpdatingSignal)) return;
     while(sysUpdating() == true)  doMsDelay(100);
     while(sysUpdating() == false) doMsDelay(100);
     while(sysUpdating() == true)  doMsDelay(100);
@@ -338,9 +361,9 @@ QString Script::ProcessCommand(QString cmd)
 
     QStringList resList = cmd.split("=");
     if((resList.count() == 2) && (resList[0].trimmed() == (scriptName + ".scriptText").trimmed()))
-        scriptText = resList[1];
+        { scriptText = resList[1]; return ""; }
     if((resList.count() == 2) && (resList[0].trimmed() == (scriptName + ".scriptCall").trimmed()))
-        scriptCall = resList[1];
+        { scriptCall = resList[1]; return ""; }
     return "?";
 }
 

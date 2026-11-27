@@ -55,12 +55,12 @@ host computer and one or more MIPS controllers.
 
 | | |
 |---|---|
-| **Qt** | 6.7.1 (Qt 6.5 LTS may work but is untested) |
+| **Qt** | 6.8.2 (Qt 6.7 or later; QCheckBox::checkStateChanged is used) |
 | **IDE** | Qt Creator 13.0.2 recommended |
 | **Compiler (macOS)** | Xcode Clang ≥ 14, Apple Silicon or Intel |
 | **Compiler (Windows)** | MSVC 2019/2022 or MinGW 11.2+ |
 | **Qt modules** | Core, Widgets, SerialPort, Network, PrintSupport, QML |
-| **Optional** | ZeroMQ + cppzmq for the `mips.ZMQ()` scripting interface |
+| **Required** | ZeroMQ + cppzmq (the `mips.ZMQ()` scripting interface is always built) |
 
 ---
 
@@ -77,7 +77,7 @@ cd MIPS_QT6
 
 1. Open Qt Creator → **File → Open File or Project**
 2. Select `MIPS.pro`
-3. Choose a Qt 6.7 kit for your platform and click **Configure Project**
+3. Choose a Qt 6.8 kit for your platform and click **Configure Project**
 4. Press **Cmd+B** (macOS) or **Ctrl+B** (Windows/Linux) to build
 
 ### Command line (qmake)
@@ -97,7 +97,7 @@ make -j$(nproc)
 > **Linux note:** Add your user to the `dialout` group before connecting:
 > `sudo usermod -aG dialout $USER` then log out and back in.
 
-### ZMQ support (optional)
+### ZMQ support (required)
 
 The `mips.ZMQ()` scripting interface requires ZeroMQ and cppzmq:
 
@@ -117,7 +117,8 @@ for both platforms — just install the libraries and rebuild.
 ## Installation (pre-built)
 
 Pre-built binaries and install files are available on the
-**[GAA Google Drive](https://drive.google.com/drive/folders/0B3IchPRNYqYIcjZhdGFVMVR1VzQ?resourcekey=0-qTdIhau9LysBytglIla-yg&usp=drive_link)**.
+**[MIPS_QT6 releases page](https://github.com/GordonAnderson/MIPS_QT6/releases)**.
+Documentation is available at [www.GAACustom.com](https://www.gaacustom.com).
 
 **macOS:** Copy `MIPS.app` to your Applications folder and double-click to launch.
 
