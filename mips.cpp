@@ -147,6 +147,7 @@ MIPS::MIPS(QWidget *parent, QString CPfilename) :
     connect(ui->statusBar, &QStatusBar::messageChanged, this, &MIPS::slotLogStatusBarMessage);
 
     ui->comboMIPSnetNames->installEventFilter(new DeleteHighlightedItemWhenShiftDelPressedEventFilter);
+    ui->comboMIPSnetNames->setToolTip("Host name or IP address of a network MIPS system, optionally followed by :port\n(default port 2015), e.g. MIPS-A, 192.168.1.50 or 192.168.1.50:2016");
     // Sets the polling loop interval and starts the timer
     if(properties != nullptr) pollTimer->start(1000 * properties->UpdateSecs);
     else pollTimer->start(1000);

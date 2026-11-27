@@ -111,6 +111,43 @@ void Comms::setHost(const QString &h)
     host = h;
 }
 
+/*! \brief Comms::splitHostPort
+ * Splits a network address entered as "host", "host:port" or "[ipv6]:port"
+ * into the host name and the TCP port. host may be a name or an IP address.
+ * A bare IPv6 address (more than one ':') is taken as a host with no port.
+ * The port defaults to defaultTcpPort (2015). Returns false if a port was
+ * given but is not a number from 1 to 65535; the default port is used then.
+ */
+bool Comms::splitHostPort(const QString &spec, QString *hostName, quint16 *port)
+{
+    QString h = spec.trimmed();
+    QString portText;
+
+    *port = defaultTcpPort;
+    if(h.startsWith("["))
+    {
+        int close = h.indexOf(']');
+        if(close > 0)
+        {
+            QString rest = h.mid(close + 1);
+            h = h.mid(1, close - 1);
+            if(rest.startsWith(":")) portText = rest.mid(1);
+        }
+    }
+    else if(h.count(':') == 1)
+    {
+        portText = h.section(':', 1).trimmed();
+        h = h.section(':', 0, 0).trimmed();
+    }
+    *hostName = h;
+    if(portText.isEmpty()) return true;
+    bool ok;
+    uint value = portText.toUInt(&ok);
+    if(!ok || value < 1 || value > 65535) return false;
+    *port = (quint16)value;
+    return true;
+}
+
 /*! \brief Comms::setSettings
  * Updates the port/connection settings (port name, baud rate, etc.).
  * Call before ConnectToMIPS() when settings may have changed.
@@ -1230,10 +1267,14 @@ bool Comms::ConnectToMIPS()
 
     if(host != "")
     {
+       QString hostName;
+       quint16 tcpPort;
+       if(!splitHostPort(host, &hostName, &tcpPort))
+           sb->showMessage(tr("Invalid port in ") + host + tr(", using ") + QString::number(defaultTcpPort), 5000);
        client_connected = false;
        client.setSocketOption(QAbstractSocket::KeepAliveOption, 1);
-       client.connectToHost(host, 2015);
-       sb->showMessage(tr("Connecting..."));
+       client.connectToHost(hostName, tcpPort);
+       sb->showMessage(tr("Connecting to ") + hostName + ":" + QString::number(tcpPort) + "...");
        timer.start();
        while(timer.elapsed() < 30000)
        {
@@ -1402,9 +1443,12 @@ void Comms::reopenPort(void)
 
     if(host != "")
     {
+        QString hostName;
+        quint16 tcpPort;
+        splitHostPort(host, &hostName, &tcpPort);
         client_connected = false;
         client.setSocketOption(QAbstractSocket::KeepAliveOption, 1);
-        client.connectToHost(host, 2015);
+        client.connectToHost(hostName, tcpPort);
         sb->showMessage(tr("Connecting..."));
         timer.start();
         while(timer.elapsed() < 5000)
@@ -1432,7 +1476,14 @@ void Comms::reopenPort(void)
  */
 bool Comms::openSerialPort()
 {
-    connect(serial, &QSerialPort::errorOccurred, this, &Comms::handleError,Qt::UniqueConnection);
+    // Queued, not direct: errorOccurred can be emitted from inside
+    // waitForReadyRead()/waitForBytesWritten(). A direct handleError() would
+    // close the port (deleting Qt's I/O notifier) while that wait is still on
+    // the stack, and the wait then writes to freed memory (Windows, seen as
+    // Application Verifier stop 0x13). Queuing runs the handler after the wait
+    // has returned.
+    connect(serial, &QSerialPort::errorOccurred, this, &Comms::handleError,
+            Qt::ConnectionType(Qt::QueuedConnection | Qt::UniqueConnection));
     serial->setPortName(p.name);
     #if defined(Q_OS_MAC)
         serial->setPortName("cu." + p.name);
@@ -1474,6 +1525,9 @@ void Comms::closeSerialPort()
 void Comms::handleError(QSerialPort::SerialPortError error)
 {
     if (error == QSerialPort::NoError) return;
+    // handleError() is queued (see openSerialPort), so the port may have been
+    // deleted or already closed by an earlier error before this call runs.
+    if (!serial) return;
 
     QString errMsg = serial->errorString();
 
@@ -1483,8 +1537,8 @@ void Comms::handleError(QSerialPort::SerialPortError error)
     case QSerialPort::PermissionError:
     case QSerialPort::DeviceNotFoundError:
     case QSerialPort::UnsupportedOperationError:
-        // Fatal — close the port
-        closeSerialPort();
+        // Fatal — close the port (unless an earlier queued error already did)
+        if (serial->isOpen()) closeSerialPort();
         if (!MIPSname.isEmpty())
             sb->showMessage(MIPSname + tr(" Critical Error, port closing: ") + errMsg);
         else
@@ -1583,8 +1637,12 @@ void Comms::readAvailableData2RingBuffer(void)
  *          Qt fires this automatically whenever bytes arrive.
  *      (b) Polling: called directly from waitforline() inside synchronous
  *          Send/wait loops where the event loop is not running.
- *  - No waitForReadyRead() is used. In case (a) data is guaranteed present;
- *    in case (b) the caller loops and retries, so blocking here is wrong.
+ *  - If nothing is buffered, waitForReadyRead(1) is called once. On Windows the
+ *    serial driver only moves received bytes into QSerialPort's buffer through
+ *    the event loop or a waitFor...() call, and in case (b) the event loop is
+ *    not running, so without this wait waitforline() would never see new data.
+ *    Do not remove it. errorOccurred can fire inside this wait, which is why
+ *    handleError() is connected with Qt::QueuedConnection.
  *  - DataReady is emitted only when bytes were actually placed in the buffer,
  *    preventing spurious wakeups in the consumer.
  *  - lineAvailable is emitted inside the drain loop so consumers are notified
@@ -1718,7 +1776,14 @@ void Comms::slotKeepAlive(void)
  */
 void Comms::slotReconnect(void)
 {
-    connect(serial, &QSerialPort::errorOccurred, this, &Comms::handleError,Qt::UniqueConnection);
+    // Queued, not direct: errorOccurred can be emitted from inside
+    // waitForReadyRead()/waitForBytesWritten(). A direct handleError() would
+    // close the port (deleting Qt's I/O notifier) while that wait is still on
+    // the stack, and the wait then writes to freed memory (Windows, seen as
+    // Application Verifier stop 0x13). Queuing runs the handler after the wait
+    // has returned.
+    connect(serial, &QSerialPort::errorOccurred, this, &Comms::handleError,
+            Qt::ConnectionType(Qt::QueuedConnection | Qt::UniqueConnection));
     if(!serial->isOpen())
     {
         serial->open(QIODevice::ReadWrite);
@@ -1743,7 +1808,10 @@ bool Comms::ConnectToDevice(const QHostAddress &ip, int port, const QString &nam
     if (client.isOpen() || serial->isOpen()) return false;
 
     MIPSname = name;
-    host = ip.toString();
+    // Keep the device's port with the address so reopenPort() reconnects to
+    // the discovered port rather than the default.
+    if(ip.protocol() == QAbstractSocket::IPv6Protocol) host = "[" + ip.toString() + "]:" + QString::number(port);
+    else host = ip.toString() + ":" + QString::number(port);
 
     client_connected = false;
     client.setSocketOption(QAbstractSocket::KeepAliveOption, 1);

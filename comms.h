@@ -70,6 +70,12 @@ public:
     explicit Comms(SettingsDialog *settings, QString Host, QStatusBar *statusbar);
     explicit Comms(const QString &host, int port, QStatusBar *statusbar);
     bool ConnectToMIPS();
+    //! Default TCP port for MIPS network connections.
+    static const quint16 defaultTcpPort = 2015;
+    //! Splits "host", "host:port" or "[ipv6]:port" into host name and port.
+    //! The port defaults to defaultTcpPort; returns false if a port was given
+    //! but is not a number from 1 to 65535 (the default is then used).
+    static bool splitHostPort(const QString &spec, QString *hostName, quint16 *port);
     void DisconnectFromMIPS();
     bool SendCommand(QString name, QString message);
     bool SendCommand(QString message);

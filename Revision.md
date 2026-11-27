@@ -543,6 +543,36 @@
 //	3.) Comms::Transact() added: sends one command and reports ACK, NAK or
 //	    timeout, and can collect a multi-line reply of any length.
 //
-
-
-
+//	4.) Fixed (documentation review, November 2026):
+//	    - Ccontrol CheckBox: script reads/writes and method files now use the
+//	      readback mapping (e.g. HIGH/LOW); TRUE/FALSE is still accepted.
+//	    - ESIchannel write and DACchannel read now work inside a tab or
+//	      GroupBox; DACchannel write no longer matches a longer name.
+//	    - ImageBox scales the image to width x height (was height x height).
+//	    - Slider .scriptCall is now passed to the attached script.
+//	    - ScriptObj .scriptText= / .scriptCall= return "" instead of "?".
+//	    - mips.tcpSocket("Write",...) returns "" on success.
+//	    - Scripting from Tools menu: JSengine connects only the slots the
+//	      receiver has (no "No such slot" warnings), mips.SendCommand(cmd) /
+//	      mips.SendMess(cmd) single-system forms work again, and
+//	      mips.WaitForUpdate() returns at once instead of hanging.
+//	    - MIPS.pro and controlpanel.h use the lower-case file names (Linux
+//	      builds), MIPS.pro links -lzmq on Linux, CMakeLists.txt brought up to
+//	      date (aboutdialog, zmqworker, GAACEDiscovery, APP_VERSION,
+//	      GSC_SOURCE_DIR, ZeroMQ).
+//	    - scripthelp.txt and README.md updated.
+//	    - Control panel Help,filename now finds the file like the other file
+//	      commands (as given, the cfg file's folder, then the application
+//	      folder); a full path is no longer required.
+//	5.) Serial error handler (Comms::handleError) is now connected with
+//	    Qt::QueuedConnection in openSerialPort() and slotReconnect(). A
+//	    ResourceError raised inside waitForReadyRead()/waitForBytesWritten()
+//	    no longer closes the port while Qt's wait is still on the stack
+//	    (Windows use-after-free, Application Verifier stop 0x13). handleError()
+//	    ignores a deleted or already-closed port. readData2RingBuffer() doc
+//	    comment corrected (it does use waitForReadyRead(1)).
+//	6.) Network connections: a TCP port can be given after the host name or IP
+//	    address in the MIPS host name box (and the TCP/IP list) as host:port,
+//	    or [ipv6-address]:port. Without a port the default 2015 is used, as
+//	    before. Reconnecting a device found by UDP discovery now uses its
+//	    discovered port instead of 2015.
