@@ -183,6 +183,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.version }}
+          # Create the tag on the commit that was built. Without this a new tag
+          # goes on the default branch (main), even for a dev build.
+          target_commitish: ${{ github.sha }}
           name: MIPS ${{ github.event.inputs.version }}
           body: ${{ github.event.inputs.release_notes }}
           prerelease: true
