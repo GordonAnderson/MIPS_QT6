@@ -579,3 +579,10 @@
 //	7.) Device Scripts: Slot status also asks GTENA,Script<n>, so it shows
 //	    running or stopped (GSCRIPTST reports only loaded and the last run's
 //	    status, which a stopped slot keeps), and names the VM status code.
+//	8.) Find MIPS and Connect: one search at a time. The search calls
+//	    processEvents(), and the poll timer (AutoConnect, firstCall was still
+//	    true) or a repeated button press started a second search inside the
+//	    first, which deleted the systems it had found. The button now uses
+//	    clicked, is disabled during the search, and pollLoop() waits. ECHO,FALSE
+//	    is sent without a reply check, so GAACE_Core devices (GAACE Gateway)
+//	    that NAK it no longer show an error.

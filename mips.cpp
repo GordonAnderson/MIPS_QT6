@@ -128,7 +128,9 @@ MIPS::MIPS(QWidget *parent, QString CPfilename) :
     connect(ui->actionHelp, &QAction::triggered, this, &MIPS::GeneralHelp);
     connect(ui->tabMIPS, &QTabWidget::currentChanged, this, [this](int){ tabSelected(); });
     connect(ui->pbConnect, &QPushButton::pressed, this, &MIPS::MIPSconnect);
-    connect(ui->pbSearchandConnect, &QPushButton::pressed, this, &MIPS::MIPSsearch);
+    // clicked, not pressed: the search calls setDown(false) while the button may still be held, and
+    // pressed is sent again if the mouse then moves, which started a second search
+    connect(ui->pbSearchandConnect, &QPushButton::clicked, this, &MIPS::MIPSsearch);
     connect(ui->pbDisconnect, &QPushButton::pressed, this, &MIPS::MIPSdisconnect);
     connect(pollTimer, &QTimer::timeout, this, &MIPS::pollLoop);
     connect(ui->actionAbout, &QAction::triggered, this, &MIPS::DisplayAboutMessage);
@@ -477,12 +479,19 @@ void MIPS::saveSettings(void)
  * Timer slot: on first call handles auto-connect and auto-load; thereafter drives
  * per-tab polling and control-panel updates.
  */
+extern bool MIPSsearchActive;   // connection.cpp, set while MIPSsearch() runs
+
 void MIPS::pollLoop(void)
 {
     static  bool firstCall = true;
 
+    // A search is in progress (this timer fires inside its processEvents() calls): the systems
+    // list is being rebuilt, so leave the connections alone until it finishes.
+    if(MIPSsearchActive) return;
     if(firstCall)
     {
+        // Clear firstCall before searching, the search runs this timer again via processEvents()
+        firstCall = false;
         if(properties->AutoConnect) MIPSsearch();
         if(Systems.count() >= properties->MinMIPS)
         {

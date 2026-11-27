@@ -77,7 +77,12 @@ void MIPS::MIPSsetup(void)
     ui->lblMIPSconfig->clear();
     ui->lblMIPSconfig->setText(ui->lblMIPSconfig->text() + res);
     comms->SendString("\n");
-    comms->SendCommand("ECHO,FALSE\n");
+    // ECHO is a MIPS command; GAACE_Core devices (the GAACE Gateway, IsoElectrometer, ...) NAK
+    // it and have echo off already. Send it without checking the reply, so no NAK is reported,
+    // then drop the reply so it is not read as the GVER answer below.
+    comms->SendString("ECHO,FALSE\n");
+    comms->waitforline(200);
+    comms->rb.clear();
     ver = comms->SendMess("GVER\n");
     if(ver=="") return;  // Exit if we timeout, no MIPS comms
 
@@ -171,8 +176,17 @@ void MIPS::MIPSconnect(void)
 /*! \brief MIPS::MIPSsearch
  * Slot: scans available ports and network names for MIPS systems and connects to all found.
  */
+// True while MIPSsearch() runs. The search calls processEvents() between ports, so the poll timer
+// (AutoConnect) or another button press could otherwise start a second search inside the first,
+// and that one deletes the systems the first had found. pollLoop() also skips its work while set.
+bool MIPSsearchActive = false;
+
 void MIPS::MIPSsearch(void)
 {
+    if(MIPSsearchActive) return;
+    MIPSsearchActive = true;
+    ui->pbSearchandConnect->setEnabled(false);
+
     // FIX: use a scoped pointer so the dialog is always deleted
     QScopedPointer<QMessageBox> msg(new QMessageBox());
     msg->setText("Searching for MIPS system(s)...");
@@ -186,6 +200,8 @@ void MIPS::MIPSsearch(void)
 
     msg->hide();
     // QScopedPointer deletes msg here automatically
+    ui->pbSearchandConnect->setEnabled(true);
+    MIPSsearchActive = false;
 }
 
 /*! \brief MIPS::FindAllMIPSsystems
