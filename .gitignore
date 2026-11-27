@@ -38,3 +38,6 @@ CLAUDE.md
 # Device Scripts compiler: the downloaded Python runtimes (see tools/python/README.md)
 tools/python/macos/
 tools/python/windows/
+
+# Files written by Claude chats (patches, draft documents), kept locally only
+Claude outputs/
