@@ -321,17 +321,52 @@ void DeviceScriptDialog::onSystemChanged()
     setBusy(false);
 }
 
+// GAACE_Script's VM Status codes (GAACEScript.h), as GSCRIPTST reports them.
+static QString vmStatusText(int status)
+{
+    switch(status)
+    {
+        case 0:  return "not run yet";
+        case 1:  return "finished normally";
+        case 2:  return "error, stack overflow";
+        case 3:  return "error, stack underflow";
+        case 4:  return "error, bad opcode";
+        case 5:  return "error, bad jump";
+        case 6:  return "error, unknown syscall";
+        case 7:  return "error, divide by zero";
+        case 8:  return "error, step limit (script did not finish)";
+        case 9:  return "error, bad string pool";
+        case 10: return "error, no command bridge";
+        case 11: return "waiting for a device reply";
+        case 12: return "error, firmware has no device support";
+        default: return "unknown status";
+    }
+}
+
 void DeviceScriptDialog::refreshStatus()
 {
     Comms *comms = current();
     if(comms == nullptr) { log("Not connected."); return; }
     setBusy(true);
     SlotStatus st;
-    const DeviceScriptClient::Result r = DeviceScriptClient::slotStatus(comms, slotSpin_->value(), st);
+    const int slot = slotSpin_->value();
+    const DeviceScriptClient::Result r = DeviceScriptClient::slotStatus(comms, slot, st);
+    bool running = false;
+    const DeviceScriptClient::Result rr = r.ok ? DeviceScriptClient::slotRunning(comms, slot, running)
+                                               : r;
     setBusy(false);
     if(!r.ok) { log(r.message); return; }
-    log(QString("Slot %1: %2, last VM status %3").arg(slotSpin_->value())
-            .arg(st.loaded ? "script loaded" : "empty").arg(st.lastStatus));
+    // GSCRIPTST reports only loaded and the last run's status; the thread's on/off state comes
+    // from GTENA. A stopped slot keeps its script and the status of its last run.
+    const QString runText = rr.ok ? (running ? "running" : "stopped") : "run state unknown";
+    if(!st.loaded)
+    {
+        log(QString("Slot %1: empty, %2").arg(slot).arg(runText));
+        return;
+    }
+    log(QString("Slot %1: script loaded, %2, last run: %3 (%4)").arg(slot).arg(runText)
+            .arg(vmStatusText(st.lastStatus)).arg(st.lastStatus));
+    if(!rr.ok) log(rr.message);
 }
 
 void DeviceScriptDialog::startSlot()

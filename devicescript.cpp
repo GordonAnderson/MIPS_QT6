@@ -97,6 +97,20 @@ DeviceScriptClient::Result DeviceScriptClient::slotStatus(Comms *comms, int slot
     return success();
 }
 
+DeviceScriptClient::Result DeviceScriptClient::slotRunning(Comms *comms, int slot, bool &running)
+{
+    if(comms == nullptr) return notConnected();
+    QStringList lines;
+    const QString cmd = QString("GTENA,Script%1").arg(slot);
+    const Comms::ReplyStatus st = comms->Transact(cmd + "\n", &lines, 1000, 60);
+    if(st != Comms::ReplyAck) return fail(describeFailure(st, cmd));
+    const QString v = firstLine(lines).trimmed().toUpper();
+    if(v == "TRUE" || v == "1")       running = true;
+    else if(v == "FALSE" || v == "0") running = false;
+    else return fail("Unrecognised " + cmd + " reply: " + firstLine(lines));
+    return success();
+}
+
 DeviceScriptClient::Result DeviceScriptClient::setSlotRunning(Comms *comms, int slot, bool running)
 {
     if(comms == nullptr) return notConnected();

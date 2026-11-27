@@ -52,6 +52,11 @@ public:
     //! GSCRIPTST,<slot>.
     static Result slotStatus(Comms *comms, int slot, DeviceScriptProto::SlotStatus &out);
 
+    //! GTENA,Script<slot>: whether the slot's thread is enabled (running).
+    //! GSCRIPTST does not report this, a slot keeps its script and its last
+    //! status while it is stopped.
+    static Result slotRunning(Comms *comms, int slot, bool &running);
+
     //! STENA,Script<slot>,TRUE|FALSE: start or stop the slot's thread.
     static Result setSlotRunning(Comms *comms, int slot, bool running);
 

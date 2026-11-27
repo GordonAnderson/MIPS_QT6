@@ -576,3 +576,6 @@
 //	    or [ipv6-address]:port. Without a port the default 2015 is used, as
 //	    before. Reconnecting a device found by UDP discovery now uses its
 //	    discovered port instead of 2015.
+//	7.) Device Scripts: Slot status also asks GTENA,Script<n>, so it shows
+//	    running or stopped (GSCRIPTST reports only loaded and the last run's
+//	    status, which a stopped slot keeps), and names the VM status code.
